@@ -1,0 +1,462 @@
+using System.Text.RegularExpressions;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Threading;
+using Tack.Controls;
+using Tack.Model;
+using Tack.Windows;
+
+namespace Tack.Views;
+
+/// <summary>
+/// Tasks: one task in focus, a quick-add box, the list, and a folded "Done" section.
+/// Everything is editable in place; there are no dialogs.
+/// </summary>
+public partial class TasksView : UserControl
+{
+    /// <summary>Grace period after ticking a task, during which a second click undoes it.</summary>
+    private static readonly TimeSpan CheckDelay = TimeSpan.FromMilliseconds(650);
+
+    private static readonly Regex ListMarker = new(@"^\s*(?:[-*+•·◦▪–]\s+|\d{1,3}[.)]\s+|\[[ xX]?\]\s*)", RegexOptions.Compiled);
+
+    private readonly Dictionary<TaskItem, DispatcherTimer> _checking = new();
+    private Workspace _ws = null!;
+    private PanelWindow _panel = null!;
+    private string? _editOriginal;
+    private TaskItem? _dragItem;
+
+    public TasksView()
+    {
+        InitializeComponent();
+    }
+
+    internal void Initialize(Workspace ws, PanelWindow panel)
+    {
+        _ws = ws;
+        _panel = panel;
+        DataObject.AddPastingHandler(AddBox, OnAddBoxPaste);
+    }
+
+    public void FocusInput()
+    {
+        AddBox.Focus();
+        Keyboard.Focus(AddBox);
+    }
+
+    private static TaskItem? ItemOf(object sender) => (sender as FrameworkElement)?.DataContext as TaskItem;
+
+    // ================= Quick add =================
+
+    private void AddBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Enter:
+                string text = AddBox.Text.Trim();
+                if (text.Length > 0)
+                {
+                    bool asNow = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
+                    var task = _ws.AddTask(text, asNow);
+                    AddBox.Clear();
+                    if (asNow) AnimateNowCard(); else AnimateIn(task);
+                    Scroller.ScrollToTop();
+                }
+                e.Handled = true;
+                break;
+
+            case Key.Escape when AddBox.Text.Length > 0:
+                AddBox.Clear();
+                e.Handled = true;
+                break;
+
+            case Key.Down when _ws.Open.Count > 0:
+                FocusEditor(_ws.Open[0], atEnd: true);
+                e.Handled = true;
+                break;
+
+            case Key.Up when _ws.Now != null:
+                FocusTextBox(NowEditor, atEnd: true);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    /// <summary>Pasting several lines adds each one as a task (bullets and numbering are stripped).</summary>
+    private void OnAddBoxPaste(object sender, DataObjectPastingEventArgs e)
+    {
+        if (e.SourceDataObject.GetData(DataFormats.UnicodeText) is not string text) return;
+        var lines = text.Replace("\r", "").Split('\n')
+            .Select(l => ListMarker.Replace(ListMarker.Replace(l, ""), "").Trim())
+            .Where(l => l.Length > 0)
+            .ToList();
+        if (lines.Count <= 1)
+        {
+            if (text.Contains('\n'))
+            {
+                var data = new DataObject();
+                data.SetData(DataFormats.UnicodeText, lines.FirstOrDefault() ?? "");
+                e.DataObject = data;
+            }
+            return;
+        }
+
+        e.CancelCommand();
+        var added = new List<TaskItem>();
+        for (int i = lines.Count - 1; i >= 0; i--) added.Add(_ws.AddTask(lines[i]));
+        Scroller.ScrollToTop();
+        _panel.ShowToast($"Added {lines.Count} tasks", () => { foreach (var t in added) _ws.Delete(t); });
+    }
+
+    // ================= Completing =================
+
+    // Checked/Unchecked (rather than Click) so keyboard, mouse and screen-reader toggles all work.
+    private void Check_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton box || ItemOf(sender) is not { } task) return;
+        if ((box.IsChecked == true) != task.IsChecking) ToggleCheck(task);
+    }
+
+    private void ToggleCheck(TaskItem task)
+    {
+        if (_checking.Remove(task, out var pending))
+        {
+            pending.Stop();
+            task.IsChecking = false;
+            if (task == _ws.Now) Anim.Fade(NowEditor, 1, 150);
+            return;
+        }
+
+        task.IsChecking = true;
+        if (task == _ws.Now) Anim.Fade(NowEditor, 0.45, 150);
+        var timer = new DispatcherTimer { Interval = CheckDelay };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (!_checking.Remove(task) || !task.IsChecking) return;
+            if (Keyboard.FocusedElement is TextBox tb && tb.DataContext == task) FocusInput();
+            var container = ContainerFor(task);
+            if (container == null) _ws.Complete(task);
+            else Anim.Collapse(container, 200, () => _ws.Complete(task));
+            Anim.Set(NowEditor, OpacityProperty, 1);
+        };
+        _checking[task] = timer;
+        timer.Start();
+    }
+
+    private void Reopen_Click(object sender, RoutedEventArgs e)
+    {
+        if (ItemOf(sender) is not { } task) return;
+        _ws.Reopen(task);
+        AnimateIn(task);
+    }
+
+    private void ClearDone_Click(object sender, RoutedEventArgs e)
+    {
+        int n = _ws.Done.Count;
+        var undo = _ws.ClearDone();
+        _panel.ShowToast(n == 1 ? "Cleared 1 finished task" : $"Cleared {n} finished tasks", undo);
+    }
+
+    // ================= Focus ("Now") =================
+
+    private void Focus_Click(object sender, RoutedEventArgs e)
+    {
+        if (ItemOf(sender) is { } task) MakeNow(task);
+    }
+
+    private void MakeNow(TaskItem task)
+    {
+        var previous = _ws.Now;
+        _ws.SetNow(task);
+        AnimateNowCard();
+        if (previous != null) AnimateIn(previous);
+    }
+
+    private void Unfocus_Click(object sender, RoutedEventArgs e)
+    {
+        var task = _ws.Now;
+        if (task == null) return;
+        _ws.ClearNow();
+        AnimateIn(task);
+    }
+
+    // ================= Deleting =================
+
+    private void Delete_Click(object sender, RoutedEventArgs e)
+    {
+        if (ItemOf(sender) is { } task) DeleteWithUndo(task);
+    }
+
+    private void DeleteWithUndo(TaskItem task, bool animate = true)
+    {
+        void Remove()
+        {
+            var undo = _ws.Delete(task);
+            _panel.ShowToast("Task deleted", () =>
+            {
+                undo();
+                if (task == _ws.Now) AnimateNowCard(); else AnimateIn(task);
+            });
+        }
+
+        var container = animate ? ContainerFor(task) : null;
+        if (container == null) Remove();
+        else Anim.Collapse(container, 180, Remove);
+    }
+
+    // ================= Context menu =================
+
+    private static TaskItem? MenuItemTask(object sender) =>
+        (((sender as MenuItem)?.Parent as ContextMenu)?.PlacementTarget as FrameworkElement)?.DataContext as TaskItem;
+
+    private void MenuFocus_Click(object sender, RoutedEventArgs e) { if (MenuItemTask(sender) is { } t) MakeNow(t); }
+    private void MenuDone_Click(object sender, RoutedEventArgs e) { if (MenuItemTask(sender) is { } t) ToggleCheck(t); }
+    private void MenuDelete_Click(object sender, RoutedEventArgs e) { if (MenuItemTask(sender) is { } t) DeleteWithUndo(t); }
+
+    private void MenuTop_Click(object sender, RoutedEventArgs e)
+    {
+        if (MenuItemTask(sender) is { } t) MoveWithFlip(_ws.Open.IndexOf(t), 0);
+    }
+
+    // ================= Editing in place =================
+
+    private void Editor_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) =>
+        _editOriginal = ((TextBox)sender).Text;
+
+    private void Editor_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (ItemOf(sender) is not { } task || task.IsChecking) return;
+        string trimmed = task.Text.Trim();
+        if (trimmed.Length > 0)
+        {
+            if (trimmed != task.Text) task.Text = trimmed;
+            return;
+        }
+        // Emptied out: treat as a delete, but keep the old text for Undo.
+        task.Text = string.IsNullOrWhiteSpace(_editOriginal) ? "Untitled task" : _editOriginal!;
+        if (_ws.Open.Contains(task) || _ws.Now == task) DeleteWithUndo(task, animate: false);
+    }
+
+    private void Editor_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox tb || ItemOf(sender) is not { } task) return;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        var mods = Keyboard.Modifiers;
+        bool isNow = task == _ws.Now;
+
+        switch (key)
+        {
+            case Key.Enter when mods == ModifierKeys.Control:
+                if (!isNow)
+                {
+                    MakeNow(task);
+                    Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => FocusTextBox(NowEditor, atEnd: true));
+                }
+                e.Handled = true;
+                break;
+
+            case Key.Enter:
+                FocusInput();
+                e.Handled = true;
+                break;
+
+            case Key.Escape:
+                if (_editOriginal != null) tb.Text = _editOriginal;
+                FocusInput();
+                e.Handled = true;
+                break;
+
+            case Key.D when mods == ModifierKeys.Control:
+                ToggleCheck(task);
+                e.Handled = true;
+                break;
+
+            case Key.Up when mods == ModifierKeys.Alt && !isNow:
+            case Key.Down when mods == ModifierKeys.Alt && !isNow:
+                int from = _ws.Open.IndexOf(task);
+                int to = key == Key.Up ? from - 1 : from + 1;
+                if (to >= 0 && to < _ws.Open.Count)
+                {
+                    int caret = tb.CaretIndex;
+                    MoveWithFlip(from, to);
+                    Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+                    {
+                        if (EditorFor(task) is { } ed) { ed.Focus(); ed.CaretIndex = Math.Min(caret, ed.Text.Length); }
+                    });
+                }
+                e.Handled = true;
+                break;
+
+            case Key.Up when mods == ModifierKeys.None && OnFirstLine(tb):
+                if (isNow) break;
+                int i = _ws.Open.IndexOf(task);
+                if (i > 0) FocusEditor(_ws.Open[i - 1], atEnd: true);
+                else FocusInput();
+                e.Handled = true;
+                break;
+
+            case Key.Down when mods == ModifierKeys.None && OnLastLine(tb):
+                if (isNow) { FocusInput(); e.Handled = true; break; }
+                int j = _ws.Open.IndexOf(task);
+                if (j >= 0 && j < _ws.Open.Count - 1) FocusEditor(_ws.Open[j + 1], atEnd: true);
+                e.Handled = true;
+                break;
+
+            case Key.Back when tb.Text.Length == 0 && !isNow:
+                int k = _ws.Open.IndexOf(task);
+                _editOriginal = null;
+                DeleteWithUndo(task, animate: false);
+                if (k > 0 && k - 1 < _ws.Open.Count) FocusEditor(_ws.Open[k - 1], atEnd: true);
+                else FocusInput();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private static bool OnFirstLine(TextBox tb) => tb.GetLineIndexFromCharacterIndex(tb.CaretIndex) <= 0;
+
+    private static bool OnLastLine(TextBox tb)
+    {
+        int line = tb.GetLineIndexFromCharacterIndex(tb.CaretIndex);
+        return line < 0 || line >= tb.LineCount - 1;
+    }
+
+    private void FocusEditor(TaskItem task, bool atEnd)
+    {
+        if (EditorFor(task) is { } editor) FocusTextBox(editor, atEnd);
+    }
+
+    private static void FocusTextBox(TextBox tb, bool atEnd)
+    {
+        tb.Focus();
+        tb.CaretIndex = atEnd ? tb.Text.Length : 0;
+    }
+
+    // ================= Drag to reorder =================
+
+    private void Grip_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (ItemOf(sender) is not { } task) return;
+        _dragItem = task;
+        SetLifted(task, true);
+        // Capture on the view itself: rows get re-parented as they move, which would drop a row's capture.
+        CaptureMouse();
+        e.Handled = true;
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (_dragItem == null || !IsMouseCaptured) return;
+
+        double y = e.GetPosition(OpenList).Y;
+        int from = _ws.Open.IndexOf(_dragItem), to = from;
+        for (int i = 0; i < _ws.Open.Count; i++)
+        {
+            if (i == from || ContainerAt(i) is not { } c) continue;
+            double mid = c.TranslatePoint(new Point(0, 0), OpenList).Y + c.ActualHeight / 2;
+            if (i < from && y < mid) { to = i; break; }
+            if (i > from && y > mid) to = i;
+        }
+        if (to != from) MoveWithFlip(from, to);
+
+        double sy = e.GetPosition(Scroller).Y;
+        if (sy < 18) Scroller.LineUp();
+        else if (sy > Scroller.ActualHeight - 18) Scroller.LineDown();
+    }
+
+    protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonUp(e);
+        if (_dragItem != null) ReleaseMouseCapture();
+    }
+
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        base.OnLostMouseCapture(e);
+        if (_dragItem == null) return;
+        SetLifted(_dragItem, false);
+        _dragItem = null;
+    }
+
+    private void SetLifted(TaskItem task, bool lifted)
+    {
+        if (ContainerFor(task) is not ContentPresenter cp || cp.ContentTemplate.FindName("Row", cp) is not Border row) return;
+        if (lifted)
+        {
+            row.Background = (Brush)FindResource("AccentFaintBrush");
+            row.BorderBrush = (Brush)FindResource("AccentSoftBrush");
+        }
+        else
+        {
+            row.ClearValue(Border.BackgroundProperty);
+            row.ClearValue(Border.BorderBrushProperty);
+        }
+    }
+
+    /// <summary>Moves a task and lets the other rows glide into their new places (FLIP animation).</summary>
+    private void MoveWithFlip(int from, int to)
+    {
+        if (from < 0 || to < 0 || from == to) return;
+        var before = new Dictionary<TaskItem, double>();
+        foreach (var t in _ws.Open)
+            if (ContainerFor(t) is { } c) before[t] = c.TranslatePoint(new Point(0, 0), OpenList).Y;
+
+        _ws.MoveOpen(from, to);
+        OpenList.UpdateLayout();
+
+        foreach (var t in _ws.Open)
+        {
+            if (ContainerFor(t) is not { } c || !before.TryGetValue(t, out double oldY)) continue;
+            double dy = oldY - c.TranslatePoint(new Point(0, 0), OpenList).Y;
+            if (Math.Abs(dy) < 0.5) continue;
+            var shift = new TranslateTransform(0, dy);
+            c.RenderTransform = shift;
+            shift.BeginAnimation(TranslateTransform.YProperty,
+                new DoubleAnimation(0, Anim.Ms(170)) { EasingFunction = Anim.EaseOut });
+        }
+    }
+
+    // ================= Containers and entrance animations =================
+
+    private FrameworkElement? ContainerAt(int index) =>
+        OpenList.ItemContainerGenerator.ContainerFromIndex(index) as FrameworkElement;
+
+    private FrameworkElement? ContainerFor(TaskItem task)
+    {
+        if (task == _ws.Now) return NowCard;
+        var list = task.IsDone && !task.IsChecking ? DoneList : OpenList;
+        return list.ItemContainerGenerator.ContainerFromItem(task) as FrameworkElement;
+    }
+
+    private TextBox? EditorFor(TaskItem task)
+    {
+        if (task == _ws.Now) return NowEditor;
+        if (OpenList.ItemContainerGenerator.ContainerFromItem(task) is not ContentPresenter cp) return null;
+        cp.ApplyTemplate();
+        return cp.ContentTemplate?.FindName("Editor", cp) as TextBox;
+    }
+
+    private void AnimateIn(TaskItem task)
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            if (ContainerFor(task) is not { } c) return;
+            Anim.Fade(c, 1, 180, from: 0);
+            Anim.Slide(c, 0, -8, 240);
+        });
+    }
+
+    private void AnimateNowCard()
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            Anim.Fade(NowCard, 1, 200, from: 0);
+            Anim.Slide(NowCard, 0, 10, 260);
+        });
+    }
+}

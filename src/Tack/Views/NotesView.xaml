@@ -1,0 +1,120 @@
+<UserControl x:Class="Tack.Views.NotesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:Tack.Controls">
+    <UserControl.Resources>
+        <c:BoolToVisibility x:Key="Vis" />
+
+        <!-- Sheet pills -->
+        <Style x:Key="SheetPill" TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource TextTertiaryBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd" CornerRadius="6" Padding="10,4" Background="Transparent">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SubtlePressedBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SubtleFillBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <ContextMenu x:Key="SheetMenu" x:Shared="False">
+            <MenuItem Header="Delete sheet" Click="DeleteSheet_Click" />
+        </ContextMenu>
+
+        <!-- The paper itself. -->
+        <Style x:Key="NotesBox" TargetType="TextBox" BasedOn="{StaticResource GhostTextBox}">
+            <Setter Property="AcceptsReturn" Value="True" />
+            <Setter Property="AcceptsTab" Value="True" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Padding" Value="14,12,14,12" />
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <ScrollViewer x:Name="PART_ContentHost" Focusable="False" Padding="{TemplateBinding Padding}"
+                                      HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="14,0,14,12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Sheet strip -->
+        <Grid Margin="2,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <ListBox x:Name="SheetList" ItemsSource="{Binding Sheets}" SelectedItem="{Binding ActiveSheet}"
+                     ItemContainerStyle="{StaticResource SheetPill}" Background="Transparent" BorderThickness="0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                     Focusable="False" SelectionChanged="SheetList_SelectionChanged">
+                <ListBox.Template>
+                    <ControlTemplate TargetType="ListBox">
+                        <ScrollViewer x:Name="SheetScroller" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
+                                      Focusable="False">
+                            <ItemsPresenter />
+                        </ScrollViewer>
+                    </ControlTemplate>
+                </ListBox.Template>
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding Title}" ContextMenu="{StaticResource SheetMenu}" MaxWidth="130"
+                                   TextTrimming="CharacterEllipsis" />
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <Button Grid.Column="1" Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="11"
+                    Content="&#xE710;" Click="AddSheet_Click" ToolTip="New sheet (Ctrl+N)" AutomationProperties.Name="New sheet" />
+        </Grid>
+
+        <!-- Paper -->
+        <Border Grid.Row="1" CornerRadius="10" Background="{StaticResource ControlFillBrush}"
+                BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1">
+            <Grid>
+                <TextBox x:Name="Editor" Style="{StaticResource NotesBox}" AutomationProperties.Name="Note"
+                         Text="{Binding ActiveSheet.Text, UpdateSourceTrigger=PropertyChanged}"
+                         PreviewKeyDown="Editor_PreviewKeyDown" />
+                <TextBlock x:Name="Hint" Margin="16,12,16,12" IsHitTestVisible="False" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextTertiaryBrush}" LineHeight="20"
+                           Visibility="{Binding ActiveSheet.IsEmpty, Converter={StaticResource Vis}}">
+                    <Run Text="Jot anything. It saves as you type." />
+                    <LineBreak /><LineBreak />
+                    <Run Text="Ctrl+Enter" FontWeight="SemiBold" /><Run Text="  turns a line into a task" />
+                    <LineBreak />
+                    <Run Text="F5" FontWeight="SemiBold" /><Run Text="  stamps the date and time" />
+                    <LineBreak />
+                    <Run Text="- " FontWeight="SemiBold" /><Run Text="  starts a list" />
+                </TextBlock>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

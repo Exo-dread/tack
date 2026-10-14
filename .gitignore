@@ -1,0 +1,17 @@
+# Build output
+bin/
+obj/
+artifacts/
+
+# IDE state
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Local portable-mode data created while developing
+TackData/
+
+# Python cache from tools/
+__pycache__/

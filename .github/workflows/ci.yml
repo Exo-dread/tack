@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build
+        run: dotnet build src/Tack/Tack.csproj -c Release -warnaserror
+
+      - name: Publish portable build
+        run: dotnet publish src/Tack/Tack.csproj -c Release -p:Portable=true -o artifacts/portable
+
+      - name: Upload portable build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tack-portable-${{ github.sha }}
+          path: artifacts/portable/Tack.exe
+          retention-days: 14

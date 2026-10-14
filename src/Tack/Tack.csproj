@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>Tack</AssemblyName>
+    <RootNamespace>Tack</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\Tack.ico</ApplicationIcon>
+
+    <Version>1.0.0</Version>
+    <Product>Tack</Product>
+    <Company>Tack contributors</Company>
+    <Description>A tiny always-on-top home for your tasks and quick notes.</Description>
+    <Copyright>Copyright (c) 2026 Tack contributors. MIT License.</Copyright>
+
+    <!-- Keep the runtime footprint small: one GC heap, no background GC thread,
+         and only English framework resources. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <!-- Portable build: one self-contained .exe, no .NET install required.
+       dotnet publish src/Tack -c Release -p:Portable=true -->
+  <PropertyGroup Condition="'$(Portable)' == 'true'">
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- Uncompressed on purpose: a compressed bundle is unpacked into RAM (~90 MB extra private
+         memory); uncompressed it's memory-mapped. The release .zip compresses it for download. -->
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <PublishReadyToRun>true</PublishReadyToRun>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\Tack.ico" />
+  </ItemGroup>
+
+  <!-- The WPF runtime pack drags in Windows Forms (for WindowsFormsHost) and a few other
+       libraries Tack never loads. Leaving them out of the portable .exe saves ~30 MB.
+       If you add a feature that needs one of these, remove it from this list. -->
+  <Target Name="SlimPortableBundle" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(Portable)' == 'true'">
+    <ItemGroup>
+      <_TackUnused Include="@(ResolvedFileToPublish)"
+                   Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Filename)', '^(System\.Windows\.Forms(\..*)?|WindowsFormsIntegration|System\.Design|System\.Drawing\.Design|Microsoft\.VisualBasic\.Forms|System\.Data\.Common|Microsoft\.DiaSymReader\.Native\.amd64)$'))" />
+      <ResolvedFileToPublish Remove="@(_TackUnused)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

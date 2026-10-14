@@ -1,0 +1,362 @@
+<UserControl x:Class="Tack.Views.TasksView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:Tack.Controls">
+    <UserControl.Resources>
+        <c:BoolToVisibility x:Key="Vis" />
+
+        <!-- Concentric "target": put this task in focus. -->
+        <Geometry x:Key="TargetIcon">M 7,0.9 A 6.1,6.1 0 1 1 6.99,0.9 Z M 7,4.4 A 2.6,2.6 0 1 1 6.99,4.4 Z</Geometry>
+        <!-- Six-dot grip for dragging. -->
+        <Geometry x:Key="GripIcon">M0,0 h2 v2 h-2 z M4,0 h2 v2 h-2 z M0,4 h2 v2 h-2 z M4,4 h2 v2 h-2 z M0,8 h2 v2 h-2 z M4,8 h2 v2 h-2 z</Geometry>
+
+        <!-- Round check: hover previews the tick, checking fills it with the accent. -->
+        <Style x:Key="CheckCircle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Grid Background="Transparent">
+                            <Ellipse x:Name="Fill" Width="18" Height="18" Fill="{DynamicResource AccentBrush}" Opacity="0"
+                                     RenderTransformOrigin="0.5,0.5">
+                                <Ellipse.RenderTransform>
+                                    <ScaleTransform x:Name="FillScale" ScaleX="0.4" ScaleY="0.4" />
+                                </Ellipse.RenderTransform>
+                            </Ellipse>
+                            <Ellipse x:Name="Ring" Width="18" Height="18" Stroke="{StaticResource TextTertiaryBrush}" StrokeThickness="1.5" />
+                            <Path x:Name="Tick" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                  Data="M 10.2,14.3 L 12.9,17 L 18,11.6" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.7"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  StrokeDashArray="7 7" StrokeDashOffset="7" Opacity="0" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource AccentBrush}" />
+                                <Setter TargetName="Tick" Property="Opacity" Value="0.55" />
+                                <Setter TargetName="Tick" Property="StrokeDashOffset" Value="0" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource AccentBrush}" />
+                                <Setter TargetName="Tick" Property="Stroke" Value="{DynamicResource OnAccentBrush}" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard x:Name="CheckedSb">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Fill" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.1" />
+                                            <DoubleAnimation Storyboard.TargetName="FillScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.22">
+                                                <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.5" /></DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="FillScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.22">
+                                                <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.5" /></DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="Tick" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.05" />
+                                            <DoubleAnimation Storyboard.TargetName="Tick" Storyboard.TargetProperty="StrokeDashOffset" From="7" To="0"
+                                                             BeginTime="0:0:0.08" Duration="0:0:0.2">
+                                                <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <RemoveStoryboard BeginStoryboardName="CheckedSb" />
+                                </Trigger.ExitActions>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- A finished task's check: static, softly filled. Clicking it reopens the task. -->
+        <Style x:Key="DoneCheck" TargetType="Button">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="ToolTip" Value="Mark as not done" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Background="Transparent">
+                            <Ellipse x:Name="Fill" Width="18" Height="18" Fill="{DynamicResource AccentBrush}" Opacity="0.55" />
+                            <Path HorizontalAlignment="Left" VerticalAlignment="Top" Data="M 10.2,14.3 L 12.9,17 L 18,11.6"
+                                  Stroke="{DynamicResource OnAccentBrush}" StrokeThickness="1.7"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fill" Property="Opacity" Value="0.9" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="RowButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Focusable" Value="False" />
+        </Style>
+
+        <Style x:Key="TaskRow" TargetType="Border">
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="0,0,4,0" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <ContextMenu x:Key="TaskMenu" x:Shared="False">
+            <MenuItem Header="Focus on this" Click="MenuFocus_Click" InputGestureText="Ctrl+Enter" />
+            <MenuItem Header="Mark done" Click="MenuDone_Click" InputGestureText="Ctrl+D" />
+            <MenuItem Header="Move to top" Click="MenuTop_Click" />
+            <Separator />
+            <MenuItem Command="ApplicationCommands.Cut" />
+            <MenuItem Command="ApplicationCommands.Copy" />
+            <MenuItem Command="ApplicationCommands.Paste" />
+            <Separator />
+            <MenuItem Header="Delete task" Click="MenuDelete_Click" />
+        </ContextMenu>
+
+        <ContextMenu x:Key="NowMenu" x:Shared="False">
+            <MenuItem Header="Mark done" Click="MenuDone_Click" InputGestureText="Ctrl+D" />
+            <MenuItem Header="Stop focusing" Click="Unfocus_Click" />
+            <Separator />
+            <MenuItem Command="ApplicationCommands.Cut" />
+            <MenuItem Command="ApplicationCommands.Copy" />
+            <MenuItem Command="ApplicationCommands.Paste" />
+        </ContextMenu>
+
+        <!-- Floating mini-toolbar shown over a row's top-right corner on hover. -->
+        <Style x:Key="RowToolbar" TargetType="Border">
+            <Setter Property="Grid.Column" Value="1" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="Margin" Value="0,3,3,0" />
+            <Setter Property="Padding" Value="1" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Background" Value="{StaticResource FlyoutBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Visibility" Value="Collapsed" />
+        </Style>
+
+        <!-- ================= Open task row ================= -->
+        <DataTemplate x:Key="OpenTaskTemplate">
+            <Border x:Name="Row" Style="{StaticResource TaskRow}" ContextMenu="{StaticResource TaskMenu}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="30" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- The grip lives in the gutter left of the row, so it costs no text width. -->
+                    <Border x:Name="GripHost" Width="10" Margin="-11,0,0,0" HorizontalAlignment="Left" Background="Transparent"
+                            Cursor="SizeNS" ToolTip="Drag to reorder (Alt+↑/↓)" Opacity="0"
+                            MouseLeftButtonDown="Grip_MouseLeftButtonDown">
+                        <Path Data="{StaticResource GripIcon}" Fill="{StaticResource TextTertiaryBrush}"
+                              HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,11,0,0" />
+                    </Border>
+
+                    <ToggleButton x:Name="Check" Style="{StaticResource CheckCircle}" VerticalAlignment="Top" Margin="2,2,0,0"
+                                  IsChecked="{Binding IsChecking, Mode=OneWay}" Checked="Check_Changed" Unchecked="Check_Changed" ToolTip="Done (Ctrl+D)"
+                                  AutomationProperties.Name="Mark done" />
+
+                    <TextBox x:Name="Editor" Grid.Column="1" Style="{StaticResource GhostTextBox}" Margin="2,7,8,7"
+                             ContextMenu="{StaticResource TaskMenu}" AutomationProperties.Name="Task"
+                             Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+                             PreviewKeyDown="Editor_PreviewKeyDown" GotKeyboardFocus="Editor_GotKeyboardFocus"
+                             LostKeyboardFocus="Editor_LostKeyboardFocus" />
+                    <TextBlock x:Name="Struck" Grid.Column="1" Margin="4,7,8,7" Text="{Binding Text}" TextWrapping="Wrap"
+                               TextDecorations="Strikethrough" Foreground="{StaticResource TextTertiaryBrush}" Visibility="Collapsed" />
+
+                    <Border x:Name="Actions" Style="{StaticResource RowToolbar}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource RowButton}" Click="Focus_Click" ToolTip="Focus on this (Ctrl+Enter)"
+                                    AutomationProperties.Name="Focus on this">
+                                <Path Data="{StaticResource TargetIcon}" StrokeThickness="1.3" Width="14" Height="14"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                            </Button>
+                            <Button Style="{StaticResource RowButton}" Click="Delete_Click" ToolTip="Delete" Content="&#xE711;"
+                                    AutomationProperties.Name="Delete task" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <Trigger SourceName="Editor" Property="IsKeyboardFocused" Value="True">
+                    <Setter TargetName="Row" Property="Background" Value="{StaticResource SubtleFillBrush}" />
+                    <Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource StrokeBrush}" />
+                </Trigger>
+                <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Row" Property="Background" Value="{StaticResource SubtleFillBrush}" />
+                    <Setter TargetName="GripHost" Property="Opacity" Value="1" />
+                    <Setter TargetName="Actions" Property="Visibility" Value="Visible" />
+                </Trigger>
+                <DataTrigger Binding="{Binding IsChecking}" Value="True">
+                    <Setter TargetName="Editor" Property="Opacity" Value="0" />
+                    <Setter TargetName="Editor" Property="IsHitTestVisible" Value="False" />
+                    <Setter TargetName="Struck" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="Actions" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="GripHost" Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- ================= Done task row ================= -->
+        <DataTemplate x:Key="DoneTaskTemplate">
+            <Border x:Name="Row" Style="{StaticResource TaskRow}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="30" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button Style="{StaticResource DoneCheck}" AutomationProperties.Name="Mark as not done"
+                            VerticalAlignment="Top" Margin="2,2,0,0" Click="Reopen_Click" />
+                    <TextBlock Grid.Column="1" Margin="4,7,8,7" Text="{Binding Text}" TextWrapping="Wrap"
+                               TextDecorations="Strikethrough" Foreground="{StaticResource TextTertiaryBrush}" />
+                    <Border x:Name="Actions" Style="{StaticResource RowToolbar}">
+                        <Button Style="{StaticResource RowButton}" Click="Delete_Click" ToolTip="Delete" Content="&#xE711;"
+                                AutomationProperties.Name="Delete task" />
+                    </Border>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Row" Property="Background" Value="{StaticResource SubtleFillBrush}" />
+                    <Setter TargetName="Actions" Property="Visibility" Value="Visible" />
+                </Trigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- "Done · 3" section header -->
+        <Style x:Key="SectionToggle" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{StaticResource TextTertiaryBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="6" Padding="6,5,10,5">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="Chevron" Text="&#xE76C;" FontFamily="{StaticResource IconFont}" FontSize="9"
+                                           VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5" Margin="0,1,8,0">
+                                    <TextBlock.RenderTransform>
+                                        <RotateTransform x:Name="ChevronSpin" Angle="0" />
+                                    </TextBlock.RenderTransform>
+                                </TextBlock>
+                                <ContentPresenter VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ChevronSpin" Storyboard.TargetProperty="Angle" To="90" Duration="0:0:0.16" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ChevronSpin" Storyboard.TargetProperty="Angle" To="0" Duration="0:0:0.16" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="14,0,14,8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- ================= NOW card ================= -->
+        <Border x:Name="NowCard" Margin="2,0,2,8" CornerRadius="10" Padding="4,6,6,6"
+                Background="{DynamicResource AccentFaintBrush}" BorderBrush="{DynamicResource AccentSoftBrush}" BorderThickness="1"
+                DataContext="{Binding Now}"
+                Visibility="{Binding DataContext.HasNow, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource Vis}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="32" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="1" Text="NOW" Style="{StaticResource Overline}" VerticalAlignment="Center" Margin="2,2,0,0" />
+                <Button Grid.Column="2" Style="{StaticResource RowButton}" Content="&#xE711;" Click="Unfocus_Click" AutomationProperties.Name="Stop focusing"
+                        ToolTip="Stop focusing (back to the list)" />
+
+                <ToggleButton x:Name="NowCheck" Grid.Row="1" Grid.Column="0" Style="{StaticResource CheckCircle}" VerticalAlignment="Top"
+                              Margin="2,0,0,0" IsChecked="{Binding IsChecking, Mode=OneWay}" Checked="Check_Changed" Unchecked="Check_Changed" ToolTip="Done (Ctrl+D)" AutomationProperties.Name="Mark done" />
+                <TextBox x:Name="NowEditor" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource GhostTextBox}"
+                         Margin="2,4,6,6" FontSize="15" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}"
+                         ContextMenu="{StaticResource NowMenu}" AutomationProperties.Name="Focus task"
+                         Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+                         PreviewKeyDown="Editor_PreviewKeyDown" GotKeyboardFocus="Editor_GotKeyboardFocus"
+                         LostKeyboardFocus="Editor_LostKeyboardFocus" />
+            </Grid>
+        </Border>
+
+        <!-- ================= Quick add ================= -->
+        <TextBox x:Name="AddBox" Grid.Row="1" Style="{StaticResource InputBox}" Margin="2,0,2,6"
+                 Tag="Add a task" PreviewKeyDown="AddBox_PreviewKeyDown" AutomationProperties.Name="Add a task"
+                 ToolTip="Enter adds · Ctrl+Enter adds and focuses · paste a list to add many" />
+
+        <!-- ================= List ================= -->
+        <ScrollViewer x:Name="Scroller" Grid.Row="2" Margin="-14,0,-14,-8" VerticalScrollBarVisibility="Auto" Focusable="False">
+            <StackPanel Margin="16,0,16,64">
+                <ItemsControl x:Name="OpenList" ItemsSource="{Binding Open}" ItemTemplate="{StaticResource OpenTaskTemplate}"
+                              Focusable="False" />
+
+                <StackPanel x:Name="EmptyState" Margin="0,28,0,8" HorizontalAlignment="Center"
+                            Visibility="{Binding HasOpen, Converter={StaticResource Vis}, ConverterParameter=invert}">
+                    <Grid Width="34" Height="34" HorizontalAlignment="Center">
+                        <Ellipse Fill="{DynamicResource AccentFaintBrush}" />
+                        <Path Data="M 11,17.5 L 15,21.5 L 23.5,13" Stroke="{DynamicResource AccentBrush}" StrokeThickness="2"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                    </Grid>
+                    <TextBlock Text="All clear" HorizontalAlignment="Center" Margin="0,10,0,0" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+                    <TextBlock Text="Type above to add a task." HorizontalAlignment="Center" Margin="0,3,0,0" Style="{StaticResource Caption}" />
+                </StackPanel>
+
+                <Grid Margin="2,10,2,2" Visibility="{Binding HasDone, Converter={StaticResource Vis}}">
+                    <ToggleButton x:Name="DoneToggle" Style="{StaticResource SectionToggle}" HorizontalAlignment="Left"
+                                  IsChecked="{Binding Settings.DoneExpanded}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Done" FontSize="12" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding Done.Count}" FontSize="12" Margin="6,0,0,0" Opacity="0.75" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <Button Style="{StaticResource TextButton}" HorizontalAlignment="Right" Content="Clear" Click="ClearDone_Click"
+                            Foreground="{StaticResource TextTertiaryBrush}" ToolTip="Remove all finished tasks"
+                            Visibility="{Binding Settings.DoneExpanded, Converter={StaticResource Vis}}" />
+                </Grid>
+
+                <ItemsControl x:Name="DoneList" ItemsSource="{Binding Done}" ItemTemplate="{StaticResource DoneTaskTemplate}" Focusable="False"
+                              Visibility="{Binding Settings.DoneExpanded, Converter={StaticResource Vis}}" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>
