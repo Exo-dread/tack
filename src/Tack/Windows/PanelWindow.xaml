@@ -3,12 +3,12 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:v="clr-namespace:Tack.Views"
         Title="Tack"
-        Width="340" Height="480" MinWidth="280" MinHeight="260"
+        Width="340" Height="480" MinWidth="280" MinHeight="200"
         WindowStyle="None" ResizeMode="CanResize" Background="Transparent"
         ShowInTaskbar="False" Topmost="True" ShowActivated="True"
         UseLayoutRounding="True"
         FontFamily="{StaticResource UiFont}" FontSize="{StaticResource BodySize}"
-        Foreground="{StaticResource TextPrimaryBrush}"
+        Foreground="{DynamicResource TextPrimaryBrush}"
         TextOptions.TextRenderingMode="Grayscale">
 
     <WindowChrome.WindowChrome>
@@ -18,7 +18,7 @@
 
     <Grid x:Name="Root">
         <!-- Tint over the acrylic (or a solid surface when glass is off). -->
-        <Border x:Name="Surface" Background="{StaticResource GlassTintBrush}" />
+        <Border x:Name="Surface" Background="{DynamicResource GlassTintBrush}" />
 
         <Grid x:Name="Chrome">
             <Grid.RowDefinitions>
@@ -37,7 +37,7 @@
 
                 <!-- Brand mark: a tiny version of the orb. -->
                 <Grid Width="18" Height="18" Margin="16,0,8,0" VerticalAlignment="Center" IsHitTestVisible="False">
-                    <Ellipse Stroke="#24FFFFFF" StrokeThickness="1.8" />
+                    <Ellipse Stroke="{DynamicResource BrandTrackBrush}" StrokeThickness="1.8" />
                     <Path Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                           Data="M 9,0.9 A 8.1,8.1 0 1 1 1.3,11.5" />
                     <Ellipse Width="5" Height="5" Fill="{DynamicResource AccentBrush}" />
@@ -49,7 +49,7 @@
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="Tasks" />
                             <TextBlock x:Name="TasksBadge" Margin="6,0,0,0" FontSize="11.5" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextTertiaryBrush}" VerticalAlignment="Center" />
+                                       Foreground="{DynamicResource TextTertiaryBrush}" VerticalAlignment="Center" />
                         </StackPanel>
                     </RadioButton>
                     <RadioButton x:Name="NotesTab" Style="{StaticResource TabButton}" GroupName="PanelTabs" Checked="Tab_Checked"
@@ -82,12 +82,12 @@
                 <!-- Undo toast -->
                 <Border x:Name="Toast" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="12,0,12,14"
                         Padding="14,6,6,6" CornerRadius="10" Visibility="Collapsed"
-                        Background="{StaticResource FlyoutBrush}" BorderBrush="{StaticResource StrokeStrongBrush}" BorderThickness="1">
+                        Background="{DynamicResource FlyoutBrush}" BorderBrush="{DynamicResource StrokeStrongBrush}" BorderThickness="1">
                     <Border.Effect>
                         <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.4" Color="Black" />
                     </Border.Effect>
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock x:Name="ToastText" VerticalAlignment="Center" FontSize="12.5" Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock x:Name="ToastText" VerticalAlignment="Center" FontSize="12.5" Foreground="{DynamicResource TextPrimaryBrush}" />
                         <Button x:Name="ToastUndo" Style="{StaticResource TextButton}" Margin="10,0,0,0" Content="Undo" Click="ToastUndo_Click" />
                     </StackPanel>
                 </Border>

@@ -34,11 +34,18 @@ public partial class TasksView : UserControl
         InitializeComponent();
     }
 
+    /// <summary>Raised whenever the list's natural height may have changed (rows added, removed, re-wrapped, folded).</summary>
+    public event Action? ContentHeightChanged;
+
     internal void Initialize(Workspace ws, PanelWindow panel)
     {
         _ws = ws;
         _panel = panel;
         DataObject.AddPastingHandler(AddBox, OnAddBoxPaste);
+
+        ListStack.SizeChanged += (_, _) => ContentHeightChanged?.Invoke();
+        NowCard.SizeChanged += (_, _) => ContentHeightChanged?.Invoke();
+        NowCard.IsVisibleChanged += (_, _) => ContentHeightChanged?.Invoke();
     }
 
     public void FocusInput()

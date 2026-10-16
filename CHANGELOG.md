@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.0 (2026-10-17)
+
+- **Light mode.** Settings → Theme: System (follows Windows' light/dark mode, live), Light or Dark.
+  Light mode has its own palette, deeper accent shades and a porcelain orb.
+- **Tasks fits its list.** The panel grows and shrinks with your tasks, from a sensible minimum up to
+  620 DIP (or three quarters of the screen), then scrolls.
+- **Each tab remembers its own size.** Notes keeps a writing-sized page; Tasks keeps auto-fitting.
+  Dragging an edge sets that tab's size and turns automatic sizing off for it; double-click the header
+  to turn it back on. Sizes survive restarts.
+- **No jumping.** Size changes glide, with the corner nearest the orb held still, and the panel is kept
+  on screen. Settings opens at a comfortable height even if Tasks is short.
+- Text and ticks on the accent colour now pick white or black by contrast.
+- Upgrading keeps your 1.0 panel size for Notes.
+
 ## 1.0.0 (2026-10-14)
 
 First release.

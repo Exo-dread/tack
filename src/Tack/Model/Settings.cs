@@ -3,12 +3,15 @@ namespace Tack.Model;
 /// <summary>User preferences and remembered UI state. Serialized as-is into tack.json.</summary>
 public sealed class Settings : Observable
 {
-    public const double DefaultPanelWidth = 340;
-    public const double DefaultPanelHeight = 480;
+    public const double DefaultWidth = 340;
+    public const double DefaultNotesHeight = 480;
+    public const double MinWidth = 280;
+    public const double MinHeight = 200;
 
     private bool _launchAtStartup;
     private bool _hideInFullscreen = true;
     private bool _glass = true;
+    private string _theme = "system";
     private string _hotkey = "Ctrl+Alt+Space";
     private string _accent = "system";
     private bool _pinned;
@@ -16,8 +19,10 @@ public sealed class Settings : Observable
     private bool _doneExpanded;
     private int? _orbX;
     private int? _orbY;
-    private double _panelWidth = DefaultPanelWidth;
-    private double _panelHeight = DefaultPanelHeight;
+    private double _tasksWidth = DefaultWidth;
+    private double? _tasksHeight;
+    private double _notesWidth = DefaultWidth;
+    private double _notesHeight = DefaultNotesHeight;
     private string? _activeSheet;
 
     // ---- Preferences ----
@@ -28,6 +33,9 @@ public sealed class Settings : Observable
 
     /// <summary>Frosted acrylic backdrop (Windows 11). When off, the panel is solid.</summary>
     public bool Glass { get => _glass; set => Set(ref _glass, value); }
+
+    /// <summary>"system" follows the Windows app mode; otherwise "light" or "dark".</summary>
+    public string Theme { get => _theme; set => Set(ref _theme, value is "light" or "dark" ? value : "system"); }
 
     public string Hotkey { get => _hotkey; set => Set(ref _hotkey, value ?? ""); }
 
@@ -43,15 +51,46 @@ public sealed class Settings : Observable
 
     public bool DoneExpanded { get => _doneExpanded; set => Set(ref _doneExpanded, value); }
 
-    /// <summary>Centre of the orb in physical screen pixels (virtual desktop coordinates).</summary>
+    /// <summary>Centre of the orb in physical screen pixels (virtual desktop coordinates).
+    /// The panel unfolds from (and folds back to) this point, whichever tab is showing.</summary>
     public int? OrbX { get => _orbX; set => Set(ref _orbX, value); }
 
     public int? OrbY { get => _orbY; set => Set(ref _orbY, value); }
 
-    /// <summary>Panel size in device-independent pixels, so it looks the same on every monitor.</summary>
-    public double PanelWidth { get => _panelWidth; set => Set(ref _panelWidth, Math.Clamp(value, 280, 900)); }
+    // Each tab keeps its own size, in device-independent pixels so it looks the same on every monitor.
 
-    public double PanelHeight { get => _panelHeight; set => Set(ref _panelHeight, Math.Clamp(value, 260, 1400)); }
+    public double TasksWidth { get => _tasksWidth; set => Set(ref _tasksWidth, ClampWidth(value)); }
+
+    /// <summary>Null means "fit the tasks": the panel grows and shrinks with the list.
+    /// Set once the user resizes the panel on the Tasks tab.</summary>
+    public double? TasksHeight { get => _tasksHeight; set => Set(ref _tasksHeight, value is { } h ? ClampHeight(h) : null); }
+
+    public double NotesWidth { get => _notesWidth; set => Set(ref _notesWidth, ClampWidth(value)); }
+
+    public double NotesHeight { get => _notesHeight; set => Set(ref _notesHeight, ClampHeight(value)); }
 
     public string? ActiveSheet { get => _activeSheet; set => Set(ref _activeSheet, value); }
+
+    // ---- Tack 1.0 stored a single panel size; read it once so upgrades keep their size. ----
+
+    public double? PanelWidth { get; set; }
+
+    public double? PanelHeight { get; set; }
+
+    /// <summary>Moves a 1.0-era single panel size into the per-tab sizes.</summary>
+    public void MigrateLegacySize()
+    {
+        if (PanelWidth is double w)
+        {
+            TasksWidth = w;
+            NotesWidth = w;
+        }
+        if (PanelHeight is double h) NotesHeight = h;
+        PanelWidth = null;
+        PanelHeight = null;
+    }
+
+    private static double ClampWidth(double w) => Math.Clamp(double.IsFinite(w) ? w : DefaultWidth, MinWidth, 1200);
+
+    private static double ClampHeight(double h) => Math.Clamp(double.IsFinite(h) ? h : DefaultNotesHeight, MinHeight, 1600);
 }

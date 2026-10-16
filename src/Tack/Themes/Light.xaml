@@ -1,0 +1,33 @@
+<!-- Light palette: dark text on pale glass, modelled on Windows 11's light theme. Swapped at
+     runtime by ThemeManager; every key here must also exist in Dark.xaml. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#E4000000" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#9E000000" />
+    <SolidColorBrush x:Key="TextTertiaryBrush" Color="#78000000" />
+    <SolidColorBrush x:Key="TextDisabledBrush" Color="#5C000000" />
+
+    <SolidColorBrush x:Key="SubtleFillBrush" Color="#0B000000" />
+    <SolidColorBrush x:Key="SubtlePressedBrush" Color="#06000000" />
+    <SolidColorBrush x:Key="ControlFillBrush" Color="#B3FFFFFF" />
+    <SolidColorBrush x:Key="ControlFillFocusBrush" Color="#F2FFFFFF" />
+    <SolidColorBrush x:Key="StrokeBrush" Color="#17000000" />
+    <SolidColorBrush x:Key="StrokeStrongBrush" Color="#29000000" />
+    <SolidColorBrush x:Key="DividerBrush" Color="#12000000" />
+
+    <!-- A pale wash over the acrylic keeps dark text crisp over dark or busy windows. -->
+    <SolidColorBrush x:Key="GlassTintBrush" Color="#80F5F6F8" />
+    <SolidColorBrush x:Key="SolidSurfaceBrush" Color="#FFF6F7F9" />
+    <SolidColorBrush x:Key="FlyoutBrush" Color="#FCFBFBFC" />
+
+    <SolidColorBrush x:Key="ScrollThumbBrush" Color="#33000000" />
+    <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="#52000000" />
+    <SolidColorBrush x:Key="ScrollThumbPressedBrush" Color="#72000000" />
+
+    <SolidColorBrush x:Key="ToggleOffBorderBrush" Color="#9E000000" />
+    <SolidColorBrush x:Key="ToggleOffFillBrush" Color="#05000000" />
+    <SolidColorBrush x:Key="ToggleOffKnobBrush" Color="#9E000000" />
+
+    <SolidColorBrush x:Key="BrandTrackBrush" Color="#1F000000" />
+</ResourceDictionary>

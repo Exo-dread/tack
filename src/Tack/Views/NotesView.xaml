@@ -7,7 +7,7 @@
 
         <!-- Sheet pills -->
         <Style x:Key="SheetPill" TargetType="ListBoxItem">
-            <Setter Property="Foreground" Value="{StaticResource TextTertiaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Cursor" Value="Hand" />
@@ -21,12 +21,12 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SubtlePressedBrush}" />
-                                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtlePressedBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SubtleFillBrush}" />
-                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -97,14 +97,14 @@
         </Grid>
 
         <!-- Paper -->
-        <Border Grid.Row="1" CornerRadius="10" Background="{StaticResource ControlFillBrush}"
-                BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1">
+        <Border Grid.Row="1" CornerRadius="10" Background="{DynamicResource ControlFillBrush}"
+                BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1">
             <Grid>
                 <TextBox x:Name="Editor" Style="{StaticResource NotesBox}" AutomationProperties.Name="Note"
                          Text="{Binding ActiveSheet.Text, UpdateSourceTrigger=PropertyChanged}"
                          PreviewKeyDown="Editor_PreviewKeyDown" />
                 <TextBlock x:Name="Hint" Margin="16,12,16,12" IsHitTestVisible="False" TextWrapping="Wrap"
-                           Foreground="{StaticResource TextTertiaryBrush}" LineHeight="20"
+                           Foreground="{DynamicResource TextTertiaryBrush}" LineHeight="20"
                            Visibility="{Binding ActiveSheet.IsEmpty, Converter={StaticResource Vis}}">
                     <Run Text="Jot anything. It saves as you type." />
                     <LineBreak /><LineBreak />

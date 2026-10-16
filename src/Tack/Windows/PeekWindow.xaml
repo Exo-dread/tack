@@ -8,7 +8,7 @@
         UseLayoutRounding="True" Focusable="False" IsHitTestVisible="False">
     <!-- Margin leaves room for the shadow inside the layered window. -->
     <Border x:Name="Bubble" Margin="12" Padding="12,8,14,9" CornerRadius="10" MaxWidth="300"
-            Background="{StaticResource FlyoutBrush}" BorderBrush="{StaticResource StrokeStrongBrush}" BorderThickness="1"
+            Background="{DynamicResource FlyoutBrush}" BorderBrush="{DynamicResource StrokeStrongBrush}" BorderThickness="1"
             RenderTransformOrigin="0.5,0.5">
         <Border.Effect>
             <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.45" Color="Black" />
@@ -19,7 +19,7 @@
                 <TextBlock x:Name="Label" Style="{StaticResource Overline}" Text="NOW" VerticalAlignment="Center" />
             </StackPanel>
             <TextBlock x:Name="TaskText" Margin="0,3,0,0" FontFamily="{StaticResource UiFont}" FontSize="13.5" FontWeight="SemiBold"
-                       Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" MaxHeight="58" TextTrimming="CharacterEllipsis" />
+                       Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" MaxHeight="58" TextTrimming="CharacterEllipsis" />
             <TextBlock x:Name="Summary" Margin="0,3,0,0" Style="{StaticResource Caption}" />
         </StackPanel>
     </Border>

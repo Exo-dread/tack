@@ -8,6 +8,7 @@ using System.Windows.Threading;
 using Tack.Controls;
 using Tack.Interop;
 using Tack.Model;
+using Tack.Services;
 
 namespace Tack.Windows;
 
@@ -17,7 +18,12 @@ namespace Tack.Windows;
 /// </summary>
 public partial class PanelWindow : Window
 {
+    private const int WM_SIZING = 0x0214;
+    private const int WM_ENTERSIZEMOVE = 0x0231;
     private const int WM_EXITSIZEMOVE = 0x0232;
+
+    private const double HeaderHeight = 48;
+    private const double SettingsMinHeight = 470; // settings never open in a cramped panel
 
     private readonly Workspace _ws;
     private readonly AppShell _shell;
@@ -25,9 +31,17 @@ public partial class PanelWindow : Window
     private IntPtr _hwnd;
     private Action? _undo;
     private bool _settingsOpen;
+    private bool _userResized;
+    private bool _sizeChangePending;
+
+    /// <summary>Raised when the user starts dragging or resizing the panel.</summary>
+    public event Action? SizeMoveStarted;
 
     /// <summary>Raised after the user finishes dragging or resizing the panel.</summary>
     public event Action? UserMovedOrResized;
+
+    /// <summary>Raised when the panel would like a different size: tab switch, settings, or the task list grew or shrank.</summary>
+    public event Action? PreferredSizeChanged;
 
     internal PanelWindow(Workspace ws, AppShell shell)
     {
@@ -36,10 +50,12 @@ public partial class PanelWindow : Window
         InitializeComponent();
         DataContext = ws;
 
-        Width = ws.Settings.PanelWidth;
-        Height = ws.Settings.PanelHeight;
+        bool notes = ws.Settings.Tab == "notes";
+        Width = notes ? ws.Settings.NotesWidth : ws.Settings.TasksWidth;
+        Height = notes ? ws.Settings.NotesHeight : ws.Settings.TasksHeight ?? 360;
 
         TasksPage.Initialize(ws, this);
+        TasksPage.ContentHeightChanged += () => { if (IsTasksAutoSized) RequestPreferredSize(); };
         NotesPage.Initialize(ws, this);
         SettingsPage.Initialize(ws, shell, this);
 
@@ -76,11 +92,21 @@ public partial class PanelWindow : Window
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == WM_EXITSIZEMOVE)
+        switch (msg)
         {
-            _ws.Settings.PanelWidth = ActualWidth;
-            _ws.Settings.PanelHeight = ActualHeight;
-            UserMovedOrResized?.Invoke();
+            case WM_ENTERSIZEMOVE:
+                IsInSizeMove = true;
+                _userResized = false;
+                SizeMoveStarted?.Invoke();
+                break;
+            case WM_SIZING:
+                _userResized = true;
+                break;
+            case WM_EXITSIZEMOVE:
+                IsInSizeMove = false;
+                if (_userResized) RememberManualSize();
+                UserMovedOrResized?.Invoke();
+                break;
         }
         return IntPtr.Zero;
     }
@@ -89,8 +115,80 @@ public partial class PanelWindow : Window
     public void ApplyGlass(bool glass)
     {
         if (_hwnd == IntPtr.Zero) return;
-        bool active = WindowEffects.ApplyPanelChrome(_hwnd, glass);
-        Surface.Background = (Brush)FindResource(active ? "GlassTintBrush" : "SolidSurfaceBrush");
+        bool active = WindowEffects.ApplyPanelChrome(_hwnd, glass, dark: !ThemeManager.IsLight);
+        Surface.SetResourceReference(Border.BackgroundProperty, active ? "GlassTintBrush" : "SolidSurfaceBrush");
+    }
+
+    // ---- Size: each tab remembers its own; Tasks fits its list until you resize it ----
+
+    /// <summary>True while the user is dragging or resizing the panel.</summary>
+    public bool IsInSizeMove { get; private set; }
+
+    private bool IsTasksAutoSized => _ws.Settings.Tab == "tasks" && _ws.Settings.TasksHeight == null;
+
+    /// <summary>The size (in DIPs) the current tab would like, given the tallest an auto-fitting panel may grow.</summary>
+    public Size PreferredSize(double maxAutoHeight)
+    {
+        var s = _ws.Settings;
+        var size = s.Tab == "notes"
+            ? new Size(s.NotesWidth, s.NotesHeight)
+            : new Size(s.TasksWidth, s.TasksHeight ?? FitTasksHeight(s.TasksWidth, maxAutoHeight));
+        if (_settingsOpen && size.Height < SettingsMinHeight) size.Height = SettingsMinHeight;
+        return size;
+    }
+
+    /// <summary>How tall the panel must be to show the whole task list at this width (clamped).</summary>
+    private double FitTasksHeight(double width, double maxHeight)
+    {
+        TasksPage.Measure(new Size(width, double.PositiveInfinity));
+        double natural = Math.Ceiling(HeaderHeight + TasksPage.DesiredSize.Height);
+        TasksPage.InvalidateMeasure(); // hand layout back to the window
+        return Math.Clamp(natural, Settings.MinHeight, Math.Max(Settings.MinHeight, maxHeight));
+    }
+
+    /// <summary>Dragging an edge pins the size of the tab you're on; automatic sizing stops for it.</summary>
+    private void RememberManualSize()
+    {
+        var s = _ws.Settings;
+        if (s.Tab == "notes")
+        {
+            s.NotesWidth = ActualWidth;
+            s.NotesHeight = ActualHeight;
+        }
+        else
+        {
+            s.TasksWidth = ActualWidth;
+            s.TasksHeight = ActualHeight;
+        }
+    }
+
+    /// <summary>Double-clicking the header: Tasks fits its list again, Notes returns to its default size.</summary>
+    public void ResetSize()
+    {
+        var s = _ws.Settings;
+        if (s.Tab == "notes")
+        {
+            s.NotesWidth = Settings.DefaultWidth;
+            s.NotesHeight = Settings.DefaultNotesHeight;
+        }
+        else
+        {
+            s.TasksWidth = Settings.DefaultWidth;
+            s.TasksHeight = null;
+        }
+        RequestPreferredSize();
+    }
+
+    /// <summary>Coalesces bursts of changes (e.g. every frame of a row animation) into one request per layout pass.</summary>
+    private void RequestPreferredSize()
+    {
+        if (_sizeChangePending) return;
+        _sizeChangePending = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            _sizeChangePending = false;
+            PreferredSizeChanged?.Invoke();
+        });
     }
 
     // ---- Showing and hiding ----
@@ -142,6 +240,7 @@ public partial class PanelWindow : Window
             }
         }
         MoveIndicator(animate);
+        RequestPreferredSize();
         if (animate) FocusDefault();
     }
 
@@ -189,7 +288,7 @@ public partial class PanelWindow : Window
         var page = CurrentPage;
         Anim.Fade(page, 0, 90, () => { if (_settingsOpen) page.Visibility = Visibility.Hidden; });
 
-        SettingsButton.Foreground = (Brush)FindResource("AccentBrush");
+        SettingsButton.SetResourceReference(ForegroundProperty, "AccentBrush");
         SettingsPage.Visibility = Visibility.Visible;
         SettingsPage.Refresh();
         Anim.Fade(SettingsPage, 1, 160, from: 0);
@@ -197,6 +296,7 @@ public partial class PanelWindow : Window
         TabIndicator.Opacity = 0;
         TasksTab.IsChecked = NotesTab.IsChecked = false;
         SettingsPage.Focus();
+        RequestPreferredSize();
     }
 
     public void CloseSettings(bool animate = true)
@@ -221,6 +321,7 @@ public partial class PanelWindow : Window
         }
         (_ws.Settings.Tab == "notes" ? NotesTab : TasksTab).IsChecked = true;
         MoveIndicator(animate);
+        RequestPreferredSize();
         if (animate) FocusDefault();
     }
 
@@ -247,7 +348,15 @@ public partial class PanelWindow : Window
 
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState == MouseButtonState.Pressed) DragMove();
+        if (e.ClickCount == 2)
+        {
+            ResetSize();
+            e.Handled = true;
+        }
+        else if (e.ButtonState == MouseButtonState.Pressed)
+        {
+            DragMove();
+        }
     }
 
     private void Collapse_Click(object sender, RoutedEventArgs e) => _shell.Collapse();

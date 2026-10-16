@@ -20,7 +20,9 @@ namespace Tack;
 internal sealed class AppShell : IDisposable
 {
     private const int WM_DISPLAYCHANGE = 0x007E;
-    private const double PanelInset = 8; // keep the panel this far inside the work area (DIPs)
+    private const double PanelInset = 8;          // keep the panel this far inside the work area (DIPs)
+    private const double MaxAutoHeight = 620;     // an auto-fitting Tasks panel stops growing here, then scrolls
+    private const double MaxAutoScreenShare = 0.75; // ...or at this share of the screen's height, if smaller
 
     private readonly Workspace _ws;
     private readonly StateStore _store;
@@ -36,6 +38,7 @@ internal sealed class AppShell : IDisposable
     private readonly DispatcherTimer _fullscreenRecheck;
     private int _rechecksLeft;
 
+    private WindowBoundsAnimator? _panelBounds;
     private bool _expanded;
     private bool _hiddenForFullscreen;
     private bool _anchorRight, _anchorBottom;
@@ -74,6 +77,8 @@ internal sealed class AppShell : IDisposable
 
         _panel.Deactivated += (_, _) => { if (_expanded && !_ws.Settings.Pinned) _collapseCheck.Start(); };
         _panel.UserMovedOrResized += RememberAnchorFromPanel;
+        _panel.SizeMoveStarted += () => _panelBounds?.Stop();
+        _panel.PreferredSizeChanged += () => FitPanel(animate: true);
 
         _hotkey.Pressed += Toggle;
         _watcher.ForegroundChanged += OnForegroundChanged;
@@ -91,13 +96,14 @@ internal sealed class AppShell : IDisposable
 
     public void Start(bool openPanel)
     {
-        ApplyAccent();
+        ApplyTheme();
         ResumeHotkey();
         StartupRegistration.Refresh(_ws.Settings.LaunchAtStartup);
         ScheduleMidnight();
 
         new WindowInteropHelper(_orb).EnsureHandle();
         new WindowInteropHelper(_panel).EnsureHandle();
+        _panelBounds = new WindowBoundsAnimator(_panel, _panel.Handle);
         HwndSource.FromHwnd(_orb.Handle)!.AddHook(BroadcastHook);
 
         RefreshOrb();
@@ -206,6 +212,7 @@ internal sealed class AppShell : IDisposable
         if (!_expanded) return;
         _expanded = false;
         _collapseCheck.Stop();
+        _panelBounds?.Stop();
         _store.Flush();
 
         _panel.PlayExit(() =>
@@ -272,16 +279,45 @@ internal sealed class AppShell : IDisposable
         var (cx, cy) = InitialOrbCenter();
         var mon = ScreenGeometry.FromPoint(cx, cy);
         var work = mon.Work;
-        int inset = mon.Px(PanelInset);
-        int w = Math.Min(mon.Px(_ws.Settings.PanelWidth), work.Width - 2 * inset);
-        int h = Math.Min(mon.Px(_ws.Settings.PanelHeight), work.Height - 2 * inset);
+        var (w, h) = PanelSizePx(mon);
         int half = mon.Px(OrbVisual.Diameter) / 2;
 
         anchorRight = cx > work.X + work.Width / 2;
         anchorBottom = cy > work.Y + work.Height / 2;
         int x = anchorRight ? cx + half - w : cx - half;
         int y = anchorBottom ? cy + half - h : cy - half;
-        return ScreenGeometry.Clamp(new Int32Rect(x, y, w, h), work, inset);
+        return ScreenGeometry.Clamp(new Int32Rect(x, y, w, h), work, mon.Px(PanelInset));
+    }
+
+    /// <summary>The current tab's preferred size on a given monitor, never larger than its work area.</summary>
+    private (int Width, int Height) PanelSizePx(MonitorArea mon)
+    {
+        double maxAuto = Math.Min(MaxAutoHeight, mon.Work.Height / mon.Scale * MaxAutoScreenShare);
+        var dip = _panel.PreferredSize(maxAuto);
+        int inset = mon.Px(PanelInset);
+        return (Math.Min(mon.Px(dip.Width), mon.Work.Width - 2 * inset),
+                Math.Min(mon.Px(dip.Height), mon.Work.Height - 2 * inset));
+    }
+
+    /// <summary>
+    /// Resizes the open panel to what the current tab wants (tab switch, settings, tasks added or
+    /// finished). The corner nearest the orb stays put, so the panel grows and shrinks away from it
+    /// instead of jumping, and it is nudged back inside the screen if it would spill over.
+    /// A size the user dragged to is respected: it *is* the tab's preferred size.
+    /// </summary>
+    private void FitPanel(bool animate)
+    {
+        if (!_expanded || _panelBounds == null || !_panel.IsVisible || _panel.IsInSizeMove) return;
+
+        var basis = _panelBounds.Target; // where the panel is, or is already heading
+        var mon = ScreenGeometry.FromRect(basis);
+        var (w, h) = PanelSizePx(mon);
+        int x = _anchorRight ? basis.X + basis.Width - w : basis.X;
+        int y = _anchorBottom ? basis.Y + basis.Height - h : basis.Y;
+        var target = ScreenGeometry.Clamp(new Int32Rect(x, y, w, h), mon.Work, mon.Px(PanelInset));
+
+        if (animate) _panelBounds.AnimateTo(target);
+        else _panelBounds.JumpTo(target);
     }
 
     private void RememberOrbPosition()
@@ -372,8 +408,9 @@ internal sealed class AppShell : IDisposable
     {
         switch (msg)
         {
-            case WM_SETTINGCHANGE or WM_DWMCOLORIZATIONCOLORCHANGED when _ws.Settings.Accent == "system":
-                _orb.Dispatcher.BeginInvoke(ApplyAccent);
+            case WM_SETTINGCHANGE or WM_DWMCOLORIZATIONCOLORCHANGED:
+                // Windows' light/dark mode or accent colour may have changed.
+                _orb.Dispatcher.BeginInvoke(ApplyTheme);
                 break;
             case WM_DISPLAYCHANGE:
                 // A monitor was added, removed or rearranged: make sure the orb is still reachable.
@@ -397,6 +434,7 @@ internal sealed class AppShell : IDisposable
         switch (e.PropertyName)
         {
             case nameof(Settings.Glass): _panel.ApplyGlass(s.Glass); break;
+            case nameof(Settings.Theme): ApplyTheme(); break;
             case nameof(Settings.Accent): ApplyAccent(); break;
             case nameof(Settings.LaunchAtStartup): StartupRegistration.Set(s.LaunchAtStartup); break;
             case nameof(Settings.HideInFullscreen): EvaluateFullscreen(); break;
@@ -407,9 +445,22 @@ internal sealed class AppShell : IDisposable
         }
     }
 
+    /// <summary>Light or dark palette, then the matching accent shade and window frame.</summary>
+    private void ApplyTheme()
+    {
+        bool changed = ThemeManager.Apply(_ws.Settings.Theme);
+        ApplyAccent();
+        if (!changed) return;
+        _panel.ApplyGlass(_ws.Settings.Glass);
+        _orb.InvalidateAccent();
+    }
+
     private void ApplyAccent()
     {
-        AccentPalette.Apply(Application.Current.Resources, AccentPalette.Resolve(_ws.Settings.Accent));
+        var accent = AccentPalette.Resolve(_ws.Settings.Accent, ThemeManager.IsLight);
+        var resources = Application.Current.Resources;
+        if (resources.Contains("AccentColor") && resources["AccentColor"] is System.Windows.Media.Color current && current == accent) return;
+        AccentPalette.Apply(resources, accent);
         _orb.InvalidateAccent();
     }
 

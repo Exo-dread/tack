@@ -32,7 +32,7 @@ Only one Tack runs per user. Launching it again just opens the running one, so q
 | `src/Tack/Windows/` | The three windows: orb, peek bubble, panel |
 | `src/Tack/Views/` | Tasks, Notes and Settings pages shown inside the panel |
 | `src/Tack/Controls/` | Custom-drawn orb, animation helpers, converters |
-| `src/Tack/Themes/Theme.xaml` | Every colour, font and control style |
+| `src/Tack/Themes/` | `Theme.xaml` (fonts and every control style), `Dark.xaml` / `Light.xaml` (colour palettes) |
 | `tools/make_icon.py` | Regenerates `Assets/Tack.ico` and `docs/icon.png` (needs Pillow) |
 | `build.ps1` | Builds the release zips into `artifacts/` |
 
@@ -43,6 +43,8 @@ Only one Tack runs per user. Launching it again just opens the running one, so q
 - **Nothing runs while idle.** No polling timers or looping animations; react to events instead.
 - **Animations are short** (≤ 260 ms), eased, and never block input.
 - **Place windows in physical pixels** via `ScreenGeometry`, not WPF's `Left`/`Top`.
+- **Colours come from the palettes.** Reference brushes with `DynamicResource` (never `StaticResource`
+  or a hex literal), and add any new key to both `Themes/Dark.xaml` and `Themes/Light.xaml`.
 - **Every user-visible mutation goes through `Workspace`**, so saving and the orb stay in sync.
 - **Destructive actions get Undo**, not confirmation dialogs.
 - **Icon-only buttons need `AutomationProperties.Name`** so screen readers can announce them.
@@ -53,7 +55,7 @@ Only one Tack runs per user. Launching it again just opens the running one, so q
 - `dotnet build src/Tack -c Release -warnaserror` passes.
 - You've tried the change at 100% and at least one other display scale (150% is a good test), and on a
   second monitor if it touches placement.
-- You've tried it with **Frosted glass** both on and off.
+- You've tried it in both the **Light** and **Dark** themes, with **Frosted glass** on and off.
 - If behaviour changed, `README.md` (and `docs/DESIGN.md` if relevant) say so.
 
 ## Releasing

@@ -28,11 +28,12 @@ internal static class WindowEffects
     /// <summary>Windows 11 rounds window corners natively.</summary>
     public static bool SupportsRoundedCorners => Build >= 22000;
 
-    /// <summary>Applies dark mode, rounded corners and (optionally) the acrylic backdrop.</summary>
+    /// <summary>Applies light/dark frame, rounded corners and (optionally) the acrylic backdrop.</summary>
     /// <returns>True when the acrylic backdrop is active.</returns>
-    public static bool ApplyPanelChrome(IntPtr hwnd, bool glass)
+    public static bool ApplyPanelChrome(IntPtr hwnd, bool glass, bool dark)
     {
-        SetInt(hwnd, Build >= 18985 ? DWMWA_USE_IMMERSIVE_DARK_MODE : DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, 1);
+        // Also decides whether DWM tints the acrylic dark or light.
+        SetInt(hwnd, Build >= 18985 ? DWMWA_USE_IMMERSIVE_DARK_MODE : DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, dark ? 1 : 0);
 
         if (SupportsRoundedCorners)
             SetInt(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND);

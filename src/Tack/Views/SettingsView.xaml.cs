@@ -37,6 +37,13 @@ public partial class SettingsView : UserControl
             GlassHint.Text = "Frosted glass needs Windows 11 (version 22H2 or later).";
         }
 
+        // Swatches show the shade the current theme really uses, so rebuild them when it changes.
+        ThemeManager.Changed += () =>
+        {
+            BuildSwatches();
+            Refresh();
+        };
+
         BuildSwatches();
         Refresh();
     }
@@ -45,8 +52,15 @@ public partial class SettingsView : UserControl
     {
         if (_ws == null) return;
         ShowHotkey();
+        foreach (RadioButton choice in ThemeChoices.Children)
+            choice.IsChecked = (string)choice.Tag == _ws.Settings.Theme;
         foreach (RadioButton swatch in Swatches.Children)
             swatch.IsChecked = string.Equals((string)swatch.Tag, _ws.Settings.Accent, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void Theme_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_ws != null && sender is RadioButton { Tag: string theme }) _ws.Settings.Theme = theme;
     }
 
     // ---- Accent swatches ----
@@ -54,9 +68,9 @@ public partial class SettingsView : UserControl
     private void BuildSwatches()
     {
         Swatches.Children.Clear();
-        foreach (var (name, value) in AccentPalette.Presets)
+        foreach (var (name, value, _) in AccentPalette.Presets)
         {
-            var color = AccentPalette.Resolve(value);
+            var color = AccentPalette.Resolve(value, ThemeManager.IsLight);
             var swatch = new RadioButton
             {
                 Style = (Style)FindResource("Swatch"),
@@ -72,7 +86,8 @@ public partial class SettingsView : UserControl
                 swatch.Content = new TextBlock
                 {
                     Text = "A", FontSize = 9, FontWeight = FontWeights.Bold,
-                    Foreground = (Brush)FindResource("OnAccentBrush"), IsHitTestVisible = false,
+                    Foreground = AccentPalette.PrefersWhiteText(color) ? Brushes.White : Brushes.Black,
+                    IsHitTestVisible = false,
                 };
             }
             swatch.Checked += (_, _) => _ws.Settings.Accent = value;

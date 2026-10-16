@@ -107,6 +107,7 @@ internal sealed class StateStore
     /// <summary>Applies a loaded document to a fresh workspace and starts watching it for changes.</summary>
     public Workspace Attach(StateDocument doc)
     {
+        doc.Settings.MigrateLegacySize();
         var ws = new Workspace(doc.Settings);
         TaskItem? now = null;
         var open = new List<TaskItem>();

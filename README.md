@@ -10,12 +10,17 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/tasks.png" width="300" alt="Tack's task panel" />
+  <img src="docs/screenshots/tasks.png" width="300" alt="Tack's task panel in the dark theme" />
   &nbsp;
+  <img src="docs/screenshots/tasks-light.png" width="300" alt="Tack's task panel in the light theme" />
+</p>
+<p align="center">
   <img src="docs/screenshots/notes.png" width="300" alt="Tack's notes" />
 </p>
 <p align="center">
-  <img src="docs/screenshots/peek.png" width="300" alt="Hovering the orb shows the current focus" /><br/>
+  <img src="docs/screenshots/peek.png" width="300" alt="Hovering the orb shows the current focus" />
+  &nbsp;
+  <img src="docs/screenshots/peek-light.png" width="300" alt="The orb and its peek in the light theme" /><br/>
   <sub>Folded away, Tack is a small orb. Hover it to see what you're focusing on without opening anything.</sub>
 </p>
 
@@ -34,8 +39,10 @@ and gets out of the way the moment you're done.
   No projects, tags, priorities or due dates.
 - **Notes like scrap paper.** Plain-text sheets that save as you type. Lists continue themselves,
   F5 stamps the time, and Ctrl+Enter turns a line into a task.
-- **Windows 11 glass.** Native acrylic, rounded corners, your accent colour, smooth and short animations.
-  Crisp on every monitor, at any scaling.
+- **Windows 11 glass, light or dark.** Native acrylic, rounded corners, your accent colour, smooth and
+  short animations. Follows Windows' light/dark mode, or pick one. Crisp on every monitor, at any scaling.
+- **Sized to fit.** The Tasks panel grows and shrinks with your list (then scrolls), Notes keeps its own
+  size, and any size you drag to is remembered per tab. Switching tabs never makes the panel jump.
 - **Polite.** Steps aside while a full-screen video, game or slideshow is in front.
 - **Yours.** No account, no cloud, no telemetry, no network access at all. Your data is one readable JSON file.
 
@@ -59,6 +66,8 @@ To start Tack with Windows, turn on **Settings → Start with Windows**.
 |---|---|
 | **Open / fold** | Click the orb, or press **Ctrl+Alt+Space** anywhere. **Esc** folds it back. |
 | **Move** | Drag the orb, or drag the panel by its header. The orb follows the panel's nearest corner. |
+| **Resize** | Drag the panel's edges. Each tab remembers its own size; until you resize Tasks, it fits its list. Double-click the header to go back to automatic sizing. |
+| **Theme** | **Settings → Theme**: System (follows Windows), Light or Dark. |
 | **Pin** | 📌 keeps the panel open over other apps. Unpinned, it folds away when you click elsewhere. |
 | **Orb menu** | Right-click the orb for Open, Settings and Quit. |
 

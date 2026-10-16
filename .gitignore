@@ -13,5 +13,8 @@ artifacts/
 # Local portable-mode data created while developing
 TackData/
 
+# Sync clients' scratch folders (e.g. Google Drive)
+.tmp.driveupload/
+
 # Python cache from tools/
 __pycache__/

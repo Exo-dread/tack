@@ -59,10 +59,32 @@ There's no tour. The first run opens the panel with five tasks that *are* the in
 circle…", "Drag the dots…", "Press ⟨shortcut⟩…"), so learning Tack means using it. If the default
 shortcut is already taken on that PC, Tack picks a free fallback first, so the tip is always true.
 
+### Each tab has its own size; the panel has one home
+A task list and a page of notes want different shapes, so each tab remembers its own size:
+
+- **Tasks fits its list.** Until you resize it, the panel is exactly as tall as the tasks it shows (with a
+  floor for the empty state), grows as you add more, and stops at 620 DIP or three quarters of the
+  screen, whichever is smaller. After that the list scrolls.
+- **Notes keeps a writing-sized page** (340 × 480 by default).
+- **Dragging an edge wins.** Whatever size you drag a tab to becomes that tab's size and automatic sizing
+  stops for it. Double-click the header to hand it back to Tack.
+
+Position, though, is shared: the panel always unfolds from the orb's corner. Giving each tab its own
+position would make every tab switch move the window, the opposite of "no jumping". Instead, when the size
+changes (tab switch, Settings, a task added or finished) the panel glides to its new size over 180 ms with
+the corner nearest the orb held perfectly still, and is nudged back on screen if it would spill over the
+edge. Sizes and that home position survive restarts.
+
+### Light and dark
+Tack follows Windows' light/dark app mode by default (and switches live when Windows does), or can be set
+to either. Light mode is not an inverted dark mode: it uses deeper shades of each accent so white ticks
+stay legible, a pale tint over the acrylic, and a porcelain orb with a soft grey shadow that still reads on
+white documents.
+
 ## Visual language
 
-- **Glass:** the official Windows 11 system backdrop (Acrylic), with a light dark tint on top for
-  contrast over busy or bright windows. Turn it off for a solid, high-contrast surface. Windows normally
+- **Glass:** the official Windows 11 system backdrop (Acrylic), with a light tint on top (dark or pale,
+  per theme) for contrast over busy or bright windows. Turn it off for a solid, high-contrast surface. Windows normally
   drops acrylic to a flat colour when a window is inactive; a pinned panel is inactive most of the time,
   so Tack keeps its frame drawn as active (see `WindowEffects.KeepFrameActive`).
 - **Shape:** native rounded corners and shadow from DWM, a 1 px system border, 7–10 px radii inside.
@@ -86,7 +108,7 @@ src/Tack
 ├── Windows/               OrbWindow, PeekWindow, PanelWindow
 ├── Views/                 TasksView, NotesView, SettingsView (UserControls inside the panel)
 ├── Controls/              OrbVisual (custom-drawn), animation helpers, converters
-└── Themes/Theme.xaml      Colours, typography and every control style
+└── Themes/                Theme.xaml (typography and every control style), Dark.xaml / Light.xaml (palettes)
 ```
 
 The model is plain `INotifyPropertyChanged` classes; views bind to them directly and keep interaction
@@ -111,6 +133,19 @@ checks WPF's scale against `GetDpiForWindow` and replays `WM_DPICHANGED` when th
 The panel unfolds from the orb toward the middle of the screen, so the orb's corner of the panel sits
 exactly where the orb was. Move the panel and the orb's home moves to the panel's nearest corner. Remembered
 positions are clamped back onto a connected monitor at startup and whenever displays change.
+
+Resizing while open goes through `WindowBoundsAnimator`, which interpolates each edge separately, so the
+anchored edges don't move by even a pixel, and retargets smoothly if the size changes again mid-glide
+(as it does every frame while a finished task's row folds away). Auto-fit measures the Tasks view at the
+panel's width with unlimited height; a manual resize is recognised by `WM_SIZING` between
+`WM_ENTERSIZEMOVE` and `WM_EXITSIZEMOVE`, so Tack's own resizing never counts as yours.
+
+### Theming
+Every neutral colour lives in a palette dictionary (`Themes/Dark.xaml` or `Themes/Light.xaml`, same keys)
+merged first into the application resources, and every style references it with `DynamicResource`.
+`ThemeManager` swaps that one dictionary and everything restyles in place, with no window rebuilt. Accent
+brushes are generated in code (`AccentPalette`) in the right shade for the theme. The custom-drawn orb
+picks its materials from `ThemeManager.IsLight`, and DWM is told the theme so the acrylic is tinted to match.
 
 ### Desktop awareness without polling
 - Foreground changes: `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`, used to re-assert topmost and to check
@@ -150,7 +185,6 @@ at a few MB of working set and zero CPU.
 
 ## Known limitations and ideas
 
-- **Dark only.** All colours live in `Themes/Theme.xaml`, so a light theme is a contained change.
 - **Windows 10** gets a solid panel with square corners (no system backdrop API there).
 - **Not code-signed**, so SmartScreen warns on first run. Signing is the next distribution step.
 - **No arm64 release yet.** `./build.ps1 -Runtime win-arm64` builds one, but it hasn't been tested on hardware.
