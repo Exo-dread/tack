@@ -3,3 +3,7 @@
 *.png binary
 *.ico binary
 *.zip binary
+
+# Tack Focus: files read by tools that expect Unix line endings
+web/.node-version text eol=lf
+web/deploy/_headers text eol=lf
