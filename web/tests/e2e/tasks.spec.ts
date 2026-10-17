@@ -187,6 +187,23 @@ test.describe('tasks', () => {
     await expect(openTexts(page).first()).toHaveText('Two');
   });
 
+  test('suggests Add to Home Screen once, on a later day (iPhone)', async ({ page }) => {
+    test.skip(test.info().project.name !== 'iphone-webkit', 'iOS Safari suggestion');
+    await open(page);
+    await expect(page.locator('.install-card')).toHaveCount(0); // never on the first day
+    await page.evaluate(() => {
+      const p = JSON.parse(localStorage.getItem('tack.prefs') ?? '{}');
+      localStorage.setItem('tack.prefs', JSON.stringify({ ...p, firstDay: '2000-01-01' }));
+    });
+    await page.reload();
+    await expect(page.locator('.install-card')).toContainText('Add to Home Screen');
+    await button(page, 'Not now').click();
+    await expect(page.locator('.install-card')).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator('html.ready')).toHaveCount(1);
+    await expect(page.locator('.install-card')).toHaveCount(0);
+  });
+
   test('stays quick with a long list', async ({ page }) => {
     await open(page);
     const before = await page.locator('.open-list > li').count();

@@ -16,6 +16,8 @@ export interface Prefs {
   activeSheet: string | null;
   seeded: boolean;
   installHintDismissed: boolean;
+  /** The local day Tack was first opened on this device (for the install suggestion). */
+  firstDay: string | null;
 }
 
 const KEY = 'tack.prefs';
@@ -30,6 +32,7 @@ const DEFAULTS: Prefs = {
   activeSheet: null,
   seeded: false,
   installHintDismissed: false,
+  firstDay: null,
 };
 
 let current: Prefs = load();

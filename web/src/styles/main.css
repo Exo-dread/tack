@@ -1546,3 +1546,22 @@ kbd {
 }
 
 .text-button.inline { height: auto; padding: 2px 4px; font-size: inherit; }
+
+/* ============================================================== install suggestion */
+
+.install-card {
+  margin: 26px 0 8px;
+  padding: 14px 16px 10px;
+  border-radius: 20px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--shadow-1);
+  animation: rise-in .6s var(--spring) both;
+}
+
+.install-text strong { font-size: 15.5px; }
+.install-text .note { margin: 4px 0 6px; }
+.install-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.install-actions .note { margin: 0; }

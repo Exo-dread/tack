@@ -1,12 +1,12 @@
 import { pastedLines } from '../model/text';
-import { msUntilMidnight } from '../model/time';
+import { dayKey, msUntilMidnight } from '../model/time';
 import type { Workspace } from '../model/workspace';
 import type { Store } from '../store/persist';
 import { loadDraft, prefs, saveDraft, setPrefs, type Mode } from '../store/prefs';
 import { coarsePointer, h, isEditable, isIOS, isStandalone, svg } from './dom';
 import { haptics, setHaptics } from './haptics';
 import { icons } from './icons';
-import { watchInstall } from './install';
+import { installKind, onInstallChange, promptInstall, watchInstall } from './install';
 import { animate, POP } from './motion';
 import { NotesView } from './notes';
 import { Orb } from './orb';
@@ -178,6 +178,7 @@ export class App {
     this.renderSummary();
     this.scheduleMidnight();
     this.handleLaunchIntent();
+    this.suggestInstall();
     if (this.store.backend.kind === 'memory') {
       this.toasts.show('This browser isn’t allowing storage, so nothing will be saved', undefined, { duration: 8000 });
     }
@@ -333,6 +334,49 @@ export class App {
       this.tasks.render(false);
       this.scheduleMidnight();
     }, msUntilMidnight());
+  }
+
+  /**
+   * Once, on the second day you use Tack in a browser tab: suggest installing it. An installed app
+   * opens in one tap, and (on iPhone especially) its storage is protected from the browser's
+   * clean-ups, which can otherwise clear a site's data after a week or so without a visit.
+   */
+  private suggestInstall(): void {
+    const today = dayKey();
+    if (!prefs().firstDay) setPrefs({ firstDay: today });
+    if (prefs().installHintDismissed || prefs().firstDay === today) return;
+    const show = () => {
+      const kind = installKind();
+      if (this.installCard?.isConnected || prefs().installHintDismissed) {
+        if (kind === 'installed') this.installCard?.remove();
+        return;
+      }
+      if (kind === 'prompt' || kind === 'ios') this.showInstallCard(kind);
+    };
+    show();
+    // Chrome offers installation a moment after load.
+    onInstallChange(show);
+  }
+
+  private installCard: HTMLElement | null = null;
+
+  private showInstallCard(kind: 'prompt' | 'ios'): void {
+    const dismiss = () => {
+      setPrefs({ installHintDismissed: true });
+      card.remove();
+    };
+    const action =
+      kind === 'prompt'
+        ? h('button.button.primary', { type: 'button', onclick: () => void promptInstall().then((ok) => ok && dismiss()) }, svg(icons.addHome), 'Install')
+        : h('p.note.small', {}, 'Tap ', h('span.inline-icon', {}, svg(icons.share)), ' Share, then ', h('strong', { text: 'Add to Home Screen' }), '.');
+    const card = h(
+      'aside.install-card',
+      { 'aria-label': 'Install Tack' },
+      h('div.install-text', {}, h('strong', { text: 'Keep Tack one tap away' }), h('p.note.small', { text: 'Add it to your Home Screen: it opens like an app, works offline, and keeps your tasks safe from the browser’s clean-ups.' })),
+      h('div.install-actions', {}, action, h('button.text-button', { type: 'button', text: 'Not now', onclick: dismiss })),
+    );
+    this.tasks.el.querySelector('.page-inner')!.append(card);
+    this.installCard = card;
   }
 
   // ================================================================== launch and keys
