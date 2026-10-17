@@ -994,6 +994,11 @@ html.kb-open .dock { bottom: 8px; }
   text-align: center;
   gap: 6px;
   padding: max(8vh, 40px) 24px 12px;
+  animation: rise-in .6s var(--spring) both;
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(12px); }
 }
 
 .empty-title {
@@ -1515,9 +1520,10 @@ kbd {
   .wide .empty { padding-top: 48px; }
 }
 
-/* Tablets and phones in landscape get a centred column. */
+/* Tablets and phones in landscape get a centred column, header included. */
 @media (min-width: 640px) and (max-width: 899px) {
   .dock { left: 0; right: 0; width: min(640px, calc(100% - 32px)); }
+  header.top { width: 100%; max-width: 672px; align-self: center; }
 }
 
 /* ============================================================== motion preferences */

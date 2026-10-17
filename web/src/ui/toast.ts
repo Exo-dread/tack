@@ -1,5 +1,5 @@
 import { h } from './dom';
-import { animate, EASE_IN, SPRING } from './motion';
+import { afterAnimation, animate, EASE_IN, SPRING } from './motion';
 
 /**
  * One toast at a time, above the dock: what just happened, and Undo. A new toast replaces the
@@ -81,7 +81,6 @@ export class Toasts {
           fill: 'forwards',
         })
       : null;
-    if (a) a.finished.then(() => c.node.remove(), () => c.node.remove());
-    else c.node.remove();
+    afterAnimation(a, () => c.node.remove(), 300);
   }
 }

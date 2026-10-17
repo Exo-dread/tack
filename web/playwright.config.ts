@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * End-to-end tests run against the production build (service worker, CSP and all), on an
  * emulated iPhone in WebKit (Safari's engine), an emulated Android phone in Chromium, and a
- * desktop browser. Emulation is not a real device: see docs/TESTING.md for what to check by hand.
+ * desktop browser. Emulation is not a real device: see TESTING.md for what to check by hand.
  */
 export default defineConfig({
   testDir: 'tests/e2e',

@@ -50,6 +50,23 @@ export function animate(el: Element, keyframes: Keyframe[], options: KeyframeAni
   return el.animate(keyframes, options);
 }
 
+/**
+ * Runs `fn` once, when the animation ends or is cancelled, or after `maxMs` at the latest.
+ * Browsers stop advancing animations in background or throttled pages; anything that matters
+ * (removing an element, deleting a task) mustn't wait on a frame that may never come.
+ */
+export function afterAnimation(a: Animation | null, fn: () => void, maxMs: number): void {
+  let done = false;
+  const run = () => {
+    if (done) return;
+    done = true;
+    fn();
+  };
+  if (!a) return run();
+  a.finished.then(run, run);
+  setTimeout(run, maxMs);
+}
+
 const flips = new WeakMap<Element, Animation>();
 
 /**
@@ -113,6 +130,5 @@ export function exitInPlace(el: HTMLElement, offsetTop: number, how: 'fade' | 'a
       ? [{ opacity: 1 }, { opacity: 0 }]
       : [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(.97)' }];
   const a = animate(el, frames, { duration: 200, easing: EASE_OUT, fill: 'forwards' });
-  if (a) a.finished.then(() => el.remove(), () => el.remove());
-  else el.remove();
+  afterAnimation(a, () => el.remove(), 400);
 }

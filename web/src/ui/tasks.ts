@@ -178,7 +178,7 @@ export class TasksView {
     if (this.doneCount.textContent !== String(doneCount)) {
       const bump = this.doneCount.textContent !== '' && motion;
       this.doneCount.textContent = String(doneCount);
-      if (bump) animate(this.doneCount, [{ transform: 'scale(1.6)' }, { transform: 'none' }], { duration: POP.duration, easing: POP.easing });
+      if (bump) animate(this.doneCount, [{ transform: 'scale(1.35)' }, { transform: 'none' }], { duration: POP.duration, easing: POP.easing });
     }
 
     this.renderEmpty();

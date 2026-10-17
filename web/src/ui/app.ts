@@ -310,7 +310,7 @@ export class App {
     if (Number.isNaN(d.getTime())) return 'Saved';
     const today = new Date();
     const sameDay = d.toDateString() === today.toDateString();
-    const fmt = new Intl.DateTimeFormat(undefined, sameDay ? { hour: '2-digit', minute: '2-digit' } : { day: 'numeric', month: 'short' });
+    const fmt = new Intl.DateTimeFormat(undefined, sameDay ? { hour: 'numeric', minute: '2-digit' } : { day: 'numeric', month: 'short' });
     return `Saved · edited ${fmt.format(d)}`;
   }
 
@@ -346,7 +346,7 @@ export class App {
     } else if (params.has('notes')) {
       this.setMode('notes', false);
     }
-    if (params.size || location.hash) history.replaceState(null, '', location.pathname);
+    if (location.search || location.hash) history.replaceState(null, '', location.pathname);
   }
 
   private onKeyDown = (e: KeyboardEvent) => {

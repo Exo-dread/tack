@@ -1,0 +1,48 @@
+name: Tack Focus (web)
+
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', '.github/workflows/web.yml']
+  pull_request:
+    paths: ['web/**', '.github/workflows/web.yml']
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: web
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck, unit tests and build
+        run: |
+          npm run build
+          npm test
+
+      - name: End-to-end tests (WebKit and Chromium)
+        run: |
+          npx playwright install --with-deps chromium webkit
+          npx playwright test
+        env:
+          CI: 'true'
+
+      - name: Keep the build
+        uses: actions/upload-artifact@v4
+        with:
+          name: tack-focus-dist-${{ github.sha }}
+          path: web/dist
+          retention-days: 14

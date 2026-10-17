@@ -143,6 +143,13 @@ Pushing a tag like `v1.0.0` runs [`release.yml`](.github/workflows/release.yml),
 and publishes a GitHub Release. See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout, and
 [docs/DESIGN.md](docs/DESIGN.md) for the thinking behind the design.
 
+## Tack Focus: Tack on your phone
+
+[`web/`](web/README.md) holds **Tack Focus**, Tack's tasks and notes as an installable web app for
+iPhone, Android and any browser (to be hosted at tackfocus.app). It works offline, keeps everything on
+the device, and reads and writes the same `tack.json` format. Syncing between Tack Focus and Tack
+for Windows through your own OneDrive or Google Drive is designed in [docs/SYNC.md](docs/SYNC.md).
+
 ## License
 
 [MIT](LICENSE). Free forever: no ads, no accounts, no telemetry, no paid tier.

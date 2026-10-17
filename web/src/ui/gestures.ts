@@ -1,6 +1,6 @@
 import { h, svg } from './dom';
 import { haptics } from './haptics';
-import { animate, EASE_IN, SPRING } from './motion';
+import { afterAnimation, animate, EASE_IN, SPRING } from './motion';
 
 export interface SwipeAction {
   label: string;
@@ -274,8 +274,7 @@ export class RowGestures {
           }
         });
       };
-      if (a) a.finished.then(go, go);
-      else go();
+      afterAnimation(a, go, 350);
       return;
     }
 
@@ -284,8 +283,7 @@ export class RowGestures {
       duration: SPRING.duration,
       easing: SPRING.easing,
     });
-    if (back) back.finished.then(cleanup, cleanup);
-    else cleanup();
+    afterAnimation(back, cleanup, SPRING.duration + 150);
     if (commit) this.o.onSwipe(row, dir);
   }
 

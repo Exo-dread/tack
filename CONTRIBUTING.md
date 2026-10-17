@@ -35,6 +35,8 @@ Only one Tack runs per user. Launching it again just opens the running one, so q
 | `src/Tack/Themes/` | `Theme.xaml` (fonts and every control style), `Dark.xaml` / `Light.xaml` (colour palettes) |
 | `tools/make_icon.py` | Regenerates `Assets/Tack.ico` and `docs/icon.png` (needs Pillow) |
 | `build.ps1` | Builds the release zips into `artifacts/` |
+| `web/` | Tack Focus, the web and mobile app (TypeScript, no runtime dependencies). See [web/README.md](web/README.md) |
+| `docs/SYNC.md` | The design for syncing Tack Focus and Tack for Windows through your own cloud storage |
 
 ## House rules
 

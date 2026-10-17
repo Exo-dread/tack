@@ -55,7 +55,11 @@ function tackPwa(): Plugin {
       const inline = [...String(html.source).matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
       if (inline.length !== 1) this.error(`Expected exactly one inline script, found ${inline.length}`);
       const scriptHash = createHash('sha256').update(inline[0]).digest('base64');
-      const headers = readFileSync(join(root, 'deploy/_headers'), 'utf8').replace('__BOOT_SCRIPT_HASH__', `sha256-${scriptHash}`);
+      // LF endings whatever the checkout uses (the repo is CRLF; Cloudflare expects plain lines).
+      const headers = readFileSync(join(root, 'deploy/_headers'), 'utf8')
+        .split(/\r?\n/)
+        .join('\n')
+        .replace('__BOOT_SCRIPT_HASH__', `sha256-${scriptHash}`);
       this.emitFile({ type: 'asset', fileName: '_headers', source: headers });
     },
   };

@@ -223,7 +223,7 @@ export class NotesView {
       weekday: 'short',
       day: 'numeric',
       month: 'short',
-      hour: '2-digit',
+      hour: 'numeric',
       minute: '2-digit',
     }).format(new Date());
     insertText(this.editor, stamp);

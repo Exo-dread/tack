@@ -8,7 +8,7 @@ import { h, svg } from './dom';
 import { hapticsSupported, setHaptics } from './haptics';
 import { icons } from './icons';
 import { installKind, onInstallChange, promptInstall } from './install';
-import { animate, EASE_IN, SPRING } from './motion';
+import { afterAnimation, animate, EASE_IN, SPRING } from './motion';
 import { ACCENTS } from './theme';
 import type { Toasts } from './toast';
 
@@ -64,8 +64,7 @@ export class Settings {
       dialog.close();
       dialog.remove();
     };
-    if (a) a.finished.then(finish, finish);
-    else finish();
+    afterAnimation(a, finish, 400);
   }
 
   private build(): Node[] {
