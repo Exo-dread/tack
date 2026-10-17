@@ -75,9 +75,16 @@ describe('hybrid logical clock', () => {
     expect(next > encode(5000, 3, 'b')).toBe(true);
   });
 
-  it('ignores stamps far in the future', () => {
+  it('moves past a fast device clock, so what you do next still wins', () => {
     const hlc = new Hlc('a', () => 1000);
-    hlc.observe(encode(1000 + 3 * 86400000, 0, 'b'));
+    const fast = encode(1000 + 3 * 86400000, 0, 'b');
+    hlc.observe(fast);
+    expect(hlc.now() > fast).toBe(true);
+  });
+
+  it('ignores absurd stamps', () => {
+    const hlc = new Hlc('a', () => 1000);
+    hlc.observe(encode(1000 + 20 * 365 * 86400000, 0, 'b'));
     expect(decode(hlc.now())?.ms).toBe(1000);
   });
 

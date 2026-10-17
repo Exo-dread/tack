@@ -1,5 +1,5 @@
 import { continueList, noteLinesToTasks, sheetTitle, shorten } from '../model/text';
-import type { Workspace } from '../model/workspace';
+import type { Origin, Workspace } from '../model/workspace';
 import { prefs, setPrefs } from '../store/prefs';
 import { h, svg } from './dom';
 import { haptics } from './haptics';
@@ -71,6 +71,14 @@ export class NotesView {
     this.editor.addEventListener('beforeinput', this.onBeforeInput);
     this.editor.addEventListener('keydown', this.onKeyDown);
     this.editor.addEventListener('blur', () => this.syncEditor());
+    this.editor.addEventListener('compositionstart', () => (this.composing = true));
+    this.editor.addEventListener('compositionend', () => {
+      this.composing = false;
+      if (this.syncAfterComposition) {
+        this.syncAfterComposition = false;
+        this.syncEditor(true);
+      }
+    });
     this.strip.addEventListener('click', (e) => {
       const pill = (e.target as HTMLElement).closest<HTMLElement>('.sheet-pill');
       if (pill) this.select(pill.dataset.id!);
@@ -86,7 +94,12 @@ export class NotesView {
     return this.ws.sheets.get(this.activeId)?.text ?? '';
   }
 
-  render(): void {
+  /**
+   * `origin` says where the change came from. Your own typing is already in the editor; a change
+   * from another tab or window (or an import) must reach it even while you're writing, or your
+   * next keystroke would save the old text over it.
+   */
+  render(origin: Origin = 'local'): void {
     const sheets = this.ws.sheetList;
     if (!sheets.some((s) => s.id === this.activeId)) {
       const remembered = prefs().activeSheet;
@@ -94,19 +107,40 @@ export class NotesView {
       this.editor.value = this.activeText;
     }
     this.renderStrip();
-    this.syncEditor();
+    this.syncEditor(origin !== 'local');
   }
 
-  /** Shows the model's text unless you're mid-edit (then your typing wins and is saved). */
-  private syncEditor(): void {
-    if (document.activeElement === this.editor) return;
+  /** Shows the model's text. While you're writing, only changes from elsewhere are applied, keeping your place. */
+  private syncEditor(fromElsewhere = false): void {
     const text = this.activeText;
-    if (this.editor.value !== text) this.editor.value = text;
+    const ta = this.editor;
+    if (ta.value === text) return;
+    if (document.activeElement !== ta) {
+      ta.value = text;
+      return;
+    }
+    if (!fromElsewhere) return;
+    if (this.composing) {
+      this.syncAfterComposition = true;
+      return;
+    }
+    const { selectionStart, selectionEnd, scrollTop } = ta;
+    ta.value = text;
+    ta.setSelectionRange(Math.min(selectionStart, text.length), Math.min(selectionEnd, text.length));
+    ta.scrollTop = scrollTop;
   }
+
+  private composing = false;
+  private syncAfterComposition = false;
+  private stripIds = '';
 
   private renderStrip(): void {
     const sheets = this.ws.sheetList;
-    const before = !reducedMotion() && this.strip.isConnected ? measure(this.strip) : null;
+    // Animate only when sheets were added, removed or reordered, not on every keystroke.
+    const ids = sheets.map((s) => s.id).join(',');
+    const reshaped = ids !== this.stripIds;
+    this.stripIds = ids;
+    const before = reshaped && !reducedMotion() && this.strip.isConnected ? measure(this.strip) : null;
     const existing = new Map([...this.strip.querySelectorAll<HTMLElement>('.sheet-pill')].map((p) => [p.dataset.id!, p]));
     let cursor: HTMLElement | null = null;
     for (const s of sheets) {
@@ -147,7 +181,7 @@ export class NotesView {
     const memory = this.scrollMemory.get(id);
     this.editor.scrollTop = memory?.top ?? 0;
     this.renderStrip();
-    this.strip.querySelector<HTMLElement>(`[data-id="${id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    this.strip.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
     animate(this.editor, [{ opacity: 0, transform: `translateX(${goingRight ? 14 : -14}px)` }, { opacity: 1, transform: 'none' }], {
       duration: 240,
       easing: EASE_OUT,
@@ -267,7 +301,7 @@ export class NotesView {
     if (!next) return;
     e.preventDefault();
     this.select(next.id);
-    this.strip.querySelector<HTMLElement>(`[data-id="${next.id}"]`)?.focus();
+    this.strip.querySelector<HTMLElement>(`[data-id="${CSS.escape(next.id)}"]`)?.focus();
   };
 
   /** Next sheet (Ctrl+Tab on desktop). */

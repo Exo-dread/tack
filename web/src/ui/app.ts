@@ -151,9 +151,12 @@ export class App {
 
     // ---- wiring
     ws.subscribe((change) => {
-      if (change.tasks.size || change.focus) this.tasks.render(change.origin !== 'storage' || !document.hidden);
-      if (change.sheets.size) this.notes.render();
-      this.renderSummary();
+      const tasksChanged = change.tasks.size > 0 || change.focus;
+      if (tasksChanged) this.tasks.render(change.origin !== 'storage' || !document.hidden);
+      if (change.sheets.size) this.notes.render(change.origin);
+      // Typing in notes touches only sheets: skip the task summary on every keystroke.
+      if (tasksChanged) this.renderSummary();
+      else this.renderSubtitle();
     });
     store.onStatus(() => this.renderSubtitle());
     store.onBeforeFlush(() => this.tasks.commitPending());
@@ -269,6 +272,12 @@ export class App {
   private renderSummary(): void {
     const s = this.ws.summary();
     this.orb.update(s.open, s.doneToday, s.progress);
+    this.taskLine =
+      s.open === 0 && s.doneToday === 0
+        ? 'Nothing open'
+        : s.open === 0
+          ? `All done · ${s.doneToday} today`
+          : `${s.open} open${s.doneToday ? ` · ${s.doneToday} done today` : ''}`;
     document.documentElement.style.setProperty('--progress', String(s.open === 0 && s.doneToday > 0 ? 1 : s.progress));
     this.renderSubtitle();
     const badge = navigator as Navigator & { setAppBadge?: (n: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
@@ -277,31 +286,22 @@ export class App {
     }
   }
 
+  private taskLine = '';
+
   private renderSubtitle(): void {
-    const s = this.ws.summary();
-    const taskLine =
-      s.open === 0 && s.doneToday === 0
-        ? 'Nothing open'
-        : s.open === 0
-          ? `All done · ${s.doneToday} today`
-          : `${s.open} open${s.doneToday ? ` · ${s.doneToday} done today` : ''}`;
-    let text = taskLine;
-    if (WIDE.matches) {
+    const status = this.store.status;
+    let text = this.taskLine;
+    if (status === 'unsaved') {
+      // Saving keeps failing: say so wherever you are, not only in Notes.
+      text = 'Not saved yet. Retrying…';
+    } else if (WIDE.matches) {
       const date = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
-      text = `${date} · ${taskLine}`;
+      text = `${date} · ${this.taskLine}`;
     } else if (this.mode === 'notes') {
-      const status = this.store.status;
-      text =
-        status === 'saving'
-          ? 'Saving…'
-          : status === 'retrying'
-            ? 'Saving… (retrying)'
-            : status === 'unsaved'
-              ? 'Couldn’t save. Retrying'
-              : this.editedLine();
+      text = status === 'saving' ? 'Saving…' : status === 'retrying' ? 'Saving… (retrying)' : this.editedLine();
     }
     if (this.subtitle.textContent !== text) this.subtitle.textContent = text;
-    this.subtitle.classList.toggle('warn', this.store.status === 'unsaved');
+    this.subtitle.classList.toggle('warn', status === 'unsaved');
   }
 
   private editedLine(): string {

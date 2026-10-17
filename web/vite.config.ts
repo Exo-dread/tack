@@ -30,10 +30,11 @@ function tackPwa(): Plugin {
     enforce: 'post',
     generateBundle(_, bundle) {
       const hash = createHash('sha256');
-      const urls = new Set<string>(['/index.html']);
+      // The shell is cached as "/" (hosts like Cloudflare Pages redirect /index.html to /).
+      const urls = new Set<string>(['/']);
       for (const [fileName, item] of Object.entries(bundle).sort(([a], [b]) => a.localeCompare(b))) {
         if (fileName.endsWith('.map')) continue;
-        urls.add(`/${fileName}`);
+        if (fileName !== 'index.html') urls.add(`/${fileName}`);
         hash.update(fileName);
         hash.update(item.type === 'chunk' ? item.code : item.source);
       }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Hlc } from '../../src/model/hlc';
-import { exportFile, readFile, stripJsonComments, FileError } from '../../src/model/file';
+import { exportFile, importFile, readFile, stripJsonComments, FileError } from '../../src/model/file';
 import { Workspace } from '../../src/model/workspace';
 
 const now = Date.UTC(2026, 9, 17, 12, 0, 0);
@@ -69,6 +69,65 @@ describe('tack.json', () => {
     expect(b.now?.id).toBe(a.now?.id);
     expect(b.open.map((t) => t.id)).toEqual(a.open.map((t) => t.id));
     expect(b.tasks.get(gone.id)?.deleted).toBe(true);
+  });
+
+  it('takes changes made on the desktop since the last import', () => {
+    const ws = makeWs();
+    ws.merge(readFile(desktopFile, ws), 'local');
+    // On the desktop: rename one task, reopen the done one, rewrite the note.
+    const edited = desktopFile
+      .replace('Book the crane', 'Book the crane for Thursday')
+      .replace(', "completed": "2026-10-17T08:00:00+01:00"', '')
+      .replace('Site visit\\n- rebar', 'Site visit\\n- rebar\\n- formwork');
+    importFile(ws, edited, { lastModified: now });
+    expect(ws.open.map((t) => t.text)).toContain('Book the crane for Thursday');
+    expect(ws.done).toEqual([]);
+    expect(ws.sheetList.map((s) => s.text)).toEqual(['Site visit\n- rebar\n- formwork']);
+  });
+
+  it('when both sides edited, the later edit wins, and notes are kept twice', () => {
+    let wall = now;
+    const ws = new Workspace(new Hlc('web', () => wall), () => new Date(wall));
+    ws.merge(readFile(desktopFile, ws), 'local');
+    wall += 60_000;
+    ws.editTask('cccccccccccc', 'Book the crane (phone)');
+    ws.editSheet('s1s1s1s1s1s1', 'Site visit\n- rebar\n- phone note');
+    const edited = desktopFile.replace('Book the crane', 'Book the crane (desktop)').replace('- rebar', '- rebar\\n- desktop note');
+    // The desktop saved before the phone's edit: the phone's text stays.
+    importFile(ws, edited, { lastModified: now + 30_000 });
+    expect(ws.tasks.get('cccccccccccc')?.text).toBe('Book the crane (phone)');
+    // …and the desktop's note is kept as a copy beside the phone's.
+    expect(ws.sheetList.map((s) => s.text)).toEqual(['Site visit\n- rebar\n- phone note', 'Site visit\n- rebar\n- desktop note']);
+    // Saved after the phone's edit: the desktop's text wins. Importing again adds no more copies.
+    importFile(ws, edited, { lastModified: now + 120_000 });
+    expect(ws.tasks.get('cccccccccccc')?.text).toBe('Book the crane (desktop)');
+    expect(ws.sheetList).toHaveLength(2);
+  });
+
+  it('keeps both versions of a note when importing an export with a different text', () => {
+    let wall = now;
+    const a = new Workspace(new Hlc('a', () => wall), () => new Date(wall));
+    const s = a.addSheet('Plan\n- one');
+    const exported = JSON.stringify(exportFile(a));
+    const b = new Workspace(new Hlc('b', () => wall), () => new Date(wall));
+    importFile(b, exported);
+    wall += 1000;
+    b.editSheet(s.id, 'Plan\n- one\n- two (b)');
+    importFile(b, exported); // the older export comes back
+    expect(b.sheetList.map((x) => x.text)).toEqual(['Plan\n- one\n- two (b)', 'Plan\n- one']);
+    importFile(b, exported);
+    expect(b.sheetList).toHaveLength(2);
+  });
+
+  it('ignores records with odd ids or empty text', () => {
+    const ws = makeWs();
+    const t = ws.addTask('real')!;
+    const file = exportFile(ws);
+    const bad = { ...file.tackFocus.tasks[0], id: 'x"]', text: 'evil' };
+    const blank = { ...file.tackFocus.tasks[0], id: 'blankblank12', text: '   ' };
+    const doc = { ...file, tackFocus: { ...file.tackFocus, tasks: [...file.tackFocus.tasks, bad, blank] } };
+    const data = readFile(JSON.stringify(doc), makeWs('other'));
+    expect(data.tasks.map((x) => x.id)).toEqual([t.id]);
   });
 
   it('rejects files that are not Tack files', () => {

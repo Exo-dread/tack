@@ -28,7 +28,7 @@ export class Toasts {
     this.dismiss(false);
     const node = h(
       'div.toast',
-      { role: 'status' },
+      {},
       h('span.toast-text', { text: message }),
       undo
         ? h('button.toast-action', {

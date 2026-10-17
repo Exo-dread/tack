@@ -69,6 +69,32 @@ test.describe('your data', () => {
     await expect(page.locator('.now-card')).toHaveCount(0, { timeout: 4000 });
   });
 
+  test('a note edited in another window reaches this one, even mid-writing', async ({ page, context }) => {
+    await open(page);
+    await toNotes(page);
+    const editor = page.getByRole('textbox', { name: 'Note' });
+    await editor.click();
+    await editor.press('Control+End');
+    const other = await context.newPage();
+    await open(other);
+    await toNotes(other);
+    const otherEditor = other.getByRole('textbox', { name: 'Note' });
+    await otherEditor.click();
+    await otherEditor.press('Control+End');
+    await otherEditor.pressSequentially('\nAdded in the other window');
+    await flushed(other);
+    // This window, still focused in the editor, has picked up the other window's line…
+    await expect(editor).toHaveValue(/Added in the other window$/);
+    await expect(editor).toBeFocused();
+    // …so typing here keeps it rather than overwriting it.
+    await editor.press('Control+End');
+    await editor.pressSequentially('\nAnd this one');
+    await flushed(page);
+    await other.reload();
+    await toNotes(other);
+    await expect(other.getByRole('textbox', { name: 'Note' })).toHaveValue(/Added in the other window\nAnd this one$/);
+  });
+
   test('imports a Tack for Windows file, merging without overwriting', async ({ page }) => {
     await open(page);
     await addTask(page, 'Already here');

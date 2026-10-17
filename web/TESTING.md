@@ -7,13 +7,15 @@ npm test        # Vitest: model, clocks, order keys, merging, tack.json
 npm run e2e     # Playwright: the production build in three browsers
 ```
 
-**Unit tests (37)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
+**Unit tests (45)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
 random inserts, clock monotonicity and skew, .NET date parsing, every workspace mutation and its
 undo, snapshot restore, two- and three-device merges with a randomised convergence test, concurrent
 note edits (conflict copies), and tack.json import/export against a file shaped exactly like
-Tack for Windows writes it (BOM, comments, trailing commas, seven-digit fractions).
+Tack for Windows writes it (BOM, comments, trailing commas, seven-digit fractions), including
+re-importing after edits on the desktop, on the phone, or both (newer wins; notes kept twice), and
+storage (in an in-memory IndexedDB) merging every write so a stale tab can't undo a newer edit.
 
-**End-to-end tests (60, in three projects)** run against `vite build` + `vite preview`, so the real
+**End-to-end tests (75 runs across three projects)** run against `vite build` + `vite preview`, so the real
 service worker and bundle are tested:
 
 | Project | Engine | Emulates |
@@ -29,8 +31,11 @@ a tick surviving the app being closed at once; editing, and deleting by clearing
 drag reordering, persisted; keyboard navigation and shortcuts; reduced motion; notes (list
 continuation, ending a list, Make task, persistence, deleting a sheet with undo, tidying a blank
 sheet); two tabs staying in step; importing a desktop file and undoing it; exporting; working
-offline after the first visit (Chromium); running clean under the production CSP; and axe
-accessibility scans (WCAG 2.2 AA rules) of Tasks, Notes and Settings in light and dark.
+offline after the first visit (Chromium); running clean under the production CSP; axe
+accessibility scans (WCAG 2.2 AA rules) of Tasks, Notes and Settings in light and dark; a note edited
+in another window reaching this one mid-writing; an emptied edit surviving the app being hidden;
+Undo after deleting from an emptied edit; a tick landing during a swipe; the one-time install
+suggestion; and a speed guard (500 pasted tasks).
 
 Gestures are driven with synthetic pointer events (Playwright can only tap), so they test the
 gesture logic, not a real finger. WebKit on Windows is close to Safari's engine but isn't iOS:

@@ -18,7 +18,10 @@ export function registerServiceWorker(store: Store): void {
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && updateReady) {
-      void store.flushAll().then(() => location.reload());
+      // Only once everything is safely on disk; if saving is failing, the update can wait.
+      void store.flushAll().then(() => {
+        if (store.allSaved && document.visibilityState === 'hidden') location.reload();
+      });
     }
   });
 

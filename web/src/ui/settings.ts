@@ -1,4 +1,4 @@
-import { exportFile, FileError, readFile } from '../model/file';
+import { exportFile, FileError, importFile } from '../model/file';
 import { parseDate } from '../model/time';
 import type { Workspace } from '../model/workspace';
 import type { Snapshot } from '../store/db';
@@ -133,7 +133,7 @@ export class Settings {
         h('button.button', { type: 'button', onclick: () => fileInput.click() }, svg(icons.upload), 'Import'),
         h('button.button', { type: 'button', 'aria-expanded': 'false', onclick: (e: Event) => void this.toggleSnapshots(snapList, e.currentTarget as HTMLElement) }, svg(icons.restore), 'Restore'),
       ),
-      h('p.note.small', { text: 'Export saves a tack.json file that Tack for Windows can read. Import accepts files from either app and merges them in: nothing here is overwritten.' }),
+      h('p.note.small', { text: 'Export saves a tack.json file that Tack for Windows can read. Import adds what’s new from either app’s file. Where both changed, the newer edit wins, and a note written in both places is kept twice.' }),
       snapList,
       fileInput,
     );
@@ -261,19 +261,21 @@ export class Settings {
     }
     try {
       const text = await file.text();
-      const data = readFile(text, this.ws);
       const before = this.ws.toData();
       const live = (d: { tasks: { deleted: boolean }[]; sheets: { deleted: boolean }[] }) => ({
         tasks: d.tasks.filter((t) => !t.deleted).length,
         sheets: d.sheets.filter((s) => !s.deleted).length,
       });
       const a = live(before);
-      this.ws.merge(data, 'local');
-      const b = live(this.ws.toData());
+      importFile(this.ws, text, { lastModified: file.lastModified || undefined });
+      const after = this.ws.toData();
+      const b = live(after);
       const added = b.tasks - a.tasks;
       const sheets = b.sheets - a.sheets;
       const parts = [added ? `${added} task${added === 1 ? '' : 's'}` : '', sheets ? `${sheets} sheet${sheets === 1 ? '' : 's'}` : ''].filter(Boolean);
-      this.toasts.show(parts.length ? `Imported ${parts.join(' and ')}` : 'Imported: everything was already here', () => this.ws.restore(before));
+      const changed = JSON.stringify(after) !== JSON.stringify(before);
+      const message = parts.length ? `Imported ${parts.join(' and ')}` : changed ? 'Imported the latest changes' : 'Nothing new in that file';
+      this.toasts.show(message, changed ? () => this.ws.restore(before) : undefined);
     } catch (error) {
       this.toasts.show(error instanceof FileError ? error.message : 'Couldn’t read that file');
     }
@@ -294,7 +296,7 @@ export class Settings {
     }
     const fmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
     list.replaceChildren(
-      h('p.note.small', { text: 'Tack keeps a copy of your data from the start of each of the last seven days you used it.' }),
+      h('p.note.small', { text: 'Tack keeps a copy of your data from the start of each of the last seven days you used it. Restoring one replaces what’s here now (and can be undone).' }),
       ...(snaps.length
         ? snaps.map((s) => {
             const tasks = s.data.tasks.filter((t) => !t.deleted).length;
@@ -307,11 +309,22 @@ export class Settings {
               h('button.text-button', {
                 type: 'button',
                 text: 'Restore',
-                onclick: () => {
+                onclick: (e: Event) => {
+                  // Two taps: restoring replaces everything since that day (Undo stays available).
+                  const b = e.currentTarget as HTMLButtonElement;
+                  if (b.dataset.armed !== 'true') {
+                    b.dataset.armed = 'true';
+                    b.textContent = 'Tap to restore';
+                    setTimeout(() => {
+                      b.dataset.armed = '';
+                      b.textContent = 'Restore';
+                    }, 4000);
+                    return;
+                  }
                   const before = this.ws.toData();
                   this.ws.restore(s.data);
                   this.close();
-                  this.toasts.show(`Restored ${fmt.format(when)}`, () => this.ws.restore(before));
+                  this.toasts.show(`Restored ${fmt.format(when)}`, () => this.ws.restore(before), { duration: 8000 });
                 },
               }),
             );

@@ -15,8 +15,11 @@ export const ZERO: Stamp = '000000000.0000.0';
 const MS_WIDTH = 9;
 const COUNTER_WIDTH = 4;
 const MAX_COUNTER = 36 ** COUNTER_WIDTH - 1;
-/** Remote stamps further ahead than this are merged but not adopted as our own time. */
-const MAX_DRIFT_MS = 24 * 60 * 60 * 1000;
+/**
+ * Stamps further ahead than this can only be corrupt; they aren't adopted. Anything nearer is,
+ * even if another device's clock is wrong: whatever you do next must win over what you've seen.
+ */
+const MAX_AHEAD_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 
 export function encode(ms: number, counter: number, node: string): Stamp {
   return `${ms.toString(36).padStart(MS_WIDTH, '0')}.${counter.toString(36).padStart(COUNTER_WIDTH, '0')}.${node}`;
@@ -38,6 +41,11 @@ export function stampTime(stamp: Stamp): number {
 
 export function isStamp(value: unknown): value is Stamp {
   return typeof value === 'string' && /^[0-9a-z]{9}\.[0-9a-z]{4}\.[0-9a-zA-Z_-]*$/.test(value);
+}
+
+/** A stamp from a file that's plausible: well-formed and not more than a year in the future. */
+export function isPlausibleStamp(value: unknown, now = Date.now()): value is Stamp {
+  return isStamp(value) && stampTime(value) <= now + 366 * 24 * 60 * 60 * 1000;
 }
 
 export class Hlc {
@@ -68,7 +76,7 @@ export class Hlc {
   observe(stamp: Stamp): void {
     const d = decode(stamp);
     if (!d) return;
-    if (d.ms > this.wallClock() + MAX_DRIFT_MS) return;
+    if (d.ms > this.wallClock() + MAX_AHEAD_MS) return;
     if (d.ms > this.ms || (d.ms === this.ms && d.counter > this.counter)) {
       this.ms = d.ms;
       this.counter = d.counter;

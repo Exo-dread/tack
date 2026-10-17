@@ -105,6 +105,41 @@ test.describe('tasks', () => {
     await expect(openTexts(page).first()).toHaveText('Book the crane for Thursday');
   });
 
+  test('an edit that is empty when the app is hidden keeps the task', async ({ page }) => {
+    await open(page);
+    await addTask(page, 'Retype me');
+    await openTexts(page).first().click();
+    await page.locator('textarea.edit').fill('');
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
+    await flushed(page);
+    await page.reload();
+    await expect(page.locator('html.ready')).toHaveCount(1);
+    await expect(openTexts(page).first()).toHaveText('Retype me');
+  });
+
+  test('deleting from an emptied edit can still be undone', async ({ page }) => {
+    await open(page);
+    await addTask(page, 'Undo me');
+    await openTexts(page).first().click();
+    await page.locator('textarea.edit').fill('');
+    await page.locator('.row-tools').getByRole('button', { name: 'Delete' }).click();
+    await expect(openTexts(page).filter({ hasText: 'Undo me' })).toHaveCount(0);
+    await button(page, 'Undo').click();
+    await expect(openTexts(page).first()).toHaveText('Undo me');
+  });
+
+  test('a tick still lands when a swipe happens during its grace period', async ({ page }) => {
+    test.skip(test.info().project.name === 'desktop-chromium', 'touch gestures');
+    await open(page);
+    await addTask(page, 'Second');
+    await addTask(page, 'First');
+    await page.locator('.open-list li').first().getByRole('checkbox').click();
+    // Half a swipe on another row, released: changes nothing, but holds rendering meanwhile.
+    await touchDrag(page, page.locator('.open-list li').nth(1), { dx: -40, dy: 0 }, { steps: 30, stepMs: 40 });
+    await page.waitForTimeout(800);
+    await expect(openTexts(page).filter({ hasText: 'First' })).toHaveCount(0);
+  });
+
   test('edit tools: focus, move and delete without gestures', async ({ page }) => {
     await open(page);
     await addTask(page, 'Second');

@@ -1565,3 +1565,5 @@ kbd {
 .install-text .note { margin: 4px 0 6px; }
 .install-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .install-actions .note { margin: 0; }
+
+#boot-error .button { margin-top: 16px; }

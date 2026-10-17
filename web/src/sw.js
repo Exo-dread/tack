@@ -6,12 +6,28 @@
 const VERSION = '__TACK_VERSION__';
 const PRECACHE = __TACK_PRECACHE__;
 const CACHE = `tack-${VERSION}`;
+/** The app shell is cached under "/", the URL hosts serve it from without redirecting. */
+const SHELL = '/';
+
+/**
+ * Fetches and stores one file. A redirected response can't be used to answer a page load, so
+ * one that arrived through a redirect (some hosts send /index.html to /) is stored as a plain
+ * copy of the final response.
+ */
+async function precache(cache, url) {
+  const response = await fetch(new Request(url, { cache: 'reload' }));
+  if (!response.ok) throw new Error(`Precache failed for ${url}: ${response.status}`);
+  const clean = response.redirected
+    ? new Response(await response.blob(), { status: response.status, statusText: response.statusText, headers: response.headers })
+    : response;
+  await cache.put(url, clean);
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE)
-      .then((cache) => cache.addAll(PRECACHE.map((url) => new Request(url, { cache: 'reload' }))))
+      .then((cache) => Promise.all(PRECACHE.map((url) => precache(cache, url))))
       .then(() => self.skipWaiting()),
   );
 });
@@ -35,7 +51,7 @@ self.addEventListener('fetch', (event) => {
     // Every page load gets the cached app shell: instant, and identical offline.
     event.respondWith(
       caches.open(CACHE).then((cache) =>
-        cache.match('/index.html', { ignoreVary: true }).then((cached) => cached || fetch(request)),
+        cache.match(SHELL, { ignoreSearch: true, ignoreVary: true }).then((cached) => cached || fetch(request)),
       ),
     );
     return;

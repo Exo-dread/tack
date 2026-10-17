@@ -22,7 +22,7 @@ export class Store {
   private dirtySheets = new Set<string>();
   private dirtyFocus = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private running: Promise<void> | null = null;
+  private readonly inflight = new Set<Promise<void>>();
   private failures = 0;
   private readonly channel: BroadcastChannel | null;
   private readonly statusListeners = new Set<(s: SaveStatus) => void>();
@@ -73,17 +73,28 @@ export class Store {
   }
 
   get hasPending(): boolean {
-    return this.dirtyTasks.size > 0 || this.dirtySheets.size > 0 || this.dirtyFocus || this.running !== null;
+    return this.dirtyTasks.size > 0 || this.dirtySheets.size > 0 || this.dirtyFocus || this.inflight.size > 0;
   }
 
-  /** Writes everything pending now. Resolves once it's on disk (or has failed). */
+  /** Everything is on disk: nothing waiting, nothing being written, no failed writes. */
+  get allSaved(): boolean {
+    return !this.hasPending && this._status === 'saved';
+  }
+
+  /**
+   * Writes everything pending now and resolves once it's on disk (or has failed). A new write
+   * starts straight away even if another is still running (IndexedDB applies them in order, and
+   * each merges with what's stored), so the last save before the app is hidden never waits.
+   */
   async flush(): Promise<void> {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
     }
-    while (this.running) await this.running;
-    if (!this.dirtyTasks.size && !this.dirtySheets.size && !this.dirtyFocus) return;
+    if (!this.dirtyTasks.size && !this.dirtySheets.size && !this.dirtyFocus) {
+      await Promise.all(this.inflight);
+      return;
+    }
 
     const taskIds = [...this.dirtyTasks];
     const sheetIds = [...this.dirtySheets];
@@ -93,30 +104,33 @@ export class Store {
     this.dirtyFocus = false;
 
     this.setStatus(this.failures ? 'retrying' : 'saving');
-    this.running = (async () => {
-      try {
-        await this.backend.write({
-          tasks: taskIds.map((id) => this.ws.tasks.get(id)).filter((t) => t !== undefined),
-          sheets: sheetIds.map((id) => this.ws.sheets.get(id)).filter((s) => s !== undefined),
-          focus: focus ? this.ws.focus : undefined,
-        });
-        this.failures = 0;
-        this.channel?.postMessage({ type: 'saved' });
-        this.setStatus(this.dirtyTasks.size || this.dirtySheets.size ? 'saving' : 'saved');
-      } catch (error) {
-        console.error('Save failed', error);
-        taskIds.forEach((id) => this.dirtyTasks.add(id));
-        sheetIds.forEach((id) => this.dirtySheets.add(id));
-        this.dirtyFocus ||= focus;
-        this.failures++;
-        this.setStatus(this.failures >= 3 ? 'unsaved' : 'retrying');
-        this.schedule(Math.min(30000, 500 * 2 ** this.failures));
-      }
-    })();
+    const write = this.backend
+      .write({
+        tasks: taskIds.map((id) => this.ws.tasks.get(id)).filter((t) => t !== undefined),
+        sheets: sheetIds.map((id) => this.ws.sheets.get(id)).filter((s) => s !== undefined),
+        focus: focus ? this.ws.focus : undefined,
+      })
+      .then(
+        () => {
+          this.failures = 0;
+          this.channel?.postMessage({ type: 'saved' });
+        },
+        (error) => {
+          console.error('Save failed', error);
+          taskIds.forEach((id) => this.dirtyTasks.add(id));
+          sheetIds.forEach((id) => this.dirtySheets.add(id));
+          this.dirtyFocus ||= focus;
+          this.failures++;
+          this.schedule(Math.min(30000, 500 * 2 ** this.failures));
+        },
+      );
+    this.inflight.add(write);
     try {
-      await this.running;
+      await write;
     } finally {
-      this.running = null;
+      this.inflight.delete(write);
+      if (this.failures) this.setStatus(this.failures >= 3 ? 'unsaved' : 'retrying');
+      else this.setStatus(this.hasPending ? 'saving' : 'saved');
     }
   }
 

@@ -398,14 +398,22 @@ export class TasksView {
     }
   }
 
-  /** Commits any ticks still in their grace period (the app is being hidden or closed). */
+  /**
+   * The app is being hidden or closed: commit ticks still in their grace period, and save the
+   * text of a task being edited (staying in the edit). An edit that's empty right now is just
+   * mid-retype, so it's left alone, never taken as "delete".
+   */
   commitPending(): void {
     for (const [id, timer] of this.checking) {
       clearTimeout(timer);
       this.checking.delete(id);
       this.ws.complete(id);
     }
-    if (this.editing) this.finishEdit(false);
+    const e = this.editing;
+    if (e) {
+      const text = cleanTaskText(e.input.value);
+      if (text) this.ws.editTask(e.id, text);
+    }
   }
 
   private focusTask(id: string): void {
@@ -418,7 +426,8 @@ export class TasksView {
 
   private remove(id: string): void {
     const t = this.ws.tasks.get(id);
-    if (!t) return;
+    // Already gone (e.g. an emptied edit deleted it a moment ago): keep that toast's Undo.
+    if (!t || t.deleted) return;
     const pending = this.checking.get(id);
     if (pending) {
       clearTimeout(pending);

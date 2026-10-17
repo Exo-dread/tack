@@ -1,4 +1,5 @@
-import { encode, isStamp, ZERO, type Stamp } from './hlc';
+import { decode, encode, isPlausibleStamp, ZERO, type Stamp } from './hlc';
+import { derivedId } from './ids';
 import { isOrderKey, keyAfter, keyBefore } from './order';
 import { cleanTaskText } from './text';
 import { isoLocal, parseDate } from './time';
@@ -77,7 +78,27 @@ export class FileError extends Error {}
  * Desktop records have no clocks; they get clocks from their own dates, so re-importing the
  * same file changes nothing and anything edited here since stays as it is.
  */
-export function readFile(text: string, ws: Workspace): WorkspaceData {
+export interface ReadOptions {
+  /** When the file was last saved (File.lastModified), to settle edits made in both places. */
+  lastModified?: number;
+}
+
+/**
+ * Imports a file into the workspace. Anything new is added; for anything edited in both places,
+ * the newer edit wins; and a note whose text differs is kept twice rather than overwritten.
+ */
+export function importFile(ws: Workspace, text: string, options: ReadOptions = {}): void {
+  const { data, withClocks } = parseFile(text, ws, options);
+  // Files with clocks (exports from Tack Focus) merge field by field; for notes, a differing
+  // text is kept as a copy beside the newer one (base ZERO: treat every difference as concurrent).
+  ws.merge(data, 'local', withClocks ? ZERO : undefined);
+}
+
+export function readFile(text: string, ws: Workspace, options: ReadOptions = {}): WorkspaceData {
+  return parseFile(text, ws, options).data;
+}
+
+function parseFile(text: string, ws: Workspace, options: ReadOptions): { data: WorkspaceData; withClocks: boolean } {
   let doc: unknown;
   try {
     doc = JSON.parse(stripJsonComments(text.replace(/^﻿/, '')));
@@ -91,16 +112,19 @@ export function readFile(text: string, ws: Workspace): WorkspaceData {
     const tasks = extra.tasks.map(readTaskRecord).filter((t): t is Task => t !== null);
     const sheets = extra.sheets.map(readSheetRecord).filter((s): s is Sheet => s !== null);
     const focus = readFocus(extra.focus);
-    return { tasks, sheets, focus };
+    return { data: { tasks, sheets, focus }, withClocks: true };
   }
 
   if (!Array.isArray(doc.tasks) && !Array.isArray(doc.sheets)) {
     throw new FileError("This doesn't look like a Tack file.");
   }
-  return readDesktop(doc, ws);
+  return { data: readDesktop(doc, ws, options), withClocks: false };
 }
 
-function readDesktop(doc: Record<string, unknown>, ws: Workspace): WorkspaceData {
+/** The device a clock came from; records read from desktop files use the empty device "". */
+const nodeOf = (stamp: Stamp): string | undefined => decode(stamp)?.node;
+
+function readDesktop(doc: Record<string, unknown>, ws: Workspace, options: ReadOptions): WorkspaceData {
   const rawTasks = Array.isArray(doc.tasks) ? doc.tasks.filter(isObject) : [];
   const rawSheets = Array.isArray(doc.sheets) ? doc.sheets.filter(isObject) : [];
 
@@ -113,6 +137,24 @@ function readDesktop(doc: Record<string, unknown>, ws: Workspace): WorkspaceData
     keys.set(openNew[i], key);
   }
 
+  // When the file was saved: as given, or at least as late as the latest date inside it.
+  let latest = 0;
+  for (const r of [...rawTasks, ...rawSheets]) {
+    for (const v of [r.created, r.completed, r.updated]) {
+      latest = Math.max(latest, parseDate(typeof v === 'string' ? v : '')?.getTime() ?? 0);
+    }
+  }
+  const savedAt = options.lastModified ?? latest;
+
+  /**
+   * The clock for a field of something this device already has. Unchanged: the same clock (a
+   * no-op). Changed, and never edited here (its clock still comes from an earlier import): the
+   * desktop's change is the only news, so it wins. Changed in both places: the later one wins,
+   * using the file's save time for the desktop's side.
+   */
+  const changedClock = (same: boolean, localClock: Stamp): Stamp =>
+    same ? localClock : nodeOf(localClock) === '' ? ws.hlc.now() : stampFrom(savedAt);
+
   let focusId: string | null = null;
   const tasks: Task[] = [];
   const usedIds = new Set<string>();
@@ -124,39 +166,53 @@ function readDesktop(doc: Record<string, unknown>, ws: Workspace): WorkspaceData
     const completed = r.completed ? parseDate(String(r.completed)) : null;
     const base = stampFrom(created.getTime());
     const existing = ws.tasks.get(id);
+    const sameDone = !!existing && !!existing.completed === !!completed;
     tasks.push({
       id,
       text,
       created: typeof r.created === 'string' && parseDate(r.created) ? r.created : isoLocal(created),
-      completed: completed ? String(r.completed) : null,
+      // Both finished: keep this device's completion time rather than flipping between them.
+      completed: completed ? (sameDone && existing?.completed ? existing.completed : String(r.completed)) : null,
       order: keys.get(r) ?? existing?.order ?? 'V',
-      deleted: false,
-      clk: { text: base, completed: completed ? stampFrom(completed.getTime()) : base, order: base, deleted: base },
+      deleted: existing?.deleted ?? false,
+      clk: existing
+        ? {
+            text: changedClock(existing.text === text, existing.clk.text),
+            completed: changedClock(sameDone, existing.clk.completed),
+            order: existing.clk.order,
+            deleted: existing.clk.deleted,
+          }
+        : { text: base, completed: completed ? stampFrom(completed.getTime()) : base, order: base, deleted: base },
     });
     if (r.now === true && !completed && focusId === null) focusId = id;
   }
 
   let sheetKey = ws.sheetList.at(-1)?.order ?? null;
+  const nextKey = () => (sheetKey = sheetKey ? keyAfter(sheetKey) : 'V');
   const sheets: Sheet[] = [];
   for (const r of rawSheets) {
     const text = String(r.text ?? '');
-    const id = validId(r.id, usedIds, text);
-    const updated = parseDate(String(r.updated ?? '')) ?? new Date(0);
+    let id = validId(r.id, usedIds, text);
+    const updatedAt = parseDate(String(r.updated ?? '')) ?? new Date(0);
+    const updated = typeof r.updated === 'string' && parseDate(r.updated) ? r.updated : isoLocal(updatedAt);
     const existing = ws.sheets.get(id);
-    let order = existing?.order;
-    if (!order) {
-      sheetKey = sheetKey ? keyAfter(sheetKey) : 'V';
-      order = sheetKey;
+    if (existing && existing.text !== text && nodeOf(existing.clk.text) !== '') {
+      // Written here and on the desktop: keep both, the desktop's as a copy beside this one.
+      // The copy's id comes from its content, so importing the same file again adds nothing.
+      id = derivedId(`${id}:${text}`);
+      if (ws.sheets.has(id)) continue;
+      const c = stampFrom(updatedAt.getTime());
+      sheets.push({ id, text, updated, order: nextKey(), deleted: false, clk: { text: c, order: c, deleted: c } });
+      continue;
     }
-    const c = stampFrom(updated.getTime());
-    sheets.push({
-      id,
-      text,
-      updated: typeof r.updated === 'string' && parseDate(r.updated) ? r.updated : isoLocal(updated),
-      order,
-      deleted: false,
-      clk: { text: c, order: c, deleted: c },
-    });
+    if (existing) {
+      // Unchanged (a no-op), or only ever changed on the desktop (its version wins).
+      const clk = existing.text === text ? existing.clk.text : ws.hlc.now();
+      sheets.push({ ...existing, text, updated: existing.text === text ? existing.updated : updated, clk: { ...existing.clk, text: clk } });
+      continue;
+    }
+    const c = stampFrom(updatedAt.getTime());
+    sheets.push({ id, text, updated, order: nextKey(), deleted: false, clk: { text: c, order: c, deleted: c } });
   }
 
   // Importing is an explicit "bring this in": the file's focus task becomes the focus here too
@@ -182,13 +238,18 @@ function validId(raw: unknown, used: Set<string>, seed: string): string {
   return id;
 }
 
+/** Ids from files: the shape Tack itself makes (and nothing that could upset a selector or object key). */
+const ID = /^[\w-]{1,64}$/;
+
 function readTaskRecord(r: unknown): Task | null {
-  if (!isObject(r) || typeof r.id !== 'string' || !isObject(r.clk)) return null;
+  if (!isObject(r) || typeof r.id !== 'string' || !ID.test(r.id) || !isObject(r.clk)) return null;
   const clk = r.clk;
-  if (![clk.text, clk.completed, clk.order, clk.deleted].every(isStamp)) return null;
+  if (![clk.text, clk.completed, clk.order, clk.deleted].every((c) => isPlausibleStamp(c))) return null;
+  const text = cleanTaskText(typeof r.text === 'string' ? r.text : '');
+  if (!text && r.deleted !== true) return null;
   return {
     id: r.id,
-    text: typeof r.text === 'string' ? r.text : '',
+    text,
     created: typeof r.created === 'string' ? r.created : isoLocal(new Date(0)),
     completed: typeof r.completed === 'string' ? r.completed : null,
     order: isOrderKey(r.order) ? r.order : 'V',
@@ -198,9 +259,9 @@ function readTaskRecord(r: unknown): Task | null {
 }
 
 function readSheetRecord(r: unknown): Sheet | null {
-  if (!isObject(r) || typeof r.id !== 'string' || !isObject(r.clk)) return null;
+  if (!isObject(r) || typeof r.id !== 'string' || !ID.test(r.id) || !isObject(r.clk)) return null;
   const clk = r.clk;
-  if (![clk.text, clk.order, clk.deleted].every(isStamp)) return null;
+  if (![clk.text, clk.order, clk.deleted].every((c) => isPlausibleStamp(c))) return null;
   return {
     id: r.id,
     text: typeof r.text === 'string' ? r.text : '',
@@ -212,7 +273,7 @@ function readSheetRecord(r: unknown): Sheet | null {
 }
 
 function readFocus(r: unknown): Focus {
-  if (isObject(r) && isStamp(r.clk) && (r.id === null || typeof r.id === 'string')) {
+  if (isObject(r) && isPlausibleStamp(r.clk) && (r.id === null || (typeof r.id === 'string' && ID.test(r.id)))) {
     return { id: r.id as string | null, clk: r.clk };
   }
   return { id: null, clk: ZERO };
