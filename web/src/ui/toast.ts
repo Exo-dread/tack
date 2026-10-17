@@ -1,0 +1,87 @@
+import { h } from './dom';
+import { animate, EASE_IN, SPRING } from './motion';
+
+/**
+ * One toast at a time, above the dock: what just happened, and Undo. A new toast replaces the
+ * old one (whose undo then lapses), exactly like the desktop app. Everything a toast says is
+ * also announced to screen readers.
+ */
+export class Toasts {
+  readonly el: HTMLElement;
+  private readonly live: HTMLElement;
+  private current: { node: HTMLElement; timer: ReturnType<typeof setTimeout>; undo?: () => void } | null = null;
+
+  constructor() {
+    this.el = h('div.toasts');
+    this.live = h('div.sr-only', { 'aria-live': 'polite', 'aria-atomic': 'true' });
+    document.body.append(this.live);
+  }
+
+  /** Says something to screen readers only. */
+  announce(message: string): void {
+    this.live.textContent = '';
+    // A fresh node each time so repeated messages are still read.
+    requestAnimationFrame(() => (this.live.textContent = message));
+  }
+
+  show(message: string, undo?: () => void, options: { duration?: number; action?: string } = {}): void {
+    this.dismiss(false);
+    const node = h(
+      'div.toast',
+      { role: 'status' },
+      h('span.toast-text', { text: message }),
+      undo
+        ? h('button.toast-action', {
+            type: 'button',
+            text: options.action ?? 'Undo',
+            onclick: () => {
+              const u = this.current?.undo;
+              this.dismiss();
+              u?.();
+              if (!options.action) this.announce('Undone');
+            },
+          })
+        : null,
+    );
+    // Swipe down to dismiss.
+    let startY = 0;
+    node.addEventListener('pointerdown', (e) => (startY = e.clientY));
+    node.addEventListener('pointerup', (e) => {
+      if (e.clientY - startY > 24) this.dismiss();
+    });
+    this.el.append(node);
+    animate(node, [{ opacity: 0, transform: 'translateY(16px) scale(.96)' }, { opacity: 1, transform: 'none' }], {
+      duration: SPRING.duration,
+      easing: SPRING.easing,
+    });
+    const duration = options.duration ?? (undo ? 5000 : 2600);
+    this.current = { node, undo, timer: setTimeout(() => this.dismiss(), duration) };
+    this.announce(undo ? `${message}. Undo available.` : message);
+  }
+
+  /** Ctrl/Cmd+Z: runs the current toast's undo, if there is one. */
+  undo(): boolean {
+    const u = this.current?.undo;
+    if (!u) return false;
+    this.dismiss();
+    u();
+    this.announce('Undone');
+    return true;
+  }
+
+  dismiss(animated = true): void {
+    const c = this.current;
+    if (!c) return;
+    this.current = null;
+    clearTimeout(c.timer);
+    const a = animated
+      ? animate(c.node, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px) scale(.97)' }], {
+          duration: 160,
+          easing: EASE_IN,
+          fill: 'forwards',
+        })
+      : null;
+    if (a) a.finished.then(() => c.node.remove(), () => c.node.remove());
+    else c.node.remove();
+  }
+}

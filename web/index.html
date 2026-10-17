@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+    <title>Tack</title>
+    <meta name="description" content="Tack Focus: tasks and quick notes that get out of your way. Free, private, and works offline." />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0d0f14" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#eef0f4" media="(prefers-color-scheme: light)" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Tack" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <!-- Theme before first paint, so there's no flash of the wrong colours. Hashed in the CSP. -->
+    <script>(function(){var d=document.documentElement,p={};try{p=JSON.parse(localStorage.getItem('tack.prefs')||'{}')||{}}catch(e){}var t=p.theme;if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.setAttribute('data-theme',t);d.setAttribute('data-accent',typeof p.accent==='string'?p.accent:'teal')})()</script>
+  </head>
+  <body>
+    <noscript><p class="boot-message">Tack needs JavaScript to run. Everything it stores stays on your device.</p></noscript>
+    <p class="boot-message" id="boot-error" hidden></p>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
