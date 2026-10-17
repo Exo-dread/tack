@@ -22,6 +22,8 @@ export interface Snapshot {
 
 export interface Backend {
   readonly kind: 'indexeddb' | 'localstorage' | 'memory';
+  /** Called before this tab gives up its connection to a newer version of Tack (then it reloads). */
+  onVersionChange?: () => Promise<void>;
   load(): Promise<{ data: WorkspaceData; device: string | null }>;
   write(batch: Batch): Promise<void>;
   setDevice(id: string): Promise<void>;
@@ -68,8 +70,19 @@ function done(tx: IDBTransaction): Promise<void> {
 
 export class IdbBackend implements Backend {
   readonly kind = 'indexeddb' as const;
+  onVersionChange?: () => Promise<void>;
 
-  private constructor(private db: IDBDatabase) {}
+  private constructor(private db: IDBDatabase) {
+    // A newer Tack in another tab wants to upgrade the database: save what's pending, step aside,
+    // and reload into the new version.
+    db.onversionchange = () => {
+      const saved = this.onVersionChange?.() ?? Promise.resolve();
+      void saved.finally(() => {
+        db.close();
+        location.reload();
+      });
+    };
+  }
 
   static open(): Promise<IdbBackend> {
     return new Promise((resolve, reject) => {
@@ -85,10 +98,7 @@ export class IdbBackend implements Backend {
       };
       req.onsuccess = () => {
         clearTimeout(timer);
-        const db = req.result;
-        // Another tab upgrading the schema: step aside so it can (it will reload us).
-        db.onversionchange = () => db.close();
-        resolve(new IdbBackend(db));
+        resolve(new IdbBackend(req.result));
       };
       req.onerror = () => {
         clearTimeout(timer);

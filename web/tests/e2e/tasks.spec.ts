@@ -187,6 +187,30 @@ test.describe('tasks', () => {
     await expect(openTexts(page).first()).toHaveText('Two');
   });
 
+  test('stays quick with a long list', async ({ page }) => {
+    await open(page);
+    const before = await page.locator('.open-list > li').count();
+    await composer(page).click();
+    const pasteMs = await page.evaluate(() => {
+      const dt = new DataTransfer();
+      dt.setData('text/plain', Array.from({ length: 500 }, (_, i) => `Task ${i + 1}`).join('\n'));
+      const t0 = performance.now();
+      document.querySelector('.composer-input')!.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+      return performance.now() - t0;
+    });
+    await expect(page.locator('.open-list > li')).toHaveCount(before + 500);
+    // Generous budgets: these catch an accidentally quadratic render, not small slowdowns.
+    expect(pasteMs).toBeLessThan(1500);
+    const addMs = await page.evaluate(() => {
+      const input = document.querySelector<HTMLInputElement>('.composer-input')!;
+      input.value = 'One more';
+      const t0 = performance.now();
+      input.form!.requestSubmit();
+      return performance.now() - t0;
+    });
+    expect(addMs).toBeLessThan(250);
+  });
+
   test('works with reduced motion', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await open(page);

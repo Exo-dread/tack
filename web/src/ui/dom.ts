@@ -35,11 +35,18 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   return el;
 }
 
-/** Parses trusted, static SVG markup (our icons) into an element. */
+const parsed = new Map<string, SVGSVGElement>();
+
+/** Trusted, static SVG markup (our icons) as an element. Each icon is parsed once, then cloned. */
 export function svg(markup: string): SVGSVGElement {
-  const t = document.createElement('template');
-  t.innerHTML = markup.trim();
-  return t.content.firstElementChild as SVGSVGElement;
+  let el = parsed.get(markup);
+  if (!el) {
+    const t = document.createElement('template');
+    t.innerHTML = markup.trim();
+    el = t.content.firstElementChild as SVGSVGElement;
+    parsed.set(markup, el);
+  }
+  return el.cloneNode(true) as SVGSVGElement;
 }
 
 export function qs<T extends Element = HTMLElement>(root: ParentNode, selector: string): T {

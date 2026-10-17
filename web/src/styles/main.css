@@ -603,6 +603,14 @@ html.kb-open .dock { bottom: 8px; }
 
 .row { position: relative; border-radius: 18px; }
 
+/* Long lists: rows off screen skip layout and paint. (Only for long lists: the containment this
+   implies would clip the shadow of a row being swiped or dragged, so those opt out.) */
+.list.long > .row { content-visibility: auto; contain-intrinsic-size: auto 52px; }
+.list.long > .row.lifted,
+.list.long > .row.swiping,
+.list.long > .row.editing,
+.list.long > .row.checking { content-visibility: visible; }
+
 .row-body {
   position: relative;
   z-index: 1;

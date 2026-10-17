@@ -13,6 +13,9 @@ import type { Toasts } from './toast';
 /** Ticking a task plays its animation, then it waits this long (a second tap un-ticks it) before moving to Done. */
 const GRACE_MS = 850;
 
+/** Beyond this many rows, rows off screen skip layout and paint. */
+const LONG_LIST = 60;
+
 export interface TasksContext {
   toasts: Toasts;
   celebrate(): void;
@@ -168,8 +171,11 @@ export class TasksView {
 
     // --- open and done lists
     removed.push(...this.reconcile(this.openList, this.openRows, this.ws.open, 'open'));
+    // Long lists skip layout for rows off screen (see .long in the CSS).
+    this.openList.classList.toggle('long', this.openRows.size > LONG_LIST);
     const showDone = prefs().doneExpanded;
     removed.push(...this.reconcile(this.doneList, this.doneRows, showDone ? this.ws.done : [], 'done'));
+    this.doneList.classList.toggle('long', this.doneRows.size > LONG_LIST);
 
     const doneCount = this.ws.done.length;
     this.doneSection.hidden = doneCount === 0;
@@ -202,14 +208,18 @@ export class TasksView {
     }
   }
 
-  /** New tasks lift from the composer, and a newly focused task's card gets a soft glow. */
+  /** New tasks lift from the composer into place (the first few; a pasted list mostly just appears). */
   private animateEntrances(before: Map<string, DOMRect>): void {
     const from = this.enterFrom;
     if (!from) return;
-    let i = 0;
+    const arrivals: HTMLElement[] = [];
     for (const [id, row] of this.openRows) {
-      if (before.has(`t:${id}`)) continue;
-      const to = row.getBoundingClientRect();
+      if (!before.has(`t:${id}`)) arrivals.push(row);
+      if (arrivals.length === 8) break;
+    }
+    // All reads, then all writes (see playFlip).
+    const targets = arrivals.map((row) => ({ row, to: row.getBoundingClientRect() }));
+    targets.forEach(({ row, to }, i) => {
       const dx = from.left - to.left;
       const dy = from.top + from.height / 2 - (to.top + to.height / 2);
       row.getAnimations().forEach((a) => a.cancel());
@@ -219,9 +229,9 @@ export class TasksView {
           { transform: `translate(${dx}px, ${dy}px) scale(.96)`, opacity: 0.35 },
           { transform: 'none', opacity: 1 },
         ],
-        { duration: SPRING.duration + 80, easing: SPRING.easing, delay: i++ * 35, fill: 'backwards' },
+        { duration: SPRING.duration + 80, easing: SPRING.easing, delay: i * 35, fill: 'backwards' },
       );
-    }
+    });
   }
 
   private reconcile(list: HTMLElement, rows: Map<string, HTMLElement>, tasks: Task[], where: Where): HTMLElement[] {
@@ -311,8 +321,10 @@ export class TasksView {
   }
 
   private updateText(el: HTMLElement, t: Task): void {
-    const button = el.querySelector<HTMLElement>(':scope > .row-body > .text');
-    setLabel(button, t.text);
+    // Most renders change nothing about most rows; skip the DOM entirely for those.
+    if (shownText.get(el) === t.text) return;
+    shownText.set(el, t.text);
+    setLabel(el.querySelector<HTMLElement>(':scope > .row-body > .text'), t.text);
   }
 
   // ================================================================== interaction
@@ -601,6 +613,9 @@ export class TasksView {
     return this.editing !== null;
   }
 }
+
+/** The text each row last showed. */
+const shownText = new WeakMap<HTMLElement, string>();
 
 function setLabel(button: HTMLElement | null, text: string): void {
   const label = button?.querySelector('.label');

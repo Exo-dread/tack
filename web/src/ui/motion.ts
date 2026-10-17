@@ -89,8 +89,10 @@ export function playFlip(root: ParentNode, before: Map<string, DOMRect>, options
   const els = [...root.querySelectorAll<HTMLElement>('[data-flip]')].filter((el) => !el.classList.contains('exiting'));
   els.forEach((el) => flips.get(el)?.cancel());
   const viewH = window.innerHeight;
-  for (const el of els) {
-    const after = el.getBoundingClientRect();
+  // Read every position first, then start every animation: interleaving the two would force a
+  // fresh layout per element, which is quadratic and very slow on long lists.
+  const placed = els.map((el) => ({ el, after: el.getBoundingClientRect() }));
+  for (const { el, after } of placed) {
     if (after.bottom < -50 || after.top > viewH + 50) continue;
     const prev = before.get(el.dataset.flip!);
     if (prev) {

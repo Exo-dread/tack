@@ -27,6 +27,7 @@ async function boot(): Promise<void> {
   const ws = new Workspace(new Hlc(device));
   ws.merge(loaded.data, 'storage');
   const store = new Store(ws, backend);
+  backend.onVersionChange = () => store.flushAll();
 
   if (!prefs().seeded && ws.tasks.size === 0 && ws.sheets.size === 0) {
     seedWelcome(ws);
