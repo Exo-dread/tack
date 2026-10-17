@@ -192,5 +192,7 @@ public partial class SettingsView : UserControl
 
     private void OpenFolder_Click(object sender, RoutedEventArgs e) => _shell.OpenDataFolder();
 
+    private void Import_Click(object sender, RoutedEventArgs e) => _shell.ImportFile();
+
     private void Quit_Click(object sender, RoutedEventArgs e) => _shell.Quit();
 }

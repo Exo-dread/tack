@@ -140,8 +140,13 @@
                         <TextBlock Text="Everything stays on this PC. No account, no cloud, no tracking." TextWrapping="Wrap" FontSize="12.5"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock x:Name="DataPath" Style="{StaticResource Caption}" Margin="0,6,0,0" TextWrapping="Wrap" />
-                        <Button Style="{StaticResource TextButton}" HorizontalAlignment="Left" Margin="-8,6,0,0" Content="Open data folder"
-                                Click="OpenFolder_Click" />
+                        <StackPanel Orientation="Horizontal" Margin="-8,6,0,0">
+                            <Button Style="{StaticResource TextButton}" Content="Open data folder" Click="OpenFolder_Click" />
+                            <Button Style="{StaticResource TextButton}" Content="Import…" Click="Import_Click" Margin="4,0,0,0"
+                                    ToolTip="Merge a tack.json from Tack Focus, another PC or a backup" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource Caption}" Margin="0,4,0,0" TextWrapping="Wrap"
+                                   Text="Import adds what’s new from a Tack Focus export or another tack.json. Where both changed, the newer edit wins, and a note written in both places is kept twice." />
                     </StackPanel>
                 </Border>
 

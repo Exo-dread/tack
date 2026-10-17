@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "5fd71fbbe977",
+      "text": "Finish the drainage report draft",
+      "created": "2026-10-17T21:41:25.3780628+03:00",
+      "now": true
+    },
+    {
+      "id": "99354501ecca",
+      "text": "Reply to Mia about the site photos",
+      "created": "2026-10-17T21:41:25.3774337+03:00",
+      "now": false
+    },
+    {
+      "id": "39555bb800cb",
+      "text": "Call the plumber",
+      "created": "2026-10-17T21:41:25.3780585+03:00",
+      "now": false
+    },
+    {
+      "id": "ec12c20f76db",
+      "text": "Book the crane",
+      "created": "2026-10-17T21:41:25.3780279+03:00",
+      "now": false
+    },
+    {
+      "id": "a160ffcac87e",
+      "text": "Send the revised fee proposal",
+      "created": "2026-10-17T21:41:25.3732566+03:00",
+      "completed": "2026-10-17T21:41:25.3783258+03:00",
+      "now": false
+    }
+  ],
+  "sheets": [
+    {
+      "id": "d0fe21cd35ae",
+      "text": "Site visit\n- rebar\n- formwork",
+      "updated": "2026-10-17T21:41:25.379052+03:00"
+    },
+    {
+      "id": "87185e60e22b",
+      "text": "Caf\u00E9 \u2615 ideas\n\t- one",
+      "updated": "2026-10-17T21:41:25.3795987+03:00"
+    }
+  ],
+  "settings": {
+    "launchAtStartup": false,
+    "hideInFullscreen": true,
+    "glass": true,
+    "theme": "dark",
+    "hotkey": "Ctrl\u002BAlt\u002BSpace",
+    "accent": "system",
+    "pinned": false,
+    "tab": "tasks",
+    "doneExpanded": false,
+    "orbX": 1800,
+    "orbY": 400,
+    "tasksWidth": 340,
+    "tasksHeight": 420,
+    "notesWidth": 340,
+    "notesHeight": 480,
+    "activeSheet": "87185e60e22b"
+  }
+}

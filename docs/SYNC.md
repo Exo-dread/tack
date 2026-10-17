@@ -1,8 +1,10 @@
 # Syncing Tack across devices (design)
 
-Status: **designed, not built.** Phase 1 (shipped in `web/`) is local-only, but its data model and
-merge engine are the ones described here, implemented and tested (`web/src/model/*`,
-`web/tests/unit/merge.test.ts`). The transport (cloud storage) is the next phase.
+Status: **designed; the data model is built in both apps, the transport isn't.** Phase 1 (shipped in
+`web/`) is local-only, but its data model and merge engine are the ones described here, implemented
+and tested (`web/src/model/*`, `web/tests/unit/merge.test.ts`). Tack for Windows now keeps the same
+model (`src/Tack/Sync`, a C# port checked against shared test vectors, see below) and can import a
+Tack Focus export. The transport (cloud storage) is the next phase.
 
 The goal: write a task on your phone at night, see it on your Windows PC in the morning, without
 anyone (including Tack) running a server that holds your data, and without a bill that grows with
@@ -36,7 +38,7 @@ The obvious design (both apps read and write `tack.json` in a synced folder) fai
 
 ## Data model (already in place on the web)
 
-| Concept | Tack for Windows today | Shared model |
+| Concept | Tack for Windows 1.1 | Shared model (Tack Focus, and Tack for Windows since) |
 |---|---|---|
 | Task id | 12 hex chars | same ids, unchanged |
 | Text, created, completed | fields | same fields, plus a **clock per field** |
@@ -145,20 +147,32 @@ it handles tokens, so it raises the security bar.
 
 ## Changes to Tack for Windows
 
-1. Keep `tack.json`; add the clocks, sort keys and tombstones (as the web export already does in its
-   `tackFocus` section, which today's desktop app ignores harmlessly).
-2. Stamp every mutation in `Workspace` (it already funnels all changes through one place).
+1. **Done.** Keep `tack.json`; add the clocks, sort keys and tombstones in the same `tackFocus`
+   section the web export writes (plus `device`, the desktop's clock id). The top level is unchanged
+   and stays what you see: if it and the section disagree (a hand edit, or a file saved by Tack 1.1,
+   which drops the section), the top level wins as a fresh edit. A 1.1 file gets clocks from its own
+   dates and keys in its own order, the very records Tack Focus derives when it imports that file,
+   so the two agree without either side changing anything.
+2. **Done.** Every mutation in `Workspace` is stamped, step for step as `workspace.ts` stamps it
+   (the order of clock calls included), so the same edits give byte-identical records. Deletions are
+   tombstones, forgotten after 90 days.
 3. A `SyncService`: when sync is on, write batches to the sync folder after changes settle; watch
    the folder (`FileSystemWatcher`) for other devices' batches; merge.
 4. Settings: "Sync folder" (detects `OneDrive\Apps\Tack`), status, last synced.
-5. Port `merge.ts` and `order.ts` to C# with the same test vectors so both apps provably agree.
+5. **Done.** `hlc.ts`, `order.ts`, `ids.ts`, `merge.ts` and the import side of `file.ts` are ported
+   to C# (`src/Tack/Sync`). `web/tests/unit/vectors.test.ts` writes `tests/vectors/sync.json` from
+   the TypeScript (stamps, clock scripts, keys, ids, JavaScript's white space and `JSON.stringify`,
+   dates, randomised merges, op-by-op workspace scripts with merges, file imports), and
+   `tests/Tack.Tests` replays it in C#. A Tack Focus export also goes through the desktop and back
+   (`tests/vectors/desktop-export.json`, read by the web tests) without changing a record.
+   Settings → Import merges a Tack Focus export (or any tack.json) into the desktop, with Undo.
 
 ## Phases
 
 | Phase | What | Server? |
 |---|---|---|
 | 1 (done) | Local-first PWA, sync-ready model, merge engine + tests, tack.json import/export | none |
-| 2 | Sync engine (batches, cursors, compaction, conflict copies) behind a provider interface, tested against an in-memory provider; desktop model + folder sync | none |
+| 2 | Desktop model (done); sync engine (batches, cursors, compaction, conflict copies) behind a provider interface, tested against an in-memory provider; folder sync | none |
 | 3 | OneDrive in the web app (PKCE, Graph); Settings → Sync; status and Reconnect | none |
 | 4 | Google Drive (web + desktop); optional end-to-end encryption | none (optional token Worker) |
 

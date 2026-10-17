@@ -1,0 +1,234 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "c1ed36576c95",
+      "text": "Book the crane for Thursday",
+      "created": "2026-10-17T21:00:06+00:00",
+      "now": true
+    },
+    {
+      "id": "73ab7ebd3493",
+      "text": "Quotes \u0022and\u0022 back\\slashes",
+      "created": "2026-10-17T21:00:09+00:00",
+      "now": false
+    },
+    {
+      "id": "5935373627a0",
+      "text": "Call the plumber",
+      "created": "2026-10-17T21:00:12+00:00",
+      "now": false
+    },
+    {
+      "id": "30aca4a35025",
+      "text": "Reply to Mia \uD83D\uDE00",
+      "created": "2026-10-17T21:00:07.5+00:00",
+      "now": false
+    },
+    {
+      "id": "ee8c0a4626b8",
+      "text": "Pay the invoice",
+      "created": "2026-10-17T21:00:04.5+00:00",
+      "completed": "2026-10-17T21:00:22.5+00:00",
+      "now": false
+    },
+    {
+      "id": "e16a924030e4",
+      "text": "Send the revised fee proposal",
+      "created": "2026-10-17T21:00:03+00:00",
+      "completed": "2026-10-17T21:00:15+00:00",
+      "now": false
+    }
+  ],
+  "sheets": [
+    {
+      "id": "100325d0de72",
+      "text": "Shopping\n- milk\n- eggs",
+      "updated": "2026-10-17T21:00:00+00:00"
+    },
+    {
+      "id": "faa5cfa771e1",
+      "text": "Site visit\n- rebar\n- formwork",
+      "updated": "2026-10-17T21:00:24+00:00"
+    },
+    {
+      "id": "f629614f4490",
+      "text": "Ideas\n- Caf\u00E9 \u2615\n\ttabbed",
+      "updated": "2026-10-17T21:00:28.5+00:00"
+    }
+  ],
+  "settings": {
+    "launchAtStartup": false,
+    "hideInFullscreen": true,
+    "glass": true,
+    "theme": "system",
+    "hotkey": "Ctrl\u002BAlt\u002BSpace",
+    "accent": "system",
+    "pinned": false,
+    "tab": "tasks",
+    "doneExpanded": false,
+    "tasksWidth": 340,
+    "notesWidth": 340,
+    "notesHeight": 480,
+    "activeSheet": "100325d0de72"
+  },
+  "tackFocus": {
+    "format": 1,
+    "exported": "2026-10-17T21:00:28.500\u002B00:00",
+    "device": "desktop1",
+    "focus": {
+      "id": "c1ed36576c95",
+      "clk": "0mvcvrmf0.0000.phone1"
+    },
+    "tasks": [
+      {
+        "id": "e16a924030e4",
+        "text": "Send the revised fee proposal",
+        "created": "2026-10-17T21:00:03.000\u002B00:00",
+        "completed": "2026-10-17T21:00:15.000\u002B00:00",
+        "order": "V",
+        "deleted": false,
+        "clk": {
+          "text": "0mvcvrebc.0000.phone1",
+          "completed": "0mvcvrnko.0000.phone1",
+          "order": "0mvcvrebc.0000.phone1",
+          "deleted": "0mvcvrebc.0000.phone1"
+        }
+      },
+      {
+        "id": "ee8c0a4626b8",
+        "text": "Pay the invoice",
+        "created": "2026-10-17T21:00:04.500\u002B00:00",
+        "completed": "2026-10-17T21:00:22.500\u002B00:00",
+        "order": "Q",
+        "deleted": false,
+        "clk": {
+          "text": "0mvcvrfh0.0000.phone1",
+          "completed": "0mvcvrtd0.0000.phone1",
+          "order": "0mvcvrs7c.0001.phone1",
+          "deleted": "0mvcvrfh0.0000.phone1"
+        }
+      },
+      {
+        "id": "c1ed36576c95",
+        "text": "Book the crane for Thursday",
+        "created": "2026-10-17T21:00:06.000\u002B00:00",
+        "completed": null,
+        "order": "T",
+        "deleted": false,
+        "clk": {
+          "text": "0mvcvrgmo.0000.phone1",
+          "completed": "0mvcvrgmo.0000.phone1",
+          "order": "0mvcvrgmo.0000.phone1",
+          "deleted": "0mvcvrgmo.0000.phone1"
+        }
+      },
+      {
+        "id": "30aca4a35025",
+        "text": "Reply to Mia \uD83D\uDE00",
+        "created": "2026-10-17T21:00:07.500\u002B00:00",
+        "completed": null,
+        "order": "S",
+        "deleted": false,
+        "clk": {
+          "text": "0mvcvrhsc.0000.phone1",
+          "completed": "0mvcvrhsc.0000.phone1",
+          "order": "0mvcvrhsc.0000.phone1",
+          "deleted": "0mvcvrhsc.0000.phone1"
+        }
+      },
+      {
+        "id": "73ab7ebd3493",
+        "text": "Quotes \u0022and\u0022 back\\slashes",
+        "created": "2026-10-17T21:00:09.000\u002B00:00",
+        "completed": null,
+        "order": "R",
+        "deleted": false,
+        "clk": {
+          "text": "0mvcvriy0.0000.phone1",
+          "completed": "0mvcvriy0.0000.phone1",
+          "order": "0mvcvriy0.0000.phone1",
+          "deleted": "0mvcvriy0.0000.phone1"
+        }
+      },
+      {
+        "id": "d8163698d982",
+        "text": "",
+        "created": "2026-10-17T21:00:10.500\u002B00:00",
+        "completed": null,
+        "order": "Q",
+        "deleted": true,
+        "clk": {
+          "text": "0mvcvrk3o.0000.phone1",
+          "completed": "0mvcvrk3o.0000.phone1",
+          "order": "0mvcvrk3o.0000.phone1",
+          "deleted": "0mvcvrr1o.0000.phone1"
+        }
+      },
+      {
+        "id": "5935373627a0",
+        "text": "Call the plumber",
+        "created": "2026-10-17T21:00:12.000\u002B00:00",
+        "completed": null,
+        "order": "RV",
+        "deleted": false,
+        "clk": {
+          "text": "0mvcvrl9c.0000.phone1",
+          "completed": "0mvcvrl9c.0000.phone1",
+          "order": "0mvcvrpw0.0000.phone1",
+          "deleted": "0mvcvrl9c.0000.phone1"
+        }
+      }
+    ],
+    "sheets": [
+      {
+        "id": "100325d0de72",
+        "text": "Shopping\n- milk\n- eggs",
+        "updated": "2026-10-17T21:00:00.000\u002B00:00",
+        "order": "V",
+        "deleted": false,
+        "clk": {
+          "text": "0mvcvrc00.0001.phone1",
+          "order": "0mvcvrc00.0000.phone1",
+          "deleted": "0mvcvrc00.0000.phone1"
+        }
+      },
+      {
+        "id": "faa5cfa771e1",
+        "text": "Site visit\n- rebar\n- formwork",
+        "updated": "2026-10-17T21:00:24.000\u002B00:00",
+        "order": "W",
+        "deleted": false,
+        "clk": {
+          "text": "0mvcvruio.0001.phone1",
+          "order": "0mvcvruio.0000.phone1",
+          "deleted": "0mvcvruio.0000.phone1"
+        }
+      },
+      {
+        "id": "500c54caeff5",
+        "text": "",
+        "updated": "2026-10-17T21:00:25.500\u002B00:00",
+        "order": "X",
+        "deleted": true,
+        "clk": {
+          "text": "0mvcvrvoc.0001.phone1",
+          "order": "0mvcvrvoc.0000.phone1",
+          "deleted": "0mvcvrwu0.0000.phone1"
+        }
+      },
+      {
+        "id": "f629614f4490",
+        "text": "Ideas\n- Caf\u00E9 \u2615\n\ttabbed",
+        "updated": "2026-10-17T21:00:28.500\u002B00:00",
+        "order": "X",
+        "deleted": false,
+        "clk": {
+          "text": "0mvcvrxzo.0001.phone1",
+          "order": "0mvcvrxzo.0000.phone1",
+          "deleted": "0mvcvrxzo.0000.phone1"
+        }
+      }
+    ]
+  }
+}

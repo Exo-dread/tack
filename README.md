@@ -115,6 +115,12 @@ sync with whatever you like. Saves are debounced, written atomically (temp file,
 previous version is kept as `tack.json.bak`, so a crash or power cut can't corrupt your list. If the file
 is ever unreadable, Tack recovers from the backup and keeps the damaged file aside.
 
+The file also has a `tackFocus` section: a clock for every change, sort keys and recently deleted
+items, so Tack can merge edits made elsewhere. Older versions of Tack ignore it. **Settings → Import**
+brings in a tack.json exported from Tack Focus (or copied from another PC, or a backup): anything new
+is added, where both changed the newer edit wins, a note written in both places is kept twice, and
+Undo puts everything back. Nothing is sent anywhere.
+
 **Portable mode:** create a folder named `TackData` next to `Tack.exe` and Tack keeps everything there
 instead, which is handy on a USB stick. (Like any single-file .NET app, the portable exe unpacks about 8 MB
 of native WPF libraries into `%TEMP%\.net\Tack` on first launch; it's safe to delete.)

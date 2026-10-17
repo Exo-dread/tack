@@ -7,3 +7,6 @@
 # Tack Focus: files read by tools that expect Unix line endings
 web/.node-version text eol=lf
 web/deploy/_headers text eol=lf
+
+# Shared test vectors: generated, and compared as text on Windows and Linux alike
+tests/vectors/*.json text eol=lf

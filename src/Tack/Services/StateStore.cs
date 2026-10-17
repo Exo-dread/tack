@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows.Threading;
 using Tack.Model;
+using Tack.Sync;
 
 namespace Tack.Services;
 
@@ -13,6 +14,9 @@ internal sealed class StateDocument
     public List<TaskRecord> Tasks { get; set; } = new();
     public List<SheetRecord> Sheets { get; set; } = new();
     public Settings Settings { get; set; } = new();
+
+    /// <summary>Clocks, sort keys and deletions for merging with Tack Focus (see <see cref="StateFile"/>). Older versions ignore it.</summary>
+    public TackFocusSection? TackFocus { get; set; }
 }
 
 internal sealed class TaskRecord
@@ -50,6 +54,7 @@ internal sealed class StateStore
     private readonly DispatcherTimer _debounce;
     private Workspace? _workspace;
     private byte[]? _lastWritten;
+    private DateTime _loadedFileTime = DateTime.UtcNow;
 
     public StateStore(string folder)
     {
@@ -86,6 +91,7 @@ internal sealed class StateStore
                 if (json.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF])) json = json[3..]; // BOM from editors like old Notepad
                 var doc = JsonSerializer.Deserialize(json, StateJsonContext.Default.StateDocument);
                 if (doc == null) continue;
+                _loadedFileTime = File.GetLastWriteTimeUtc(candidate);
                 if (candidate != _path) Log.Info("Recovered data from backup file.");
                 else _lastWritten = bytes;
                 return doc;
@@ -108,20 +114,10 @@ internal sealed class StateStore
     public Workspace Attach(StateDocument doc)
     {
         doc.Settings.MigrateLegacySize();
-        var ws = new Workspace(doc.Settings);
-        TaskItem? now = null;
-        var open = new List<TaskItem>();
-        var done = new List<TaskItem>();
-        foreach (var r in doc.Tasks)
-        {
-            if (string.IsNullOrWhiteSpace(r.Text)) continue;
-            var item = new TaskItem(r.Text, string.IsNullOrEmpty(r.Id) ? null : r.Id, r.Created, r.Completed);
-            if (item.IsDone) done.Add(item);
-            else if (r.Now && now == null) now = item;
-            else open.Add(item);
-        }
-        var sheets = doc.Sheets.Select(s => new NoteSheet(s.Text, string.IsNullOrEmpty(s.Id) ? null : s.Id, s.Updated)).ToList();
-        ws.Populate(now, open, done, sheets);
+        var clock = new Hlc(StateFile.Device(doc) ?? Ids.NewDeviceId());
+        long fileMs = new DateTimeOffset(_loadedFileTime, TimeSpan.Zero).ToUnixTimeMilliseconds();
+        var data = StateFile.ToData(doc, clock, fileMs, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        var ws = new Workspace(doc.Settings, clock, data);
 
         _workspace = ws;
         ws.Changed += (_, _) => RequestSave();
@@ -141,7 +137,7 @@ internal sealed class StateStore
         if (_workspace == null) return;
         try
         {
-            byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(Snapshot(_workspace), StateJsonContext.Default.StateDocument);
+            byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(StateFile.ToDocument(_workspace), StateJsonContext.Default.StateDocument);
             if (_lastWritten != null && bytes.AsSpan().SequenceEqual(_lastWritten)) return;
             WriteAtomic(bytes);
             _lastWritten = bytes;
@@ -152,21 +148,6 @@ internal sealed class StateStore
             RequestSave(); // try again shortly
         }
     }
-
-    private static StateDocument Snapshot(Workspace ws)
-    {
-        var doc = new StateDocument { Settings = ws.Settings };
-        if (ws.Now is { } now) doc.Tasks.Add(ToRecord(now, isNow: true));
-        foreach (var t in ws.Open) doc.Tasks.Add(ToRecord(t, false));
-        foreach (var t in ws.Done) doc.Tasks.Add(ToRecord(t, false));
-        foreach (var s in ws.Sheets) doc.Sheets.Add(new SheetRecord { Id = s.Id, Text = s.Text, Updated = s.UpdatedAt });
-        return doc;
-    }
-
-    private static TaskRecord ToRecord(TaskItem t, bool isNow) => new()
-    {
-        Id = t.Id, Text = t.Text, Created = t.CreatedAt, Completed = t.CompletedAt, Now = isNow,
-    };
 
     private void WriteAtomic(byte[] bytes)
     {
