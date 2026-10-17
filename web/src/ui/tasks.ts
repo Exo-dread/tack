@@ -124,6 +124,9 @@ export class TasksView {
       onDrop: (row, index) => this.ws.moveTask(row.dataset.id!, index),
       bottomInset: () => this.ctx.dockInset(),
       isBusy: () => this.editing !== null,
+      onIdle: () => {
+        if (this.deferred) this.render();
+      },
     });
 
     this.el.addEventListener('scroll', () => this.el.classList.toggle('scrolled', this.el.scrollTop > 2), { passive: true });

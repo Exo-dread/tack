@@ -110,7 +110,7 @@ Tack/                              OneDrive: /Apps/Tack   Google Drive: the hidd
 ### Second: Google Drive
 
 - Scope `drive.appdata`: a hidden per-app folder. Web and desktop OAuth clients in the same Google
-  Cloud project share it.
+  Cloud project should see the same folder (to confirm with a prototype before committing to it).
 - It is hidden from Drive for desktop, so Tack for Windows would need its own OAuth (loopback
   redirect + PKCE, tokens protected with DPAPI). More work than OneDrive's folder route.
 

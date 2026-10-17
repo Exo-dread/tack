@@ -21,6 +21,8 @@ export interface RowGestureOptions {
   /** Height covered at the bottom of the scroller (the dock), for auto-scroll. */
   bottomInset(): number;
   isBusy(): boolean;
+  /** A gesture has ended (the view may have held off re-rendering meanwhile). */
+  onIdle(): void;
 }
 
 type Phase = 'pending' | 'swipe' | 'drag';
@@ -203,6 +205,7 @@ export class RowGestures {
     window.removeEventListener('pointermove', this.onMove);
     window.removeEventListener('pointerup', this.onUp);
     window.removeEventListener('pointercancel', this.onCancel);
+    if (s && s.phase !== 'pending') requestAnimationFrame(() => this.o.onIdle());
   }
 
   // ------------------------------------------------------------------ swipe

@@ -158,7 +158,7 @@ export class Store {
     if (change.focus) this.dirtyFocus = true;
     const typingOnly = change.tasks.size === 0 && !change.focus;
     this.schedule(typingOnly ? TYPING_DELAY : 0);
-    if (!this.persistAsked) {
+    if (!this.persistAsked && !persistenceNeedsPrompt()) {
       this.persistAsked = true;
       void requestPersistence();
     }
@@ -193,6 +193,14 @@ export async function requestPersistence(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Firefox answers persist() with a permission prompt (Chrome and Safari decide silently), so
+ * there Tack only asks when you press the button in Settings.
+ */
+export function persistenceNeedsPrompt(): boolean {
+  return /Firefox\//.test(navigator.userAgent);
 }
 
 export async function isPersisted(): Promise<boolean | null> {

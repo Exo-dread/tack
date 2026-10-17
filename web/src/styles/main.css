@@ -1544,3 +1544,5 @@ kbd {
     transition-delay: 0s !important;
   }
 }
+
+.text-button.inline { height: auto; padding: 2px 4px; font-size: inherit; }

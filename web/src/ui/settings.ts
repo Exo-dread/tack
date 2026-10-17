@@ -2,7 +2,7 @@ import { exportFile, FileError, readFile } from '../model/file';
 import { parseDate } from '../model/time';
 import type { Workspace } from '../model/workspace';
 import type { Snapshot } from '../store/db';
-import { isPersisted, requestPersistence, type Store } from '../store/persist';
+import { isPersisted, persistenceNeedsPrompt, requestPersistence, type Store } from '../store/persist';
 import { prefs, setPrefs, type ThemePref } from '../store/prefs';
 import { h, svg } from './dom';
 import { hapticsSupported, setHaptics } from './haptics';
@@ -208,11 +208,25 @@ export class Settings {
       return;
     }
     let persisted = await isPersisted();
-    if (persisted === false) persisted = await requestPersistence();
-    if (persisted) line.textContent = 'Storage is protected: the browser won’t clear it to free up space.';
-    else if (persisted === false)
-      line.textContent = 'The browser may clear site data if space runs low or the site goes unused. Installing Tack protects it; exporting now and then keeps a copy.';
-    else line.textContent = '';
+    if (persisted === false && !persistenceNeedsPrompt()) persisted = await requestPersistence();
+    if (persisted) {
+      line.textContent = 'Storage is protected: the browser won’t clear it to free up space.';
+    } else if (persisted === false) {
+      line.textContent =
+        'The browser may clear site data if space runs low or the site goes unused. Installing Tack protects it; exporting now and then keeps a copy.';
+      if (persistenceNeedsPrompt()) {
+        line.append(
+          ' ',
+          h('button.text-button.inline', {
+            type: 'button',
+            text: 'Protect storage',
+            onclick: () => void requestPersistence().then(() => this.describeStorage(line)),
+          }),
+        );
+      }
+    } else {
+      line.textContent = '';
+    }
   }
 
   private async exportData(): Promise<void> {
