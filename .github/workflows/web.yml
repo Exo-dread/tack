@@ -4,8 +4,9 @@ on:
   push:
     branches: [main]
     paths: ['web/**', 'tests/vectors/**', '.github/workflows/web.yml']
+  # Every pull request, whatever it touches: main only accepts pull requests whose checks pass,
+  # and a check that never runs would hold a desktop-only change forever.
   pull_request:
-    paths: ['web/**', 'tests/vectors/**', '.github/workflows/web.yml']
 
 permissions:
   contents: read

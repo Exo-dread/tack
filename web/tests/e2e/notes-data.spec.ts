@@ -110,14 +110,23 @@ test.describe('your data', () => {
     });
     await button(page, 'Settings').click();
     await page.locator('dialog input[type=file]').setInputFiles({ name: 'tack.json', mimeType: 'application/json', buffer: Buffer.from(file) });
+    // Settings steps aside by itself, so the toast and its Undo are in reach straight away.
+    await expect(page.locator('dialog[open]')).toHaveCount(0);
     await expect(page.locator('.toast')).toContainText('Imported 3 tasks and 1 sheet');
-    await button(page, 'Done').click();
     await expect(nowText(page)).toHaveText('Finish the drainage report draft');
     await expect(openTexts(page).filter({ hasText: 'Already here' })).toHaveCount(1);
     await expect(openTexts(page).filter({ hasText: 'Reply to Mia' })).toHaveCount(1);
     // Undo takes the import back out.
     await button(page, 'Undo').click();
     await expect(openTexts(page).filter({ hasText: 'Reply to Mia' })).toHaveCount(0);
+  });
+
+  test('import problems are explained inside Settings, not behind it', async ({ page }) => {
+    await open(page);
+    await button(page, 'Settings').click();
+    await page.locator('dialog input[type=file]').setInputFiles({ name: 'notes.json', mimeType: 'application/json', buffer: Buffer.from('{"hello": 1}') });
+    await expect(page.locator('dialog .data-status')).toHaveText("This doesn't look like a Tack file.");
+    await expect(page.locator('dialog[open]')).toHaveCount(1);
   });
 
   test('exports a desktop-readable tack.json', async ({ page }) => {
