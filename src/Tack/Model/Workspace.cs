@@ -175,7 +175,7 @@ public sealed class Workspace : Observable, IImportTarget
         Open.RemoveAt(index);
         if (previous != null)
         {
-            SetOrder(previous, OrderKey.At(Open.Select(t => t.Order).ToList(), index));
+            SetOrderAt(previous, Open.ToList(), index);
             InsertSorted(Open, previous, CompareOpen);
         }
         SetFocus(task);
@@ -249,8 +249,8 @@ public sealed class Workspace : Observable, IImportTarget
         if (from == to || from < 0 || to < 0 || from >= Open.Count || to >= Open.Count) return;
         var task = Open[from];
         var others = Open.Where(t => t != task).ToList();
-        SetOrder(task, OrderKey.At(others.Select(t => t.Order).ToList(), to));
-        // Where the key sorts (the same as "to", unless two devices left equal keys behind).
+        SetOrderAt(task, others, to);
+        // Where the key sorts: "to", now that neighbours with equal keys have made room.
         int target = others.Count(t => CompareOpen(t, task) < 0);
         if (target != from) Open.Move(from, target);
     }
@@ -518,6 +518,17 @@ public sealed class Workspace : Observable, IImportTarget
     {
         task.Order = order;
         Restamp(task, order: true);
+    }
+
+    /// <summary>
+    /// Gives a task the place at <paramref name="index"/> in <paramref name="list"/> (open tasks in order, without it).
+    /// Neighbours that share a key with the one above get new keys too (keeping their order), so the task really lands there.
+    /// </summary>
+    private void SetOrderAt(TaskItem task, IReadOnlyList<TaskItem> list, int index)
+    {
+        var keys = OrderKey.KeysAt(list.Select(t => t.Order).ToList(), index);
+        SetOrder(task, keys[0]);
+        for (int i = 1; i < keys.Length; i++) SetOrder(list[index + i - 1], keys[i]);
     }
 
     private void Restamp(TaskItem task, bool text = false, bool completed = false, bool order = false, bool deleted = false)

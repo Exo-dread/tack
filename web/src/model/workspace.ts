@@ -1,7 +1,7 @@
 import { Hlc, ZERO, type Stamp } from './hlc';
 import { newId } from './ids';
 import { cloneSheet, cloneTask, mergeFocus, mergeSheet, mergeTask } from './merge';
-import { keyAfter, keyAt, keyBefore } from './order';
+import { keyAfter, keyBefore, keysAt } from './order';
 import { cleanTaskText } from './text';
 import { isoLocal, parseDate, sameLocalDay } from './time';
 import type { Focus, Sheet, Task, WorkspaceData } from './types';
@@ -183,8 +183,7 @@ export class Workspace {
       if (previous) {
         const list = this.open;
         const index = list.findIndex((x) => x.id === id);
-        const others = list.filter((x) => x.id !== id).map((x) => x.order);
-        this.setTaskField(previous, 'order', keyAt(others, Math.max(0, index)));
+        this.setOrderAt(previous, list.filter((x) => x.id !== id), Math.max(0, index));
       }
       this.setFocus(id);
     });
@@ -233,7 +232,7 @@ export class Workspace {
     if (current === clamped) return;
     this.batch(() => {
       if (this.now?.id === id) this.setFocus(null);
-      this.setTaskField(t, 'order', keyAt(others.map((x) => x.order), clamped));
+      this.setOrderAt(t, others, clamped);
     });
   }
 
@@ -449,6 +448,16 @@ export class Workspace {
     next[field] = value;
     next.clk[field] = this.hlc.now();
     this.putTask(next);
+  }
+
+  /**
+   * Gives `task` the place at `index` in `list` (open tasks in order, without it). Neighbours
+   * that share a key with the one above get new keys too, so the task really lands there.
+   */
+  private setOrderAt(task: Task, list: readonly Task[], index: number): void {
+    const keys = keysAt(list.map((x) => x.order), index);
+    this.setTaskField(task, 'order', keys[0]!);
+    for (let i = 1; i < keys.length; i++) this.setTaskField(list[index + i - 1]!, 'order', keys[i]!);
   }
 
   private setSheetDeleted(sheet: Sheet, deleted: boolean): void {

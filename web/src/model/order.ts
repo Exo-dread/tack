@@ -63,12 +63,28 @@ export function keyBetween(a: string | null, b: string | null): string {
 }
 
 /**
- * The key for inserting at `index` in a list sorted by key. Tolerates duplicate keys
- * (possible after merging two devices' edits) by placing the item just after the earlier one.
+ * Keys for putting an item at `index` in a list sorted by key: the item's key first, then
+ * new keys for the neighbours from `index` on that have to make room. Usually that's the
+ * item's key alone. But lists can hold equal keys (two devices adding at the top at once, or
+ * a task coming back from focus elsewhere with the key it had), and nothing sorts between
+ * equal keys. Then the neighbours below that don't sort after the one above get new keys too,
+ * in the same order, so the item really lands at `index`.
+ *
+ * The extra keys are ordinary edits made by the device that moves the item, so every device
+ * that receives them sorts the list the same way; merging never has to invent keys.
  */
-export function keyAt(sortedKeys: readonly string[], index: number): string {
+export function keysAt(sortedKeys: readonly string[], index: number): string[] {
   const a = index > 0 ? sortedKeys[index - 1] ?? null : null;
-  const b = index < sortedKeys.length ? sortedKeys[index] ?? null : null;
-  if (a !== null && b !== null && !(a < b)) return keyAfter(a);
-  return keyBetween(a, b);
+  let end = index;
+  while (a !== null && end < sortedKeys.length && !(a < sortedKeys[end]!)) end++;
+  const b = end < sortedKeys.length ? sortedKeys[end] ?? null : null;
+  const keys = new Array<string>(end - index + 1);
+  if (b === null) {
+    let k = a;
+    for (let i = 0; i < keys.length; i++) keys[i] = k = k === null ? MID : keyAfter(k);
+  } else {
+    let k = b;
+    for (let i = keys.length - 1; i >= 0; i--) keys[i] = k = keyBetween(a, k);
+  }
+  return keys;
 }

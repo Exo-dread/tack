@@ -14,7 +14,7 @@ import { exportFile, importFile, readFile, type TackFile } from '../../src/model
 import { decode, encode, Hlc, isPlausibleStamp, isStamp, stampTime, ZERO, type Stamp } from '../../src/model/hlc';
 import { derivedId } from '../../src/model/ids';
 import { mergeFocus, mergeSheet, mergeTask } from '../../src/model/merge';
-import { isOrderKey, keyAfter, keyAt, keyBefore, keyBetween } from '../../src/model/order';
+import { isOrderKey, keyAfter, keyBefore, keyBetween, keysAt } from '../../src/model/order';
 import { cleanTaskText } from '../../src/model/text';
 import { parseDate } from '../../src/model/time';
 import type { Focus, Sheet, Task, WorkspaceData } from '../../src/model/types';
@@ -173,6 +173,19 @@ function orderVectors() {
     { keys: ['A', 'B', 'C'], index: 5 },
     { keys: ['A'], index: -1 },
     { keys: ['U', 'V', 'W'], index: 3 },
+    // Equal keys: the neighbours below make room.
+    { keys: ['V', 'V'], index: 0 },
+    { keys: ['V', 'V'], index: 2 },
+    { keys: ['V', 'V', 'X'], index: 1 },
+    { keys: ['S', 'T', 'T', 'U'], index: 2 },
+    { keys: ['T', 'T', 'T', 'T', 'U'], index: 1 },
+    { keys: ['T', 'T', 'T', 'T', 'U'], index: 3 },
+    { keys: ['T', 'T', 'T'], index: 2 },
+    { keys: ['zz', 'zz'], index: 1 },
+    { keys: ['V', 'V0V', 'V0V', 'V1'], index: 2 },
+    { keys: ['W', 'V'], index: 1 },
+    { keys: ['V', 'V', 'V'], index: -1 },
+    { keys: ['V', 'V', 'V'], index: 4 },
   ];
 
   let top = 'V';
@@ -188,9 +201,19 @@ function orderVectors() {
   const inserts: { index: number; key: string }[] = [];
   for (let i = 0; i < 400; i++) {
     const index = r.int(keys.length + 1);
-    const key = keyAt(keys, index);
-    inserts.push({ index, key });
-    keys = [...keys.slice(0, index), key, ...keys.slice(index)];
+    const [key] = keysAt(keys, index); // these keys never tie, so it's the item's key alone
+    inserts.push({ index, key: key! });
+    keys = [...keys.slice(0, index), key!, ...keys.slice(index)];
+  }
+  // The same from a list several devices left with equal keys.
+  const tiedStart = ['T', 'T', 'T', 'V', 'V', 'X', 'X', 'X', 'X'];
+  let tied = tiedStart;
+  const tiedInserts: { index: number; placed: string[] }[] = [];
+  for (let i = 0; i < 60; i++) {
+    const index = r.int(tied.length + 1);
+    const placed = keysAt(tied, index);
+    tiedInserts.push({ index, placed });
+    tied = [...tied.slice(0, index), ...placed, ...tied.slice(index + placed.length - 1)];
   }
 
   return {
@@ -203,11 +226,12 @@ function orderVectors() {
         return { a, b, error: true };
       }
     }),
-    at: at.map(({ keys, index }) => ({ keys, index, key: keyAt(keys, index) })),
+    at: at.map(({ keys, index }) => ({ keys, index, placed: keysAt(keys, index) })),
     isOrderKey: ['V', 'V0', '', '0', '01', 'a-b', 'Ab9', 'zz', ' V', 'V\n', 'V1'].map((value) => ({ value, valid: isOrderKey(value) })),
     tops,
     bottoms,
     inserts,
+    tied: { start: tiedStart, inserts: tiedInserts },
   };
 }
 
@@ -491,6 +515,69 @@ function workspaceScript(seed: number, steps: number, merges: boolean) {
   return { node: 'desk', ops, data: desk.toData() };
 }
 
+/**
+ * Tasks with equal keys (what the desktop click-through of 2026-10-18 ran into). A task in focus
+ * keeps its key while another one is moved onto that key; a newer focus task arrives from the
+ * phone and the first one comes back to the list, tied. Later three devices have added at the
+ * top at once. Moving a task between tied ones, or putting the previous focus task there, must
+ * still land it there, with the same keys and clocks in both apps.
+ */
+function tiedScript() {
+  let wall = T0;
+  const desk = new Workspace(new Hlc('desk', () => wall), () => new Date(wall));
+  const phone = new Workspace(new Hlc('phone', () => wall), () => new Date(wall));
+  const ops: (Op & { views: ReturnType<typeof views>; check: WorkspaceData })[] = [];
+  const record = (op: Omit<Op, 'wall'>) => ops.push({ ...op, wall, views: views(desk), check: desk.toData() });
+  const later = () => (wall += 1000);
+
+  record({ op: 'start', ensured: desk.ensureSheet().id });
+  const [d, c, b] = ['d', 'c', 'b', 'a'].map((text) => {
+    later();
+    const t = desk.addTask(text)!;
+    record({ op: 'add', id: t.id, text: t.text });
+    return t;
+  });
+  phone.ensureSheet();
+  phone.merge(desk.toData(), 'remote');
+  later();
+  desk.setNow(b!.id);
+  record({ op: 'setNow', id: b!.id });
+  later();
+  desk.moveTask(d!.id, 1); // a d c: d gets the key b still has
+  record({ op: 'move', id: d!.id, index: 1 });
+  later();
+  phone.addTask('from the phone', { asNow: true });
+  later();
+  const fromPhone = phone.toData();
+  desk.merge(fromPhone, 'remote'); // the phone's focus is newer: b is back in the list, tied with d
+  record({ op: 'merge', data: fromPhone, base: null });
+  later();
+  desk.moveTask(c!.id, 2); // up between the tied pair
+  record({ op: 'move', id: c!.id, index: 2 });
+
+  later();
+  const clk = encode(wall, 0, 'tab');
+  const top = (id: string): Task => ({
+    id, text: `added at the top on ${id.slice(0, 4)}`, created: '2026-10-17T20:00:00.000+00:00', completed: null,
+    order: 'R', deleted: false, clk: { text: clk, completed: clk, order: clk, deleted: clk },
+  });
+  const tops: WorkspaceData = {
+    tasks: ['eeeeeeeeeeee', 'ffffffffffff', 'gggggggggggg', 'hhhhhhhhhhhh'].map(top),
+    sheets: [],
+    focus: { id: null, clk: ZERO },
+  };
+  desk.merge(tops, 'remote');
+  record({ op: 'merge', data: tops, base: null });
+  later();
+  const bottom = desk.open.at(-1)!;
+  desk.moveTask(bottom.id, 3); // from the bottom to between g and h
+  record({ op: 'move', id: bottom.id, index: 3 });
+  later();
+  desk.setNow('ffffffffffff'); // the phone's task takes its place, between e and g
+  record({ op: 'setNow', id: 'ffffffffffff' });
+  return { node: 'desk', ops, data: desk.toData() };
+}
+
 /** A Tack Focus workspace with a bit of everything, exported: the desktop must read it and write it back unchanged. */
 function roundTrip() {
   let wall = T0 + 3_600_000;
@@ -706,7 +793,7 @@ function fileVectors() {
 function buildVectors() {
   const spy = vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation(seededRandomValues(20261017));
   try {
-    return {
+    const vectors = {
       about: 'Generated by web/tests/unit/vectors.test.ts from web/src/model. Do not edit: run `npm run vectors` in web/.',
       stamps: stampVectors(),
       hlc: hlcVectors(),
@@ -721,6 +808,9 @@ function buildVectors() {
       legacy: { file: desktopFile, records: readFile(desktopFile, new Workspace(new Hlc('web', () => T0), () => new Date(T0))) },
       roundTrip: roundTrip(),
     };
+    // Added later: made last, so the ids everything above was given stay the same.
+    vectors.workspaces.push(tiedScript());
+    return vectors;
   } finally {
     spy.mockRestore();
   }

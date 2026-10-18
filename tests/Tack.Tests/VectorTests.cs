@@ -104,8 +104,8 @@ internal static class VectorTests
         }
         foreach (var c in order.GetProperty("at").EnumerateArray())
         {
-            var keys = c.GetProperty("keys").EnumerateArray().Select(k => k.GetString()!).ToList();
-            Check.Equal(c.Str("key"), OrderKey.At(keys, c.GetProperty("index").GetInt32()), $"at [{string.Join(",", keys)}] {c.GetProperty("index")}");
+            var keys = Strings(c.GetProperty("keys"));
+            Check.Sequence(Strings(c.GetProperty("placed")), OrderKey.KeysAt(keys, c.GetProperty("index").GetInt32()), $"keys at [{string.Join(",", keys)}] {c.GetProperty("index")}");
         }
         foreach (var c in order.GetProperty("isOrderKey").EnumerateArray())
             Check.Equal(c.GetProperty("valid").GetBoolean(), OrderKey.IsOrderKey(c.Str("value")), $"isOrderKey {c.Str("value")}");
@@ -124,11 +124,25 @@ internal static class VectorTests
         foreach (var c in order.GetProperty("inserts").EnumerateArray())
         {
             int index = c.GetProperty("index").GetInt32();
-            string key = OrderKey.At(keys, index);
-            Check.Equal(c.Str("key"), key, $"insert {i++} at {index}");
-            keys.Insert(index, key);
+            var placed = OrderKey.KeysAt(keys, index);
+            Check.Sequence(new[] { c.Str("key")! }, placed, $"insert {i++} at {index}");
+            keys.Insert(index, placed[0]);
+        }
+
+        var tied = order.GetProperty("tied");
+        keys = Strings(tied.GetProperty("start"));
+        i = 0;
+        foreach (var c in tied.GetProperty("inserts").EnumerateArray())
+        {
+            int index = c.GetProperty("index").GetInt32();
+            var placed = OrderKey.KeysAt(keys, index);
+            Check.Sequence(Strings(c.GetProperty("placed")), placed, $"tied insert {i++} at {index}");
+            keys.RemoveRange(index, placed.Length - 1);
+            keys.InsertRange(index, placed);
         }
     }
+
+    private static List<string> Strings(JsonElement array) => array.EnumerateArray().Select(k => k.GetString()!).ToList();
 
     private static void DerivedIds()
     {

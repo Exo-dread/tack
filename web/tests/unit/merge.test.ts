@@ -83,6 +83,30 @@ describe('merging two devices', () => {
     expect(desk.now?.id).toBe(b.id);
   });
 
+  it('can still move a task between two that a focus change left with the same key', () => {
+    // What the desktop click-through of 2026-10-18 ran into.
+    const { phone, desk, tick } = devices();
+    const [d, c, b] = ['d', 'c', 'b', 'a'].map((t) => desk.addTask(t)!); // a b c d
+    sync(phone, desk);
+    tick();
+    desk.setNow(b!.id); // b keeps its key while it's in focus
+    tick();
+    desk.moveTask(d!.id, 1); // a d c: d gets the same key as b
+    expect(desk.tasks.get(d!.id)!.order).toBe(desk.tasks.get(b!.id)!.order);
+    tick();
+    phone.addTask('from the phone', { asNow: true });
+    sync(phone, desk); // the phone's focus is newer: b comes back to the list, tied with d
+    const [first, x, y, last] = visible(desk).open;
+    expect([first, last]).toEqual(['a', 'c']);
+    expect([x, y].sort()).toEqual(['b', 'd']);
+
+    tick();
+    desk.moveTask(c!.id, 2); // up between the tied pair
+    expect(visible(desk).open).toEqual(['a', x, 'c', y]);
+    sync(phone, desk);
+    expect(visible(phone)).toEqual(visible(desk));
+  });
+
   it('keeps both versions of a note edited on two devices at once', () => {
     const { phone, desk, tick } = devices();
     const s = desk.addSheet('Shopping\n- milk');

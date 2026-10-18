@@ -75,15 +75,34 @@ internal static partial class OrderKey
     }
 
     /// <summary>
-    /// The key for inserting at <paramref name="index"/> in a list sorted by key. Tolerates duplicate keys
-    /// (possible after merging two devices' edits) by placing the item just after the earlier one.
+    /// Keys for putting an item at <paramref name="index"/> in a list sorted by key: the item's key first,
+    /// then new keys for the neighbours from <paramref name="index"/> on that have to make room. Usually
+    /// that's the item's key alone. But lists can hold equal keys (two devices adding at the top at once,
+    /// or a task coming back from focus elsewhere with the key it had), and nothing sorts between equal
+    /// keys. Then the neighbours below that don't sort after the one above get new keys too, in the same
+    /// order, so the item really lands at <paramref name="index"/>.
+    ///
+    /// The extra keys are ordinary edits made by the device that moves the item, so every device that
+    /// receives them sorts the list the same way; merging never has to invent keys.
     /// </summary>
-    public static string At(IReadOnlyList<string> sortedKeys, int index)
+    public static string[] KeysAt(IReadOnlyList<string> sortedKeys, int index)
     {
         string? a = index > 0 && index - 1 < sortedKeys.Count ? sortedKeys[index - 1] : null;
-        string? b = index >= 0 && index < sortedKeys.Count ? sortedKeys[index] : null;
-        if (a != null && b != null && !Less(a, b)) return After(a);
-        return Between(a, b);
+        int end = index;
+        while (a != null && end < sortedKeys.Count && !Less(a, sortedKeys[end])) end++;
+        string? b = end >= 0 && end < sortedKeys.Count ? sortedKeys[end] : null;
+        var keys = new string[end - index + 1];
+        if (b == null)
+        {
+            string? k = a;
+            for (int i = 0; i < keys.Length; i++) keys[i] = k = k == null ? Mid : After(k);
+        }
+        else
+        {
+            string k = b;
+            for (int i = keys.Length - 1; i >= 0; i--) keys[i] = k = Between(a, k);
+        }
+        return keys;
     }
 
     /// <summary>

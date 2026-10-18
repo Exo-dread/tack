@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Hlc, ZERO, decode, encode } from '../../src/model/hlc';
-import { keyAfter, keyAt, keyBefore, keyBetween, isOrderKey } from '../../src/model/order';
+import { keyAfter, keyBefore, keyBetween, keysAt, isOrderKey } from '../../src/model/order';
 import { continueList, pastedLines, sheetTitle, noteLinesToTasks } from '../../src/model/text';
 import { isoLocal, parseDate } from '../../src/model/time';
+import type { Task } from '../../src/model/types';
 import { Workspace, type Change } from '../../src/model/workspace';
 
 function fixedClock(start = Date.UTC(2026, 9, 17, 9, 0, 0)) {
@@ -22,9 +23,10 @@ describe('order keys', () => {
     const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (let i = 0; i < 3000; i++) {
       const index = Math.floor(rand() * (keys.length + 1));
-      const key = keyAt(keys, index);
-      expect(isOrderKey(key)).toBe(true);
-      keys = [...keys.slice(0, index), key, ...keys.slice(index)];
+      const placed = keysAt(keys, index);
+      expect(placed).toHaveLength(1);
+      expect(isOrderKey(placed[0])).toBe(true);
+      keys = [...keys.slice(0, index), placed[0]!, ...keys.slice(index)];
     }
     for (let i = 1; i < keys.length; i++) expect(keys[i - 1] < keys[i]).toBe(true);
   });
@@ -51,9 +53,37 @@ describe('order keys', () => {
     expect(() => keyBetween('W', 'V')).toThrow();
   });
 
-  it('tolerates duplicate keys', () => {
-    const k = keyAt(['V', 'V', 'X'], 1);
-    expect(k > 'V').toBe(true);
+  it('makes room between equal keys, so an item lands where it was put', () => {
+    // The desktop click-through: S, T, T, U and a task put between the two T's.
+    const placed = keysAt(['S', 'T', 'T', 'U'], 2);
+    expect(placed).toHaveLength(2); // the item, and the T below it
+    const keys = ['S', 'T', ...placed, 'U'];
+    for (let i = 2; i < keys.length; i++) expect(keys[i - 1]! < keys[i]!).toBe(true);
+    // Equal keys elsewhere are left alone.
+    expect(keysAt(['T', 'T', 'U'], 0)).toEqual([keyBefore('T')]);
+    expect(keysAt(['T', 'T', 'U'], 3)).toEqual([keyAfter('U')]);
+  });
+
+  it('lands every item where it was put, even among equal keys (randomised)', () => {
+    let seed = 13;
+    const rand = (n: number) => Math.floor(((seed = (seed * 16807) % 2147483647) / 2147483647) * n);
+    const pool = ['0z', 'R', 'S', 'T', 'T', 'T1', 'U', 'V', 'zz'];
+    for (let round = 0; round < 2000; round++) {
+      const keys = Array.from({ length: rand(8) }, () => pool[rand(pool.length)]!).sort();
+      const index = rand(keys.length + 1);
+      const placed = keysAt(keys, index);
+      const after = [...keys.slice(0, index), ...placed, ...keys.slice(index + placed.length - 1)];
+      expect(after).toHaveLength(keys.length + 1);
+      expect(after.slice(0, index)).toEqual(keys.slice(0, index));
+      for (const k of placed) expect(isOrderKey(k)).toBe(true);
+      for (let i = 1; i < after.length; i++) expect(after[i - 1]! <= after[i]!).toBe(true);
+      // Strictly between its neighbours, so it sorts at `index` whatever its id.
+      if (index > 0) expect(after[index - 1]! < after[index]!).toBe(true);
+      if (index < keys.length) expect(after[index]! < after[index + 1]!).toBe(true);
+      // Only the neighbours that had no room (the same key as the one above) get new keys.
+      const ties = index > 0 ? keys.slice(index).filter((k) => k === keys[index - 1]).length : 0;
+      expect(placed).toHaveLength(1 + ties);
+    }
   });
 });
 
@@ -207,6 +237,37 @@ describe('workspace', () => {
     ws.moveTask(c.id, 1);
     expect(ws.open.map((t) => t.text)).toEqual(['a', 'c', 'b']);
     expect(b).toBeTruthy();
+  });
+
+  /** Tasks from elsewhere with the given keys, e.g. as two devices left them. */
+  function withKeys(ws: Workspace, keys: Record<string, string>, focus: string | null = null) {
+    const c = encode(Date.UTC(2026, 9, 17, 8, 0, 0), 0, 'other');
+    const tasks: Task[] = Object.entries(keys).map(([text, order]) => ({
+      id: text.repeat(12), text, created: '2026-10-17T08:00:00.000Z', completed: null, order, deleted: false,
+      clk: { text: c, completed: c, order: c, deleted: c },
+    }));
+    ws.merge({ tasks, focus: { id: focus && focus.repeat(12), clk: c } }, 'remote');
+  }
+
+  it('moves a task between two tasks that share a key', () => {
+    const { ws } = makeWs();
+    withKeys(ws, { a: 'S', b: 'T', d: 'T', c: 'U' });
+    expect(ws.open.map((t) => t.text)).toEqual(['a', 'b', 'd', 'c']);
+    ws.moveTask('c'.repeat(12), 2);
+    expect(ws.open.map((t) => t.text)).toEqual(['a', 'b', 'c', 'd']);
+    // c and the d below it were re-keyed; a and b kept theirs.
+    expect(ws.open.map((t) => t.order)).toEqual(['S', 'T', 'U', 'V']);
+    ws.moveTask('a'.repeat(12), 1);
+    expect(ws.open.map((t) => t.text)).toEqual(['b', 'a', 'c', 'd']);
+  });
+
+  it('puts the previous focus task between tied neighbours', () => {
+    const { ws } = makeWs();
+    withKeys(ws, { p: 'Q', e: 'R', f: 'R', g: 'R', a: 'S' }, 'p');
+    expect(ws.open.map((t) => t.text)).toEqual(['e', 'f', 'g', 'a']);
+    ws.setNow('f'.repeat(12));
+    expect(ws.now?.text).toBe('f');
+    expect(ws.open.map((t) => t.text)).toEqual(['e', 'p', 'g', 'a']);
   });
 
   it('clears done with undo', () => {
