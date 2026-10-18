@@ -78,6 +78,7 @@ change: `npm run vectors` (in `web/`) rewrites `tests/vectors/sync.json`, then
 
 ## Releasing
 
-Update `CHANGELOG.md`, then push a tag such as `v1.1.0`. The
+Bump `<Version>` in `src/Tack/Tack.csproj`, add the version's section to `CHANGELOG.md` (as
+`## 1.2.0 (date)`), merge that pull request, then push a tag such as `v1.2.0` on `main`. The
 [release workflow](.github/workflows/release.yml) builds the downloads with `build.ps1` and publishes them
-to a GitHub Release.
+to a GitHub Release whose text is that CHANGELOG section (`tools/release-notes.ps1`).

@@ -68,6 +68,7 @@ To start Tack with Windows, turn on **Settings → Start with Windows**.
 | **Move** | Drag the orb, or drag the panel by its header. The orb follows the panel's nearest corner. |
 | **Resize** | Drag the panel's edges. Each tab remembers its own size; until you resize Tasks, it fits its list. Double-click the header to go back to automatic sizing. |
 | **Theme** | **Settings → Theme**: System (follows Windows), Light or Dark. |
+| **Import** | **Settings → Import** merges a tack.json from [Tack Focus](web/README.md) (its Settings → Export), another PC or a backup. Undo puts it back. |
 | **Pin** | 📌 keeps the panel open over other apps. Unpinned, it folds away when you click elsewhere. |
 | **Orb menu** | Right-click the orb for Open, Settings and Quit. |
 

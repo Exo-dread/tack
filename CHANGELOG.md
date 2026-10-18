@@ -1,13 +1,25 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 (2026-10-18)
 
-- **Ready to sync with Tack Focus.** tack.json gains the `tackFocus` section Tack Focus writes: a clock
-  for every field, sort keys for the list, and deletions remembered for 90 days. The top level is
-  unchanged, so Tack 1.1 still opens the file; a file saved by 1.1, or edited by hand, is taken as it
-  is. Merging is a port of Tack Focus's engine, checked against the same test vectors.
-- **Settings → Import.** Merges a tack.json from Tack Focus, another PC or a backup: new things are
-  added, the newer edit wins, a note changed in both places is kept twice. Undo puts it all back.
+Tack now has a companion for your phone: **Tack Focus** (tackfocus.app), the same tasks and notes as an
+installable web app that works offline. This release lets the two share your data.
+
+- **Bring your phone's tasks to your PC: Settings → Import.** In Tack Focus, Settings → Export saves a
+  tack.json; import it here (or one copied from another PC, or a backup). Anything new is added, where
+  both sides changed the newer edit wins, and a note written in both places is kept twice rather than
+  overwritten. Undo puts everything back. Tack Focus can import a Tack for Windows tack.json the same
+  way.
+- **Ready to sync with Tack Focus.** tack.json gains a `tackFocus` section: a clock for every change,
+  sort keys for the list, and deletions remembered for 90 days so they can reach your other devices
+  (then forgotten for good). The top level of the file is unchanged, so Tack 1.1 still opens it, and a
+  file saved by 1.1 or edited by hand is taken as it is. Merging is a port of Tack Focus's engine,
+  checked against the same test vectors. Syncing itself, through your own OneDrive or Google Drive,
+  comes later; Tack still makes no network requests.
+- Notes keep Windows line breaks in the editor but are stored the way Tack Focus stores them, so a
+  note opened on both never looks changed when it isn't.
+- After an import or merge, a task can always be moved between any two others (even two that ended up
+  in the same spot).
 
 ## 1.1.0 (2026-10-17)
 
