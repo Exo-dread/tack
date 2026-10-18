@@ -22,6 +22,8 @@ internal sealed class FolderSync : IDisposable
 {
     private static readonly TimeSpan AfterEdit = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan AfterFolderChange = TimeSpan.FromSeconds(1.5);
+    /** Hiccups stay quiet until this many in a row. */
+    private const int QuietFailures = 3;
 
     private readonly Workspace _ws;
     private readonly StateStore _store;
@@ -249,15 +251,25 @@ internal sealed class FolderSync : IDisposable
         catch (SyncException ex)
         {
             _failures++;
+            Log.Info($"Sync attempt failed ({ex.Kind}): {ex.Message}");
             retry = TimeSpan.FromSeconds(Math.Min(1800, 5 * Math.Pow(2, Math.Min(_failures - 1, 10))));
-            string message = ex.Kind switch
+            bool lasting = ex.Kind is SyncErrorKind.Full or SyncErrorKind.Denied;
+            if (lasting || _failures >= QuietFailures)
             {
-                SyncErrorKind.Full => "The disk is full, so Tack can’t save its sync file.",
-                SyncErrorKind.Denied => $"Tack isn’t allowed to write in the sync folder ({ex.Message}).",
-                SyncErrorKind.Gone => "The sync folder went away (is OneDrive running?).",
-                _ => "The OneDrive app is busy with the sync folder. Tack will try again shortly.",
-            };
-            SetStatus(Status with { Phase = ex.Kind is SyncErrorKind.Offline ? SyncPhase.Waiting : SyncPhase.Error, Message = message });
+                string message = ex.Kind switch
+                {
+                    SyncErrorKind.Full => "The disk is full, so Tack can’t save its sync file.",
+                    SyncErrorKind.Denied => "Tack isn’t allowed to write in the sync folder.",
+                    SyncErrorKind.Gone => "The sync folder went away (is OneDrive running?). Tack will keep trying.",
+                    _ => "The OneDrive app is busy with the sync folder. Tack will keep trying.",
+                };
+                SetStatus(Status with { Phase = lasting ? SyncPhase.Error : SyncPhase.Waiting, Message = message });
+            }
+            else
+            {
+                // A hiccup (a file the OneDrive app is writing right now): quietly try again.
+                SetStatus(Status with { Phase = Status.LastSync > 0 ? SyncPhase.Synced : SyncPhase.Syncing });
+            }
         }
         catch (Exception ex)
         {

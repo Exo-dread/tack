@@ -25,9 +25,10 @@ same notes, same `tack.json`.
 - **Phones get a dock, wide screens get both.** Above 900 px, Tasks and Notes sit side by side.
 - **Your data stays yours.** IndexedDB on the device, a daily snapshot for the last seven days,
   export to (and import from) `tack.json`, which Tack for Windows reads.
-- **Sync, if you want it.** Settings → Sync → *Turn on sync*, sign in with Microsoft once, and Tack
-  Focus and Tack for Windows keep each other up to date through a folder in your own OneDrive.
-  No Tack server, no daily sign-in, nothing to press. See [../docs/SYNC.md](../docs/SYNC.md).
+- **Sync, if you want it** (switched on once the Microsoft app registration exists; see
+  [../docs/SYNC.md](../docs/SYNC.md)). Settings → Sync → *Turn on sync*, sign in with Microsoft
+  once, and Tack Focus and Tack for Windows keep each other up to date through a folder in your own
+  OneDrive. No Tack server, nothing to press.
 
 Everything has a non-gesture route: tapping a task opens it with Focus / Move / Delete tools, and the
 keyboard covers the rest (see Settings → Keyboard shortcuts).

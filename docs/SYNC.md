@@ -154,12 +154,16 @@ OneDrive's download hosts (`*.microsoftpersonalcontent.com`, `*.1drv.com`, `*.li
   files are there offline too.
 - Reacts to the folder changing (a file system watcher), to your edits, to the panel opening and
   to the PC waking up. **No polling**: nothing runs while idle, as before.
-- If OneDrive isn't running or a file can't be read right now, it waits and tries again.
+- If a file can't be read right now (the OneDrive app is writing it, or it's cloud-only and you're
+  offline), it waits and tries again, quietly unless it keeps happening.
+- Tack sees the folder, not the cloud: if the OneDrive app isn't running, Tack is still "in step
+  with the sync folder" while nothing reaches your other devices. Settings says so, and suggests
+  checking the OneDrive app if changes don't arrive.
 
-## Staying signed in
+## Staying signed in (and why not MSAL)
 
-You asked for persistent sign-in using MSAL and silent token renewal, with a daily reconnect only if
-it's genuinely unavoidable. What I found:
+The aim: sign in once, never a daily "reconnect" unless it's genuinely unavoidable. MSAL with silent
+token renewal was investigated first.
 
 **The limit is Microsoft's, not the library's.** Browser apps (registered as single-page apps, the
 only kind that can redeem tokens from a browser) get refresh tokens that last **24 hours from
@@ -187,14 +191,19 @@ authorization code + PKCE, no secret, no library) and this ladder:
 
 1. **Refresh token** (silent), for the first 24 hours.
 2. **Hidden frame** (silent), tried four hours before the deadline. Works in Chrome, Edge and on
-   Android, where third-party cookies are allowed.
+   Android, where third-party cookies are allowed. A frame that merely times out is tried again
+   later.
 3. **A quick visit to Microsoft's page** (`prompt=none`: it either signs you straight back in or
-   comes back with an error, never a form), where frames can't work (Safari and iPhone, Firefox,
-   Brave). Only at a quiet moment: when the app starts, before anything shows (so nothing you type
-   can be lost), or when you come back to it after five minutes away; at most once every six hours.
-   Expect about a second of Microsoft's page, roughly once a day, on those browsers.
+   comes back with an error, never a form), after Microsoft refused the hidden frame. Only at a quiet
+   moment: when the app starts, before anything shows (so nothing you type can be lost), or when you
+   come back to it after five minutes away; at most once every six hours. If that visit works where
+   the frame didn't, it's the browser (Safari and iPhone, Firefox, Brave), and Tack visits from then
+   on: expect about a second of Microsoft's page, roughly once a day. After every full sign-in it
+   tries the frame again.
 4. **"Sign in again"** only if Microsoft says you're no longer signed in there (password changed,
-   signed out, consent removed, the session expired): a dot on Settings, one tap.
+   signed out, consent removed, the session expired) or a renewal comes back as a different
+   account: a dot on Settings, one tap. A renewal that just failed on the way (no connection) is
+   tried again later.
 
 | Where | What you'll see |
 |---|---|
@@ -214,9 +223,15 @@ costs nothing at Tack's scale (about 20 requests per user per day; the free tier
 100,000 a day), and is a server the project must run and secure. It is **not built**; it's a
 decision for later if the daily visit proves annoying.
 
-Tokens are kept in IndexedDB on the device that signed in and go only to Microsoft (refresh tokens
-to the sign-in service, access tokens to Graph). A sign-in in progress keeps its one-time PKCE
-verifier in localStorage for at most ten minutes. The CSP allows no third-party scripts.
+Tokens are kept in this site's storage on the device that signed in (IndexedDB; localStorage only
+in browsers that refuse IndexedDB) and go only to Microsoft (refresh tokens to the sign-in service,
+access tokens to Graph). A sign-in in progress keeps its one-time PKCE verifier in localStorage
+under its own state, removed when it completes or, if abandoned, at the next start after ten
+minutes. The CSP allows no third-party scripts. Its `connect-src` names OneDrive's download hosts
+by wildcard (`*.sharepoint.com` and the like), because their exact names vary by account; with
+no third-party or inline script allowed, that breadth isn't reachable by an attacker's code.
+Turning sync off waits for a sync running in any tab to finish, and nothing writes a token or the
+sync state after it.
 
 ## Privacy
 
@@ -224,14 +239,18 @@ verifier in localStorage for at most ten minutes. The CSP allows no third-party 
   file in your OneDrive's "Apps › Tack Focus" folder. No Tack server is involved.
 - **Who can read it.** You. Microsoft, as your storage provider, under its own terms. Any other app
   you've allowed to access your *whole* OneDrive. Anyone who gets into your Microsoft account.
+- **What else is in the files.** Each device's name ("Tack for Windows on DESKTOP-1" includes the
+  PC's name) and the Tack version. OneDrive's version history and recycle bin keep earlier copies
+  of the files, which can include the text of tasks you deleted later.
 - **Not end-to-end encrypted yet.** The files are plain JSON. Optional encryption with a passphrase
   only you know (AES-GCM, key derived from the passphrase; lose it and the cloud copy is unreadable,
   local copies are fine) is planned for a later release.
 - **What Tack can reach.** Tack Focus: only its own folder, plus your name and sign-in address.
   Tack for Windows: only the folder on disk.
 - **Deletions** are kept as an id and a time, never the text.
-- **Stopping.** Turn off sync on each device (tasks stay). Delete the "Apps › Tack Focus" folder to
-  remove the files. Remove Tack's access at
+- **Stopping.** Turn off sync on each device (tasks and notes stay). Then delete the
+  "Apps › Tack Focus" folder (a device still syncing would write it again) and empty OneDrive's
+  recycle bin to remove the files. Remove Tack's access at
   [account.live.com/consent/Manage](https://account.live.com/consent/Manage) (personal) or
   [myapps.microsoft.com](https://myapps.microsoft.com) (work or school).
 

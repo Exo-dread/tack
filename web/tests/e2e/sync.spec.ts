@@ -251,9 +251,12 @@ test.describe('sync with OneDrive', () => {
     await addTask(page, 'Stays here');
     await turnOn(page);
     await syncNow(page);
-    await settings(page).getByRole('button', { name: 'Turn off' }).click();
+    // With the keyboard (Safari doesn't focus a clicked button): focus follows to the new state.
+    await settings(page).getByRole('button', { name: 'Turn off' }).focus();
+    await page.keyboard.press('Enter');
     await expect(settings(page).getByRole('button', { name: 'Turn on sync' })).toBeVisible();
-    await expect(settings(page).locator('.data-status')).toHaveText(/Sync is off/);
+    await expect(settings(page).locator('.sync')).toContainText('Sync is off');
+    await expect(settings(page).getByRole('button', { name: 'Turn on sync' })).toBeFocused();
     await closeSettings(page);
     await expect(openTexts(page).filter({ hasText: 'Stays here' })).toHaveCount(1);
     const tokens = await page.evaluate(async () => {

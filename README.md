@@ -45,7 +45,8 @@ and gets out of the way the moment you're done.
   size, and any size you drag to is remembered per tab. Switching tabs never makes the panel jump.
 - **Polite.** Steps aside while a full-screen video, game or slideshow is in front.
 - **Yours.** No account, no telemetry, and Tack never connects to anything. Your data is one readable JSON
-  file. Optional sync with Tack Focus on your phone goes through your own OneDrive folder.
+  file. Optional sync with Tack Focus on your phone, through your own OneDrive folder, is coming in the
+  next release.
 
 ## Download
 
@@ -69,7 +70,7 @@ To start Tack with Windows, turn on **Settings → Start with Windows**.
 | **Move** | Drag the orb, or drag the panel by its header. The orb follows the panel's nearest corner. |
 | **Resize** | Drag the panel's edges. Each tab remembers its own size; until you resize Tasks, it fits its list. Double-click the header to go back to automatic sizing. |
 | **Theme** | **Settings → Theme**: System (follows Windows), Light or Dark. |
-| **Sync** | **Settings → Sync → Turn on sync** keeps Tack in step with [Tack Focus](web/README.md) through your OneDrive (see below). |
+| **Sync** | Coming in the next release: **Settings → Sync → Turn on sync** keeps Tack in step with [Tack Focus](web/README.md) through your OneDrive (see below). |
 | **Import** | **Settings → Import** merges a tack.json from [Tack Focus](web/README.md) (its Settings → Export), another PC or a backup. Undo puts it back. |
 | **Pin** | 📌 keeps the panel open over other apps. Unpinned, it folds away when you click elsewhere. |
 | **Orb menu** | Right-click the orb for Open, Settings and Quit. |
@@ -124,13 +125,13 @@ brings in a tack.json exported from Tack Focus (or copied from another PC, or a 
 is added, where both changed the newer edit wins, a note written in both places is kept twice, and
 Undo puts everything back.
 
-**Sync (optional).** Turn on sync in Tack Focus first (it makes an "Apps › Tack Focus" folder in your
+**Sync (optional, coming in the next release; status in [docs/SYNC.md](docs/SYNC.md)).** Turn on sync in Tack Focus first (it makes an "Apps › Tack Focus" folder in your
 OneDrive); once the OneDrive app has brought that folder to your PC, **Settings → Sync → Turn on sync**
 here finds it by itself. From then on the two keep each other up to date: Tack writes its own file in
 that folder and reads the other devices' files, and the OneDrive app carries them. Tack itself still
-never goes online, works fully offline, and keeps everything here if you turn sync off. Your tasks are
-stored in OneDrive as ordinary files, not end-to-end encrypted yet. How it works, and what's verified:
-[docs/SYNC.md](docs/SYNC.md).
+never goes online, works fully offline, and keeps everything here if you turn sync off. Your tasks and
+notes are stored in OneDrive as ordinary files, not end-to-end encrypted yet. How it works, and what's
+verified: [docs/SYNC.md](docs/SYNC.md).
 
 **Portable mode:** create a folder named `TackData` next to `Tack.exe` and Tack keeps everything there
 instead, which is handy on a USB stick. (Like any single-file .NET app, the portable exe unpacks about 8 MB
@@ -164,8 +165,8 @@ and publishes a GitHub Release. See [CONTRIBUTING.md](CONTRIBUTING.md) for the p
 
 [`web/`](web/README.md) holds **Tack Focus**, Tack's tasks and notes as an installable web app for
 iPhone, Android and any browser, at [tackfocus.app](https://tackfocus.app). It works offline, keeps
-everything on the device, reads and writes the same `tack.json` format, and syncs with Tack for
-Windows through your own OneDrive ([docs/SYNC.md](docs/SYNC.md)).
+everything on the device, and reads and writes the same `tack.json` format. Syncing with Tack for
+Windows through your own OneDrive is built and in review ([docs/SYNC.md](docs/SYNC.md)).
 
 ## License
 

@@ -23,7 +23,7 @@ exchanging tasks with Tack for Windows' own sync code through a folder on disk. 
 with the service worker blocked: in WebKit, Playwright can't intercept requests from a page a
 worker controls, and they must never reach the real Microsoft.
 
-**Unit tests (49)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
+**Unit tests (133, including 40 runs of the sync simulation)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
 random inserts, clock monotonicity and skew, .NET date parsing, every workspace mutation and its
 undo, snapshot restore, two- and three-device merges with a randomised convergence test, concurrent
 note edits (conflict copies), and tack.json import/export against a file shaped exactly like
@@ -34,7 +34,7 @@ storage (in an in-memory IndexedDB) merging every write so a stale tab can't und
 reproduce exactly (`tests/Tack.Tests`), and reads back the file the desktop saved for its round-trip
 export to check nothing was lost on the way.
 
-**End-to-end tests (79 runs across three projects)** run against `vite build` + `vite preview`, so the real
+**End-to-end tests (120 across three projects, a few skipped where they don't apply)** run against `vite build` + `vite preview`, so the real
 service worker and bundle are tested:
 
 | Project | Engine | Emulates |

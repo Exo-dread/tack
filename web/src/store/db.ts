@@ -372,7 +372,8 @@ export const stranded = {
   },
   clear(): void {
     try {
-      for (const k of [KEYS.tasks, KEYS.sheets, KEYS.focus, KEYS.snapshots]) localStorage.removeItem(k);
+      // Sync state from that session goes too (its sign-in, if any, is asked for again).
+      for (const k of [KEYS.tasks, KEYS.sheets, KEYS.focus, KEYS.snapshots, 'tack.meta.sync', 'tack.meta.auth']) localStorage.removeItem(k);
     } catch {
       /* ignore */
     }

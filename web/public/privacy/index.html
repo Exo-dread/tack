@@ -26,14 +26,15 @@
         <li><strong>What Tack can see.</strong> You sign in with Microsoft and allow Tack Focus to read and write <em>only its own folder</em> in your OneDrive, nothing else; to stay signed in; and to see your basic profile (your name and sign-in address), which Settings shows so you know which account is in use.</li>
         <li><strong>Sign-in tokens</strong> stay on the device that signed in. They go only to Microsoft, never to Tack or anyone else.</li>
         <li><strong>Tack for Windows</strong> syncs through that same folder on your PC, which the OneDrive app keeps up to date. Tack for Windows itself never connects to the internet.</li>
-        <li><strong>Who can read the files.</strong> They’re ordinary files in your OneDrive: you can open them, Microsoft stores them under its own terms and privacy statement, and so can any other app you’ve allowed to access your whole OneDrive. They are <strong>not end-to-end encrypted</strong> yet. Optional encryption with a passphrase only you know is planned for a later release.</li>
-        <li><strong>Deleted tasks.</strong> While sync is on, Tack keeps a short record of each deletion (an id and a time, never the text), so a deleted task can’t come back from a device that was offline.</li>
+        <li><strong>Who can read the files.</strong> They’re ordinary files in your OneDrive. You can open them. Microsoft can read them as your storage provider, under its own terms and privacy statement, and so can any app you’ve allowed into your whole OneDrive, and anyone who gets into your Microsoft account. They are <strong>not end-to-end encrypted</strong> yet. Optional encryption with a passphrase only you know is planned for a later release.</li>
+        <li><strong>What’s in them.</strong> Your tasks and notes, and each device’s name and Tack version (for a PC, its name includes the computer’s name, e.g. “Tack for Windows on DESKTOP-1”).</li>
+        <li><strong>Deleted tasks.</strong> While sync is on, Tack keeps a short record of each deletion (an id and a time, never the text), so a deleted task can’t come back from a device that was offline. OneDrive’s own version history and recycle bin may still hold earlier copies of the files, with the text of tasks deleted since.</li>
       </ul>
 
       <h2>Stopping sync and removing data</h2>
       <ul>
-        <li><strong>Turn off sync</strong> in Settings on each device. Your tasks stay on the device, and Tack forgets the sign-in there.</li>
-        <li><strong>Remove the files</strong> by deleting the “Apps › Tack Focus” folder in OneDrive.</li>
+        <li><strong>Turn off sync</strong> in Settings on each device. Your tasks and notes stay on the device, and Tack forgets the sign-in there.</li>
+        <li><strong>Remove the files</strong> by then deleting the “Apps › Tack Focus” folder in OneDrive (a device still syncing would write it again) and emptying OneDrive’s recycle bin.</li>
         <li><strong>Remove Tack’s access</strong> to your Microsoft account at <a href="https://account.live.com/consent/Manage">account.live.com/consent/Manage</a> (personal accounts) or <a href="https://myapps.microsoft.com">myapps.microsoft.com</a> (work or school accounts).</li>
       </ul>
 

@@ -45,7 +45,7 @@ async function boot(): Promise<void> {
     console.error('Sign-in failed', error);
     return 'failed' as const;
   });
-  if (sync.renewBeforeStart()) return;
+  if (await sync.renewBeforeStart()) return;
   sync.onJoin = () => dropUntouchedWelcome(ws);
 
   if (!prefs().seeded && ws.tasks.size === 0 && ws.sheets.size === 0) {
@@ -59,7 +59,7 @@ async function boot(): Promise<void> {
   void store.startup();
   registerServiceWorker(store);
   sync.start();
-  if (returned === 'signed-in') app.syncTurnedOn();
+  if (returned === 'signed-in' || returned === 'signed-in-again') app.syncTurnedOn(returned === 'signed-in-again');
 }
 
 function showBootError(error: unknown): void {

@@ -125,7 +125,7 @@ export class App {
     // A small dot on Settings when sync needs you (and only then: syncing itself is silent).
     const attention = () => {
       const p = sync.status.phase;
-      const needs = p === 'signin' || p === 'error';
+      const needs = p === 'signin' || p === 'error' || sync.status.problems.some((x) => x.reason === 'newer');
       this.gear.classList.toggle('attention', needs);
       this.gear.setAttribute('aria-label', needs ? 'Settings (sync needs attention)' : 'Settings');
     };
@@ -392,9 +392,13 @@ export class App {
     this.installCard = card;
   }
 
-  /** Just back from signing in to turn sync on: say so, where the result will show. */
-  syncTurnedOn(): void {
-    this.toasts.show('Sync is on. Your tasks will appear on your other devices.', undefined, { duration: 5000 });
+  /** Just back from signing in to turn sync on (or after being asked to sign in again): say so. */
+  syncTurnedOn(again = false): void {
+    this.toasts.show(
+      again ? 'Signed in again. Sync carries on.' : 'Sync is on. Turn it on in Tack for Windows too, to include your PC.',
+      undefined,
+      { duration: 6000 },
+    );
   }
 
   // ================================================================== launch and keys

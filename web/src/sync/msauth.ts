@@ -50,15 +50,20 @@ export interface Tokens {
 export interface AuthRecord {
   account: Account | null;
   tokens: Tokens | null;
-  /** Does silent renewal in a hidden frame work in this browser? null until tried. */
+  /**
+   * Does silent renewal in a hidden frame work in this browser? null until known: false only once
+   * a frame was refused and a visit to Microsoft then worked (so it's the browser, not the session).
+   */
   frameWorks: boolean | null;
+  /** When a hidden frame was last refused by Microsoft (ms), 0 if not since the last visit. */
+  frameRefused: number;
   /** When Tack last went to Microsoft's page to renew (ms), so it never loops. */
   lastRenewVisit: number;
   /** Microsoft wants you to sign in again (password changed, session ended, consent removed...). */
   needsSignIn: boolean;
 }
 
-export const emptyAuth = (): AuthRecord => ({ account: null, tokens: null, frameWorks: null, lastRenewVisit: 0, needsSignIn: false });
+export const emptyAuth = (): AuthRecord => ({ account: null, tokens: null, frameWorks: null, frameRefused: 0, lastRenewVisit: 0, needsSignIn: false });
 
 /** A sign-in in progress across the page load it needs (kept in localStorage for that moment only). */
 interface Pending {
@@ -69,7 +74,8 @@ interface Pending {
   at: number;
 }
 
-const PENDING_KEY = 'tack.signin';
+/** Each sign-in in progress is kept under its own state, so two tabs can't spoil each other's. */
+const PENDING_PREFIX = 'tack.signin.';
 const PENDING_TTL = 10 * 60_000;
 const CONSUMER_TENANT = '9188040d-6c67-4c5b-b112-36a304b66dad';
 const DAY = 86_400_000;
@@ -145,10 +151,11 @@ export class MicrosoftAuth {
   async completeRedirect(): Promise<{ kind: Pending['kind']; account: Account; tokens: Tokens } | { kind: Pending['kind']; error: AuthError } | null> {
     const hash = location.hash.startsWith('#') ? location.hash.slice(1) : '';
     const params = new URLSearchParams(hash);
+    sweepPending();
     if (!params.has('state') || (!params.has('code') && !params.has('error'))) return null;
     history.replaceState(null, '', location.pathname + location.search);
-    const pending = takePending();
-    if (!pending || pending.state !== params.get('state')) return null; // not ours, or stale
+    const pending = takePending(params.get('state') ?? '');
+    if (!pending) return null; // not ours, or stale
     const result = await this.finish(params, pending, this.config.redirectUri);
     return 'error' in result ? { kind: pending.kind, error: result.error } : { kind: pending.kind, ...result };
   }
@@ -305,7 +312,8 @@ function frameRedirect(url: string, landing: string): Promise<string> {
         const hash = frame.contentWindow!.location.hash.slice(1);
         done(() => resolve(hash));
       } else if (Date.now() - started > FRAME_TIMEOUT) {
-        done(() => reject(new AuthError('interaction', 'Silent renewal timed out')));
+        // Slow, not refused: try again later rather than concluding frames don't work here.
+        done(() => reject(new AuthError('failed', 'Silent renewal timed out')));
       }
     }, 50);
     document.body.append(frame);
@@ -316,20 +324,41 @@ const framePending = new Map<string, Pending>();
 
 function savePending(p: Pending): void {
   try {
-    localStorage.setItem(PENDING_KEY, JSON.stringify(p));
+    localStorage.setItem(PENDING_PREFIX + p.state, JSON.stringify(p));
   } catch {
     /* without storage the sign-in can't complete; Microsoft's page will still show */
   }
 }
 
-function takePending(): Pending | null {
+/** The sign-in started with this state (each is used once), if it's recent. */
+function takePending(state: string): Pending | null {
   try {
-    const raw = localStorage.getItem(PENDING_KEY);
-    localStorage.removeItem(PENDING_KEY);
+    const raw = localStorage.getItem(PENDING_PREFIX + state);
+    localStorage.removeItem(PENDING_PREFIX + state);
     const p = raw ? (JSON.parse(raw) as Pending) : null;
-    return p && Date.now() - p.at < PENDING_TTL ? p : null;
+    return p && p.state === state && Date.now() - p.at < PENDING_TTL ? p : null;
   } catch {
     return null;
+  }
+}
+
+/** Forgets sign-ins that were never completed (after ten minutes). */
+function sweepPending(): void {
+  try {
+    localStorage.removeItem('tack.signin'); // a single slot, before 0.2.0
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(PENDING_PREFIX)) continue;
+      let at = 0;
+      try {
+        at = (JSON.parse(localStorage.getItem(key) ?? '{}') as Partial<Pending>).at ?? 0;
+      } catch {
+        /* unreadable: forget it */
+      }
+      if (Date.now() - at >= PENDING_TTL) localStorage.removeItem(key);
+    }
+  } catch {
+    /* no storage */
   }
 }
 

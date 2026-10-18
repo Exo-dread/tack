@@ -10,7 +10,7 @@ that, or it isn't in Tack.
 3. **Maximum accessibility.** One click, one shortcut, or one hover away from any app on any monitor.
 4. **Invisible when idle.** No timers, no polling, no background CPU. It hands memory back to Windows when folded.
 5. **Your data stays yours.** Offline, one human-readable file. Tack never connects to anything; if you
-   turn on sync, your OneDrive app carries a file between your devices, and nobody else does.
+   turn on sync, your OneDrive app carries a file between your devices, with no Tack server in between.
 
 ## Name and identity
 
