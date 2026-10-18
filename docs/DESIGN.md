@@ -9,7 +9,8 @@ that, or it isn't in Tack.
 2. **Minimal friction.** Open, type, Enter, Esc. No dialogs, no confirmation prompts, no required fields.
 3. **Maximum accessibility.** One click, one shortcut, or one hover away from any app on any monitor.
 4. **Invisible when idle.** No timers, no polling, no background CPU. It hands memory back to Windows when folded.
-5. **Your data stays yours.** Offline, one human-readable file, nothing leaves the machine.
+5. **Your data stays yours.** Offline, one human-readable file. Tack never connects to anything; if you
+   turn on sync, your OneDrive app carries a file between your devices, and nobody else does.
 
 ## Name and identity
 
@@ -103,7 +104,8 @@ src/Tack
 ├── App.xaml(.cs)          Startup: single instance, data folder, first-run seeding, crash safety
 ├── AppShell.cs            The coordinator: orb ⇄ panel, placement, shortcut, full-screen, housekeeping
 ├── Model/                 Workspace (all user state), TaskItem, NoteSheet, Settings
-├── Services/              StateStore (JSON persistence), accent colour, startup registration, log, single instance
+├── Services/              StateStore (JSON persistence), FolderSync (sync through a folder), accent colour, startup, log, single instance
+├── Sync/                  The data model shared with Tack Focus: clocks, sort keys, merges, device files, the sync engine
 ├── Interop/               Win32/DWM: glass, monitors & DPI, global hotkey, shell watcher
 ├── Windows/               OrbWindow, PeekWindow, PanelWindow
 ├── Views/                 TasksView, NotesView, SettingsView (UserControls inside the panel)
@@ -200,5 +202,6 @@ at a few MB of working set and zero CPU.
 - **Keyboard access to row actions** goes through shortcuts (Ctrl+Enter, Ctrl+D, Backspace) and the context
   menu (Shift+F10), not Tab, because the hover toolbar isn't in the tab order.
 - Deliberately **not** planned: reminders, due dates, projects, tags, collaboration.
-- **Sync** with Tack Focus is planned, opt-in and serverless: through a folder in your own OneDrive or
-  Google Drive, never a Tack server. See [SYNC.md](SYNC.md).
+- **Sync** with Tack Focus is opt-in and serverless: through a folder in your own OneDrive that the
+  OneDrive app keeps in step, never a Tack server, and no network code in Tack. See [SYNC.md](SYNC.md).
+  Google Drive and end-to-end encryption are for later.

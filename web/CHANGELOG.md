@@ -1,5 +1,17 @@
 # Tack Focus changelog
 
+## 0.2.0 (unreleased)
+
+- **Sync with Tack for Windows through your own OneDrive.** Settings → Sync → Turn on sync, sign in
+  with Microsoft once; from then on it's automatic. Tack can open only its own folder in your
+  OneDrive ("Apps › Tack Focus"); there's no Tack server. Works offline and catches up; notes written
+  in two places at once are both kept; deletions never come back from a device that was offline.
+- Staying signed in: Microsoft limits browser apps to 24 hours per sign-in, so Tack renews quietly,
+  in the background where the browser allows it, or with a moment's visit to Microsoft when you
+  open the app (iPhone, Firefox). It asks only if Microsoft wants you to sign in again.
+- A privacy page (tackfocus.app/privacy/).
+- Offered only in builds with a Microsoft app ID (`VITE_MS_CLIENT_ID`); see docs/ONEDRIVE-SETUP.md.
+
 ## 0.1.0 (unreleased)
 
 First version, for review before tackfocus.app goes live.

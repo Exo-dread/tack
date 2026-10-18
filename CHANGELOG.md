@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Sync with Tack Focus through your OneDrive.** Settings → Sync → Turn on sync finds Tack Focus's
+  folder in OneDrive on your PC (or choose any folder). Tack writes its own file there and reads the
+  others'; the OneDrive app carries them. Tack itself still never connects to anything, and nothing
+  runs while idle: it reacts to the folder changing, your edits, opening the panel and waking up.
+- While syncing, deletions are kept (as an id and a time) instead of being forgotten after 90 days,
+  so a device that was offline for months can't bring them back.
+- A new PC joining sync leaves its untouched welcome tasks and blank sheet behind, and your focus
+  from another device wins over the welcome one.
+- For contributors: `TACK_INSTANCE` lets a development copy run beside your installed Tack.
+
 ## 1.2.0 (2026-10-18)
 
 Tack now has a companion for your phone: **Tack Focus** (tackfocus.app), the same tasks and notes as an
