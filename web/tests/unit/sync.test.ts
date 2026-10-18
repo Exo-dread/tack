@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { encode } from '../../src/model/hlc';
 import { deviceOfFile, makeDeviceFile, parseDeviceFile, serializeDeviceFile, DeviceFileError } from '../../src/sync/devicefile';
-import { seenBy } from '../../src/sync/engine';
+import { emptyMeta, seenBy } from '../../src/sync/engine';
 import { Cloud, DAY, Device, records, settle, visible, type Clock } from './synchelpers';
 
 function world(...specs: (string | { label: string; lag?: boolean; skew?: number; id?: string })[]) {
@@ -317,6 +317,50 @@ describe('interruptions and recovery', () => {
     expect(pc.id).not.toBe(copy.id);
     expect(visible(pc.ws).open.sort()).toEqual(['from the new pc', 'from the old pc', 'old pc again']);
     expectSame([pc, copy]);
+  });
+
+  it('takes its own file back after losing its sync state, and still gets the others’ news', async () => {
+    const { devices, cloud, tick } = world('phone', 'desk');
+    const [phone, desk] = devices as [Device, Device];
+    phone.ws.addTask('from the phone');
+    await settle(devices);
+    const id = phone.id;
+    phone.saved = emptyMeta('folder'); // its sync state lost (an unreadable sync.json, say)
+    tick();
+    desk.ws.addTask('from the desk, meanwhile');
+    await desk.sync();
+    await phone.sync();
+    expect(phone.id).toBe(id); // no new identity, no ghost file
+    expect(cloud.files.size).toBe(2);
+    expect(visible(phone.ws).open.sort()).toEqual(['from the desk, meanwhile', 'from the phone']);
+  });
+
+  it('publishes news merged in a cycle whose upload failed', async () => {
+    const { devices, cloud } = world('phone', 'desk');
+    const [phone, desk] = devices as [Device, Device];
+    phone.ws.addTask('phone');
+    await settle(devices);
+    desk.ws.addTask('desk news');
+    await desk.sync();
+    phone.view.faults = { write: ['server'] };
+    expect(await phone.trySync()).toBeNull(); // merged the desk's task, then the upload failed
+    expect((await phone.sync()).wrote).toBe(true);
+    expect(cloud.files.get(`${phone.id}.json`)!.text).toContain('desk news');
+  });
+
+  it('does not fetch a damaged file again until it changes, and keeps saying so', async () => {
+    const { devices, cloud } = world('phone', 'desk');
+    const [phone, desk] = devices as [Device, Device];
+    phone.ws.addTask('one');
+    await phone.sync();
+    const name = `${phone.id}.json`;
+    cloud.put(name, '{"format":"tack-sync-dev');
+    expect((await desk.sync()).problems).toEqual([{ device: phone.id, reason: 'unreadable' }]);
+    expect((await desk.sync()).problems).toEqual([{ device: phone.id, reason: 'unreadable' }]);
+    expect(desk.view.reads.get(name)).toBe(1);
+    await phone.sync(); // writes it again
+    await desk.sync();
+    expect(visible(desk.ws).open).toEqual(['one']);
   });
 
   it('reports a file from a newer Tack instead of misreading it', async () => {

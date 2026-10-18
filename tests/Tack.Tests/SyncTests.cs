@@ -39,6 +39,7 @@ internal static class SyncTests
         yield return ("sync folder: finds Tack Focus's folder in OneDrive (localised Apps too)", FindsOneDriveFolder);
         yield return ("sync: deletions are never forgotten while syncing", KeepsDeletions);
         yield return ("sync: a new PC joining leaves its untouched welcome tasks and blank sheet behind", JoinsWithoutWelcome);
+        yield return ("sync: a PC that lost its sync state takes its own file back and still gets the news", AdoptsOwnFile);
     }
 
     // ---------------------------------------------------------------- the shared vectors
@@ -251,6 +252,25 @@ internal static class SyncTests
         Check.Equal("Shopping", string.Join(",", pc.Ws.Sheets.Select(s => s.Text)), "the PC's blank sheet stayed behind");
     }
 
+    private static void AdoptsOwnFile()
+    {
+        using var temp = new TempDir();
+        long wall = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var a = new Pc("pcAAAAAA", temp.Path, () => wall);
+        var b = new Pc("pcBBBBBB", temp.Path, () => wall);
+        a.Ws.AddTask("From A");
+        a.Sync();
+        b.Sync();
+        a.Forget();
+        wall += 1000;
+        b.Ws.AddTask("From B, meanwhile");
+        b.Sync();
+        a.Sync();
+        Check.Equal("pcAAAAAA", a.Ws.Clock.Node, "same identity, no ghost file");
+        Check.Equal(2, Directory.EnumerateFiles(Path.Combine(temp.Path, "devices"), "*.json").Count(), "two device files");
+        Check.Equal("From A,From B, meanwhile", string.Join(",", a.Ws.Open.Select(t => t.Text).Order()), "B's news arrived");
+    }
+
     private static void FindsOneDriveFolder()
     {
         using var temp = new TempDir();
@@ -337,6 +357,9 @@ internal static class SyncTests
         public Workspace Ws { get; }
 
         private Func<long> Wall { get; }
+
+        /// <summary>Its sync state lost (an unreadable sync.json, say).</summary>
+        public void Forget() => _meta = SyncMeta.Empty(_meta.Folder);
 
         public void Sync(Action<SyncMeta>? joined = null)
         {

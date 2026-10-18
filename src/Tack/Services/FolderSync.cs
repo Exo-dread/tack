@@ -48,7 +48,9 @@ internal sealed class FolderSync : IDisposable
         };
         _ws.Changed += (_, _) =>
         {
-            if (Enabled && !_running) Schedule(AfterEdit);
+            if (!Enabled) return;
+            if (_running) _again = true; // an edit during a cycle: another cycle after it
+            else Schedule(AfterEdit);
         };
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
     }
@@ -206,10 +208,20 @@ internal sealed class FolderSync : IDisposable
         _watcher = null;
     }
 
-    /// <summary>Something changed in the folder (on a worker thread). Tack's own temp files don't count.</summary>
+    /// <summary>
+    /// Something changed in the folder (on a worker thread). Only device files and the devices folder
+    /// count: not Tack's own temp files, nor anything else kept there (even Tack's data, if you put it there).
+    /// </summary>
     private void OnFolderEvent(string? name)
     {
-        if (name != null && Path.GetFileName(name).StartsWith("~$", StringComparison.Ordinal)) return;
+        if (name != null)
+        {
+            string file = Path.GetFileName(name);
+            bool devicesFolder = string.Equals(name, "devices", StringComparison.OrdinalIgnoreCase);
+            bool deviceFile = string.Equals(Path.GetDirectoryName(name), "devices", StringComparison.OrdinalIgnoreCase)
+                && DeviceFile.DeviceOfFile(file) != null;
+            if (!devicesFolder && !deviceFile) return;
+        }
         System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
         {
             if (Enabled && !_running) Schedule(AfterFolderChange);
@@ -301,6 +313,8 @@ internal sealed class FolderSync : IDisposable
             FlushAsync = () =>
             {
                 _store.Flush();
+                // Never tell other devices about records that aren't safely in tack.json here.
+                if (_store.SaveFailed) throw new SyncException(SyncErrorKind.Server, "Tack couldn't save on this PC");
                 return Task.CompletedTask;
             },
             SaveMetaAsync = SaveMetaAsync,
@@ -344,7 +358,12 @@ internal sealed class FolderSync : IDisposable
     {
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(meta, SyncJsonContext.Default.SyncMeta);
         string tmp = _metaPath + ".tmp";
-        await File.WriteAllBytesAsync(tmp, bytes);
+        // Written through to the disk, then swapped in: a power cut leaves the old state or the new.
+        await using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough | FileOptions.Asynchronous))
+        {
+            await fs.WriteAsync(bytes);
+            await fs.FlushAsync();
+        }
         File.Move(tmp, _metaPath, overwrite: true);
     }
 

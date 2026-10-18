@@ -389,8 +389,9 @@ export class SyncController {
     const engine = new SyncEngine(this.ws, this.folder, {
       label: () => ({ name: deviceName(), app: `Tack Focus ${VERSION}` }),
       flush: async () => {
+        // Saved, or still saving what was typed a moment ago; only failed saves stop the cycle.
         await this.store.flush();
-        if (!this.store.allSaved) throw new SyncError('server', 'Tack couldn’t save on this device');
+        if (this.store.status === 'retrying' || this.store.status === 'unsaved') throw new SyncError('server', 'Tack couldn’t save on this device');
       },
       saveMeta: async (m) => {
         await this.mustBeOn();

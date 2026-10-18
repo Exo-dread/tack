@@ -406,8 +406,8 @@ export class Workspace {
   }
 
   /**
-   * Deletes records for sync (they were deleted elsewhere long ago, see sync/engine.ts), as
-   * fresh deletions so they win over the copies they replace.
+   * Deletes records on sync's behalf (a new device's untouched welcome, when it joins), as fresh
+   * deletions so they win over the copies they replace.
    */
   discard(ids: { tasks: string[]; sheets: string[] }, origin: Origin = 'remote'): void {
     this.batch(() => {
@@ -418,16 +418,6 @@ export class Workspace {
         if (s && !s.deleted) this.setSheetDeleted(s, true);
       }
     });
-  }
-
-  /** Forgets tombstones for good (sync decides when every device has seen them). Returns the ids removed. */
-  forget(ids: { tasks: string[]; sheets: string[] }): { tasks: string[]; sheets: string[] } {
-    const tasks = ids.tasks.filter((id) => this.tasks.get(id)?.deleted);
-    const sheets = ids.sheets.filter((id) => this.sheets.get(id)?.deleted);
-    tasks.forEach((id) => this.tasks.delete(id));
-    sheets.forEach((id) => this.sheets.delete(id));
-    if (tasks.length || sheets.length) this.views = {};
-    return { tasks, sheets };
   }
 
   // ---------------------------------------------------------------- internals

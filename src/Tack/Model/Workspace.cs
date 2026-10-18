@@ -318,7 +318,8 @@ public sealed class Workspace : Observable, IImportTarget
             && t.Clk.Completed == t.Clk.Text && t.Clk.Order == t.Clk.Text && t.Clk.Deleted == t.Clk.Text;
         var tasks = _allTasks.Where(t => !t.IsDeleted && Untouched(t)).ToList();
         foreach (var t in tasks) Remove(t);
-        var blank = Sheets.Where(s => s.Text.Length == 0 && s.Clk.Text == s.Clk.Deleted).ToList();
+        // Only this PC's own blank sheets, never one that just arrived from another device.
+        var blank = Sheets.Where(s => s.Text.Length == 0 && s.Clk.Text == s.Clk.Deleted && Stamp.Node(s.Clk.Deleted) == Clock.Node).ToList();
         if (blank.Count == Sheets.Count) blank = blank.Skip(1).ToList();
         foreach (var s in blank) SetSheetDeleted(s, true);
         if (tasks.Count > 0 || blank.Count > 0) Rebuild();

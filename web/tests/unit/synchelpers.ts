@@ -30,6 +30,8 @@ export type Fault = 'offline' | 'lost-response' | 'throttled' | 'server';
 export class FolderView implements SyncFolder {
   /** Faults to inject: the next calls of each kind fail this way. */
   faults: { list?: Fault[]; read?: Fault[]; write?: Fault[] } = {};
+  /** Files read, by name (to check nothing is fetched needlessly). */
+  readonly reads = new Map<string, number>();
   private local = new Map<string, { text: string; tag: string }>();
   private outbox = new Map<string, string>();
   private n = 0;
@@ -66,6 +68,7 @@ export class FolderView implements SyncFolder {
   async read(entry: FolderEntry): Promise<string> {
     const f = this.fault('read');
     if (f) this.throwFor(f);
+    this.reads.set(entry.name, (this.reads.get(entry.name) ?? 0) + 1);
     const file = this.lag ? this.local.get(entry.name) : this.cloud.files.get(entry.name);
     if (!file) throw new SyncError('gone');
     return file.text;

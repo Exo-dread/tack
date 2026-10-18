@@ -69,6 +69,9 @@ internal sealed class StateStore
 
     public string FilePath => _path;
 
+    /// <summary>The last save failed (it's retried shortly). Sync waits for a good save before writing.</summary>
+    public bool SaveFailed { get; private set; }
+
     /// <summary>Portable mode: a "TackData" folder next to Tack.exe keeps everything beside the app.</summary>
     public static string ResolveFolder()
     {
@@ -141,10 +144,12 @@ internal sealed class StateStore
             if (_lastWritten != null && bytes.AsSpan().SequenceEqual(_lastWritten)) return;
             WriteAtomic(bytes);
             _lastWritten = bytes;
+            SaveFailed = false;
         }
         catch (Exception ex)
         {
             Log.Error("Save failed", ex);
+            SaveFailed = true;
             RequestSave(); // try again shortly
         }
     }

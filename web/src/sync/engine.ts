@@ -63,6 +63,8 @@ export interface FileSummary {
   name: string;
   app: string;
   written: Stamp;
+  /** This version couldn't be used (and isn't fetched again until it changes). */
+  problem?: DeviceFileError['reason'];
 }
 
 /** What this device keeps between cycles, next to its data. */
@@ -150,32 +152,11 @@ export class SyncEngine {
     const result: CycleResult = { merged: [], wrote: false, problems: [], peers: [] };
     const entries = (await this.folder.list()).slice().sort((a, b) => (a.name < b.name ? -1 : 1));
 
-    // ---- read what changed
-    const fresh: DeviceFile[] = [];
-    const present = new Set<string>();
-    let ownEntry: FolderEntry | undefined;
-    for (const entry of entries) {
-      const device = deviceOfFile(entry.name);
-      if (!device) continue;
-      if (device === me) {
-        ownEntry = entry;
-        continue;
-      }
-      present.add(entry.name);
-      if (meta.files[entry.name]?.tag === entry.tag) continue;
-      try {
-        const file = parseDeviceFile(await this.folder.read(entry), device, now);
-        fresh.push(file);
-        meta.files[entry.name] = { tag: entry.tag, device, name: file.name, app: file.app, written: file.written };
-      } catch (error) {
-        if (error instanceof DeviceFileError) result.problems.push({ device, reason: error.reason });
-        else if (!(error instanceof SyncError && error.kind === 'gone')) throw error;
-      }
-    }
-    for (const name of Object.keys(meta.files)) if (!present.has(name)) delete meta.files[name];
-
-    // ---- this device's own file: still ours, and as written?
-    let rewrite = !ownEntry;
+    // ---- this device's own file first: still ours, and as written? (Before anything else is
+    // noted down, so a cycle that stops here leaves nothing half done.)
+    const ownEntry = entries.find((e) => deviceOfFile(e.name) === me);
+    let damaged = false;
+    let adopted: DeviceFile | null = null;
     if (ownEntry && ownEntry.tag !== meta.own.tag) {
       let own: DeviceFile | null = null;
       try {
@@ -185,13 +166,46 @@ export class SyncEngine {
       }
       if (own && (own.written === meta.own.written || own.written === meta.own.pending)) {
         meta.own = { tag: ownEntry.tag, written: own.written, pending: null };
+      } else if (own && meta.own.written === null && meta.own.pending === null) {
+        // No memory of ever writing here (this device's sync state was lost): it's this device's
+        // own file from before. Take it back rather than mistaking it for another device's.
+        adopted = own;
+        meta.own = { tag: ownEntry.tag, written: own.written, pending: null };
       } else if (own && own.written > (meta.own.written ?? ZERO)) {
         // Someone else writes under this id (a copy of this device's data, started elsewhere).
         throw new DeviceCollision(`Another device writes as ${me}`);
       } else {
-        rewrite = true; // damaged, or an older version put back
+        damaged = true; // damaged, or an older version put back
       }
     }
+    // Missing, damaged, or a write whose arrival was never confirmed: say it all again.
+    const rewrite = !ownEntry || damaged || meta.own.pending !== null;
+
+    // ---- read what changed
+    const fresh: DeviceFile[] = [];
+    const present = new Set<string>();
+    for (const entry of entries) {
+      const device = deviceOfFile(entry.name);
+      if (!device || device === me) continue;
+      present.add(entry.name);
+      const known = meta.files[entry.name];
+      if (known?.tag === entry.tag) {
+        if (known.problem) result.problems.push({ device, reason: known.problem });
+        continue;
+      }
+      try {
+        const file = parseDeviceFile(await this.folder.read(entry), device, now);
+        fresh.push(file);
+        meta.files[entry.name] = { tag: entry.tag, device, name: file.name, app: file.app, written: file.written };
+      } catch (error) {
+        if (error instanceof DeviceFileError) {
+          // Noted, so it isn't fetched again until it changes.
+          result.problems.push({ device, reason: error.reason });
+          meta.files[entry.name] = { tag: entry.tag, device, name: known?.name ?? '', app: known?.app ?? '', written: known?.written ?? ZERO, problem: error.reason };
+        } else if (!(error instanceof SyncError && error.kind === 'gone')) throw error;
+      }
+    }
+    for (const name of Object.keys(meta.files)) if (!present.has(name)) delete meta.files[name];
 
     // ---- merge what's new
     let news = false;
@@ -199,6 +213,7 @@ export class SyncEngine {
       if (c.origin === 'remote') news = true;
     });
     try {
+      if (adopted) this.ws.merge({ tasks: adopted.tasks, sheets: adopted.sheets, focus: adopted.focus }, 'remote');
       for (const file of fresh.sort((a, b) => (a.device < b.device ? -1 : 1))) {
         if ((meta.seen[file.device] ?? ZERO) >= file.written) continue; // had it already (perhaps through another device)
         const seenHere = { ...meta.seen };
@@ -220,10 +235,12 @@ export class SyncEngine {
     const edited = ownClock(this.ws, me) > (meta.own.written ?? ZERO);
     if (rewrite || edited || news) {
       await this.hooks.flush();
+      // The clock and the records together, with no await between: the file holds exactly what
+      // this device knew at `written`, and anything later is news for the next write.
       const written = this.ws.hlc.now();
+      const file = makeDeviceFile(this.ws.toData(), { device: me, ...this.hooks.label(), written, seen: meta.seen });
       meta.own.pending = written;
       await this.hooks.saveMeta(meta);
-      const file = makeDeviceFile(this.ws.toData(), { device: me, ...this.hooks.label(), written, seen: meta.seen });
       const entry = await this.folder.write(fileName(me), serializeDeviceFile(file));
       meta.own = { tag: entry.tag, written, pending: null };
       result.wrote = true;

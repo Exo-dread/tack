@@ -22,40 +22,11 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
         var result = new CycleResult();
         var entries = (await folder.ListAsync()).OrderBy(e => e.Name, StringComparer.Ordinal).ToList();
 
-        // ---- read what changed
-        var fresh = new List<DeviceFile>();
-        var present = new HashSet<string>();
-        FolderEntry? ownEntry = null;
-        foreach (var entry in entries)
-        {
-            string? device = DeviceFile.DeviceOfFile(entry.Name);
-            if (device == null) continue;
-            if (device == me)
-            {
-                ownEntry = entry;
-                continue;
-            }
-            present.Add(entry.Name);
-            if (meta.Files.TryGetValue(entry.Name, out var known) && known.Tag == entry.Tag) continue;
-            try
-            {
-                var file = DeviceFile.Parse(await folder.ReadAsync(entry), device, nowMs);
-                fresh.Add(file);
-                meta.Files[entry.Name] = new FileSummary(entry.Tag, device, file.Name, file.App, file.Written);
-            }
-            catch (DeviceFileException ex)
-            {
-                result.Problems.Add((device, ex.Problem));
-            }
-            catch (SyncException ex) when (ex.Kind == SyncErrorKind.Gone)
-            {
-                // Deleted between listing and reading: next time.
-            }
-        }
-        foreach (string name in meta.Files.Keys.Where(n => !present.Contains(n)).ToList()) meta.Files.Remove(name);
-
-        // ---- this device's own file: still ours, and as written?
-        bool rewrite = ownEntry == null;
+        // ---- this device's own file first: still ours, and as written? (Before anything else is
+        // noted down, so a cycle that stops here leaves nothing half done.)
+        var ownEntry = entries.FirstOrDefault(e => DeviceFile.DeviceOfFile(e.Name) == me);
+        bool damaged = false;
+        DeviceFile? adopted = null;
         if (ownEntry != null && ownEntry.Tag != meta.Own.Tag)
         {
             DeviceFile? own = null;
@@ -70,15 +41,65 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             {
             }
             if (own != null && (own.Written == meta.Own.Written || own.Written == meta.Own.Pending))
+            {
                 meta.Own = new OwnFile(ownEntry.Tag, own.Written, null);
+            }
+            else if (own != null && meta.Own.Written == null && meta.Own.Pending == null)
+            {
+                // No memory of ever writing here (this device's sync state was lost): it's this
+                // device's own file from before. Take it back rather than mistake it for another's.
+                adopted = own;
+                meta.Own = new OwnFile(ownEntry.Tag, own.Written, null);
+            }
             else if (own != null && Stamp.IsLater(own.Written, meta.Own.Written ?? Stamp.Zero))
+            {
                 throw new DeviceCollisionException(me); // a copy of this device's data, syncing elsewhere
+            }
             else
-                rewrite = true; // damaged, or an older version put back
+            {
+                damaged = true; // damaged, or an older version put back
+            }
         }
+        // Missing, damaged, or a write whose arrival was never confirmed: say it all again.
+        bool rewrite = ownEntry == null || damaged || meta.Own.Pending != null;
+
+        // ---- read what changed
+        var fresh = new List<DeviceFile>();
+        var present = new HashSet<string>();
+        foreach (var entry in entries)
+        {
+            string? device = DeviceFile.DeviceOfFile(entry.Name);
+            if (device == null || device == me) continue;
+            present.Add(entry.Name);
+            meta.Files.TryGetValue(entry.Name, out var known);
+            if (known != null && known.Tag == entry.Tag)
+            {
+                if (known.Problem != null) result.Problems.Add((device, ProblemOf(known.Problem)));
+                continue;
+            }
+            try
+            {
+                var file = DeviceFile.Parse(await folder.ReadAsync(entry), device, nowMs);
+                fresh.Add(file);
+                meta.Files[entry.Name] = new FileSummary(entry.Tag, device, file.Name, file.App, file.Written);
+            }
+            catch (DeviceFileException ex)
+            {
+                // Noted, so it isn't fetched again until it changes.
+                result.Problems.Add((device, ex.Problem));
+                meta.Files[entry.Name] = new FileSummary(entry.Tag, device, known?.Name ?? "", known?.App ?? "", known?.Written ?? Stamp.Zero,
+                    ex.Problem.ToString().ToLowerInvariant());
+            }
+            catch (SyncException ex) when (ex.Kind == SyncErrorKind.Gone)
+            {
+                // Deleted between listing and reading: next time.
+            }
+        }
+        foreach (string name in meta.Files.Keys.Where(n => !present.Contains(n)).ToList()) meta.Files.Remove(name);
 
         // ---- merge what's new
         bool news = false;
+        if (adopted != null) news |= ws.MergeFrom(new WorkspaceData(adopted.Tasks, adopted.Sheets, adopted.Focus));
         foreach (var file in fresh.OrderBy(f => f.Device, StringComparer.Ordinal))
         {
             if (!Stamp.IsLater(file.Written, meta.Seen.GetValueOrDefault(file.Device, Stamp.Zero))) continue;
@@ -100,11 +121,13 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
         if (rewrite || edited || news)
         {
             await hooks.FlushAsync();
+            // The clock and the records together, with no await between: the file holds exactly
+            // what this device knew at "written", and anything later is news for the next write.
             string written = ws.Clock.Now();
-            meta.Own = meta.Own with { Pending = written };
-            await hooks.SaveMetaAsync(meta);
             var (name, app) = hooks.Label();
             byte[] bytes = DeviceFile.Write(ws.ToData(), me, name, app, written, meta.Seen);
+            meta.Own = meta.Own with { Pending = written };
+            await hooks.SaveMetaAsync(meta);
             var entry = await folder.WriteAsync(DeviceFile.FileName(me), bytes);
             meta.Own = new OwnFile(entry.Tag, written, null);
             result.Wrote = true;
@@ -115,6 +138,9 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
         result.Peers.AddRange(meta.Files.Values.Select(s => new PeerInfo(s.Device, s.Name, s.App, (long)Stamp.Time(s.Written))));
         return result;
     }
+
+    private static DeviceFileProblem ProblemOf(string problem) =>
+        Enum.TryParse<DeviceFileProblem>(problem, ignoreCase: true, out var p) ? p : DeviceFileProblem.Unreadable;
 
     /// <summary>
     /// Had <paramref name="device"/>, whose view of the others is <paramref name="seen"/>, seen this
@@ -214,7 +240,9 @@ internal sealed class SyncMeta
     public static SyncMeta Empty(string folder) => new() { Folder = folder };
 }
 
-internal sealed record FileSummary(string Tag, string Device, string Name, string App, string Written);
+/// <param name="Problem">This version couldn't be used ("unreadable", "newer", "mismatch"); it isn't fetched again until it changes.</param>
+internal sealed record FileSummary(string Tag, string Device, string Name, string App, string Written,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Problem = null);
 
 /// <param name="Pending">A write whose answer never came back: if the folder has it, it's ours.</param>
 internal sealed record OwnFile(string? Tag, string? Written, string? Pending);

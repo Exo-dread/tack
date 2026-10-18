@@ -70,6 +70,10 @@ async function scenario(): Promise<CycleVector[]> {
       id,
       ws,
       view,
+      /** Its sync state lost (an unreadable sync.json, say): it must take its own file back. */
+      forget() {
+        saved = emptyMeta('folder');
+      },
       async sync() {
         const before = {
           data: sorted(ws.toData()),
@@ -174,6 +178,14 @@ async function scenario(): Promise<CycleVector[]> {
   cloud.put(tabletName, JSON.stringify({ ...forged, written: encode(wall + 5000, 0, tablet.id) }));
   tick();
   await tablet.sync();
+  // The desk loses its sync state, while the phone adds a task.
+  desk.forget();
+  tick();
+  phone.ws.addTask('While the desk forgot');
+  tick();
+  await phone.sync();
+  tick();
+  await desk.sync();
   // Everyone settles.
   for (const d of [phone, desk, phone, desk]) {
     tick();

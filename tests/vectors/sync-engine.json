@@ -6137,11 +6137,12 @@
      },
      "files": {
       "desk0001.json": {
-       "tag": "t12",
+       "tag": "t15",
        "device": "desk0001",
        "name": "Device desk0001",
        "app": "Tack Focus test",
-       "written": "0mvdlhmg8.0000.desk0001"
+       "written": "0mvdlhmg8.0000.desk0001",
+       "problem": "unreadable"
       },
       "tablet01.json": {
        "tag": "t14",
@@ -6314,11 +6315,12 @@
      },
      "files": {
       "desk0001.json": {
-       "tag": "t12",
+       "tag": "t15",
        "device": "desk0001",
        "name": "Device desk0001",
        "app": "Tack Focus test",
-       "written": "0mvdlhmg8.0000.desk0001"
+       "written": "0mvdlhmg8.0000.desk0001",
+       "problem": "unreadable"
       },
       "tablet01.json": {
        "tag": "t14",
@@ -6488,18 +6490,20 @@
      },
      "files": {
       "desk0001.json": {
-       "tag": "t12",
+       "tag": "t15",
        "device": "desk0001",
        "name": "Device desk0001",
        "app": "Tack Focus test",
-       "written": "0mvdlhmg8.0000.desk0001"
+       "written": "0mvdlhmg8.0000.desk0001",
+       "problem": "unreadable"
       },
       "tablet01.json": {
-       "tag": "t14",
+       "tag": "t16",
        "device": "tablet01",
        "name": "Device tablet01",
        "app": "Tack Focus test",
-       "written": "0mvdlhnzs.0000.tablet01"
+       "written": "0mvdlhnzs.0000.tablet01",
+       "problem": "newer"
       }
      },
      "own": {
@@ -6848,11 +6852,12 @@
        "written": "0mvdlhn80.0000.phone001"
       },
       "tablet01.json": {
-       "tag": "t11",
+       "tag": "t16",
        "device": "tablet01",
        "name": "Device tablet01",
        "app": "Tack Focus test",
-       "written": "0mvdlhlog.0000.tablet01"
+       "written": "0mvdlhlog.0000.tablet01",
+       "problem": "newer"
       }
      },
      "own": {
@@ -8221,9 +8226,9 @@
   },
   {
    "device": "phone001",
-   "now": 1792314030000,
+   "now": 1792314031000,
    "hlc": {
-    "ms": 1792314026000,
+    "ms": 1792314030000,
     "counter": 0
    },
    "before": {
@@ -8301,6 +8306,20 @@
         "completed": "0mvdlhsmg.0000.phone001",
         "order": "0mvdlhsmg.0000.phone001",
         "deleted": "0mvdlhsmg.0000.phone001"
+       }
+      },
+      {
+       "id": "ea9911ee0d4c",
+       "text": "While the desk forgot",
+       "created": "2026-10-18T09:00:30.000+00:00",
+       "completed": null,
+       "order": "R",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhwhc.0000.phone001",
+        "completed": "0mvdlhwhc.0000.phone001",
+        "order": "0mvdlhwhc.0000.phone001",
+        "deleted": "0mvdlhwhc.0000.phone001"
        }
       }
      ],
@@ -8490,6 +8509,20 @@
         "order": "0mvdlhsmg.0000.phone001",
         "deleted": "0mvdlhsmg.0000.phone001"
        }
+      },
+      {
+       "id": "ea9911ee0d4c",
+       "text": "While the desk forgot",
+       "created": "2026-10-18T09:00:30.000+00:00",
+       "completed": null,
+       "order": "R",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhwhc.0000.phone001",
+        "completed": "0mvdlhwhc.0000.phone001",
+        "order": "0mvdlhwhc.0000.phone001",
+        "deleted": "0mvdlhwhc.0000.phone001"
+       }
       }
      ],
      "sheets": [
@@ -8578,24 +8611,192 @@
       }
      },
      "own": {
-      "tag": "t19",
-      "written": "0mvdlhte8.0000.phone001",
+      "tag": "t21",
+      "written": "0mvdlhx94.0000.phone001",
       "pending": null
      },
-     "lastSync": 1792314030000
+     "lastSync": 1792314031000
     },
     "result": {
      "merged": [
       "tablet01"
      ],
-     "wrote": false,
+     "wrote": true,
      "problems": []
+    },
+    "written": {
+     "format": "tack-sync-device",
+     "version": 1,
+     "device": "phone001",
+     "name": "Device phone001",
+     "app": "Tack Focus test",
+     "written": "0mvdlhx94.0000.phone001",
+     "seen": {
+      "desk0001": "0mvdlhr2w.0000.desk0001",
+      "tablet01": "0mvdlhyso.0000.tablet01"
+     },
+     "focus": {
+      "id": "b7bb08946408",
+      "clk": "0mvdlhfi8.0000.tablet01"
+     },
+     "tasks": [
+      {
+       "id": "04b00c3ddc11",
+       "text": "Book flights",
+       "created": "2026-10-18T09:00:01.000+00:00",
+       "completed": null,
+       "order": "U",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlha3s.0001.desk0001",
+        "completed": "0mvdlha3s.0001.desk0001",
+        "order": "0mvdlha3s.0001.desk0001",
+        "deleted": "0mvdlha3s.0001.desk0001"
+       }
+      },
+      {
+       "id": "655cbf0bb2e9",
+       "text": "Water the plants",
+       "created": "2026-10-18T09:00:02.000+00:00",
+       "completed": null,
+       "order": "T",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhavk.0000.tablet01",
+        "completed": "0mvdlhavk.0000.tablet01",
+        "order": "0mvdlhkwo.0001.tablet01",
+        "deleted": "0mvdlhavk.0000.tablet01"
+       }
+      },
+      {
+       "id": "7af3e4e3eaa9",
+       "text": "Draft the drainage report",
+       "created": "2026-10-18T09:00:01.000+00:00",
+       "completed": "2026-10-18T09:00:08.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhfi8.0000.phone001",
+        "completed": "0mvdlhfi8.0000.desk0001",
+        "order": "0mvdlha3s.0000.desk0001",
+        "deleted": "0mvdlha3s.0000.desk0001"
+       }
+      },
+      {
+       "id": "b7bb08946408",
+       "text": "Call the plumber",
+       "created": "2026-10-18T09:00:00.000+00:00",
+       "completed": null,
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0001.phone001",
+        "completed": "0mvdlh9c0.0001.phone001",
+        "order": "0mvdlh9c0.0001.phone001",
+        "deleted": "0mvdlhkwo.0000.desk0001"
+       }
+      },
+      {
+       "id": "b97d367df814",
+       "text": "Lost answer",
+       "created": "2026-10-18T09:00:25.000+00:00",
+       "completed": null,
+       "order": "S",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhsmg.0000.phone001",
+        "completed": "0mvdlhsmg.0000.phone001",
+        "order": "0mvdlhsmg.0000.phone001",
+        "deleted": "0mvdlhsmg.0000.phone001"
+       }
+      },
+      {
+       "id": "ea9911ee0d4c",
+       "text": "While the desk forgot",
+       "created": "2026-10-18T09:00:30.000+00:00",
+       "completed": null,
+       "order": "R",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhwhc.0000.phone001",
+        "completed": "0mvdlhwhc.0000.phone001",
+        "order": "0mvdlhwhc.0000.phone001",
+        "deleted": "0mvdlhwhc.0000.phone001"
+       }
+      }
+     ],
+     "sheets": [
+      {
+       "id": "147b9ff2dac0",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.phone001",
+        "order": "0mvdlh9c0.0000.phone001",
+        "deleted": "0mvdlh9c0.0000.phone001"
+       }
+      },
+      {
+       "id": "1ba05057f16d",
+       "text": "Shopping\n- eggs\n- milk\n- tea",
+       "updated": "2026-10-18T09:00:15.000+00:00",
+       "order": "W",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhkwo.0000.tablet01",
+        "order": "0mvdlha3s.0002.desk0001",
+        "deleted": "0mvdlha3s.0002.desk0001"
+       }
+      },
+      {
+       "id": "2f3b1484d8d9",
+       "text": "Shopping\n- eggs\n- bread",
+       "updated": "2026-10-18T09:00:08.000+00:00",
+       "order": "X",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhfi8.0001.desk0001",
+        "order": "0mvdlhfi8.0001.desk0001",
+        "deleted": "0mvdlhfi8.0001.desk0001"
+       }
+      },
+      {
+       "id": "4346f2378e22",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.desk0001",
+        "order": "0mvdlh9c0.0000.desk0001",
+        "deleted": "0mvdlh9c0.0000.desk0001"
+       }
+      },
+      {
+       "id": "a326e19faf7f",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.tablet01",
+        "order": "0mvdlh9c0.0000.tablet01",
+        "deleted": "0mvdlh9c0.0000.tablet01"
+       }
+      }
+     ],
+     "deleted": {
+      "tasks": {},
+      "sheets": {}
+     }
     }
    }
   },
   {
    "device": "desk0001",
-   "now": 1792314031000,
+   "now": 1792314032000,
    "hlc": {
     "ms": 1792314023000,
     "counter": 0
@@ -8729,38 +8930,20 @@
     },
     "meta": {
      "folder": "folder",
-     "seen": {
-      "phone001": "0mvdlhn80.0000.phone001",
-      "tablet01": "0mvdlhlog.0000.tablet01"
-     },
-     "files": {
-      "phone001.json": {
-       "tag": "t13",
-       "device": "phone001",
-       "name": "Device phone001",
-       "app": "Tack Focus test",
-       "written": "0mvdlhn80.0000.phone001"
-      },
-      "tablet01.json": {
-       "tag": "t11",
-       "device": "tablet01",
-       "name": "Device tablet01",
-       "app": "Tack Focus test",
-       "written": "0mvdlhlog.0000.tablet01"
-      }
-     },
+     "seen": {},
+     "files": {},
      "own": {
-      "tag": "t17",
-      "written": "0mvdlhr2w.0000.desk0001",
+      "tag": null,
+      "written": null,
       "pending": null
      },
-     "lastSync": 1792314023000
+     "lastSync": 0
     },
     "folder": [
      {
       "name": "phone001.json",
-      "tag": "t19",
-      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"phone001\",\"name\":\"Device phone001\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhte8.0000.phone001\",\"seen\":{\"desk0001\":\"0mvdlhr2w.0000.desk0001\",\"tablet01\":\"0mvdlhruo.0000.tablet01\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}},{\"id\":\"b97d367df814\",\"text\":\"Lost answer\",\"created\":\"2026-10-18T09:00:25.000+00:00\",\"completed\":null,\"order\":\"S\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhsmg.0000.phone001\",\"completed\":\"0mvdlhsmg.0000.phone001\",\"order\":\"0mvdlhsmg.0000.phone001\",\"deleted\":\"0mvdlhsmg.0000.phone001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
+      "tag": "t21",
+      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"phone001\",\"name\":\"Device phone001\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhx94.0000.phone001\",\"seen\":{\"desk0001\":\"0mvdlhr2w.0000.desk0001\",\"tablet01\":\"0mvdlhyso.0000.tablet01\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}},{\"id\":\"b97d367df814\",\"text\":\"Lost answer\",\"created\":\"2026-10-18T09:00:25.000+00:00\",\"completed\":null,\"order\":\"S\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhsmg.0000.phone001\",\"completed\":\"0mvdlhsmg.0000.phone001\",\"order\":\"0mvdlhsmg.0000.phone001\",\"deleted\":\"0mvdlhsmg.0000.phone001\"}},{\"id\":\"ea9911ee0d4c\",\"text\":\"While the desk forgot\",\"created\":\"2026-10-18T09:00:30.000+00:00\",\"completed\":null,\"order\":\"R\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhwhc.0000.phone001\",\"completed\":\"0mvdlhwhc.0000.phone001\",\"order\":\"0mvdlhwhc.0000.phone001\",\"deleted\":\"0mvdlhwhc.0000.phone001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
      },
      {
       "name": "desk0001.json",
@@ -8850,6 +9033,20 @@
         "order": "0mvdlhsmg.0000.phone001",
         "deleted": "0mvdlhsmg.0000.phone001"
        }
+      },
+      {
+       "id": "ea9911ee0d4c",
+       "text": "While the desk forgot",
+       "created": "2026-10-18T09:00:30.000+00:00",
+       "completed": null,
+       "order": "R",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhwhc.0000.phone001",
+        "completed": "0mvdlhwhc.0000.phone001",
+        "order": "0mvdlhwhc.0000.phone001",
+        "deleted": "0mvdlhwhc.0000.phone001"
+       }
       }
      ],
      "sheets": [
@@ -8918,16 +9115,16 @@
     "meta": {
      "folder": "folder",
      "seen": {
-      "phone001": "0mvdlhte8.0000.phone001",
+      "phone001": "0mvdlhx94.0000.phone001",
       "tablet01": "0mvdlhyso.0000.tablet01"
      },
      "files": {
       "phone001.json": {
-       "tag": "t19",
+       "tag": "t21",
        "device": "phone001",
        "name": "Device phone001",
        "app": "Tack Focus test",
-       "written": "0mvdlhte8.0000.phone001"
+       "written": "0mvdlhx94.0000.phone001"
       },
       "tablet01.json": {
        "tag": "t20",
@@ -8938,16 +9135,15 @@
       }
      },
      "own": {
-      "tag": "t21",
-      "written": "0mvdlhx94.0000.desk0001",
+      "tag": "t22",
+      "written": "0mvdlhy0w.0000.desk0001",
       "pending": null
      },
-     "lastSync": 1792314031000
+     "lastSync": 1792314032000
     },
     "result": {
      "merged": [
-      "phone001",
-      "tablet01"
+      "phone001"
      ],
      "wrote": true,
      "problems": []
@@ -8958,9 +9154,9 @@
      "device": "desk0001",
      "name": "Device desk0001",
      "app": "Tack Focus test",
-     "written": "0mvdlhx94.0000.desk0001",
+     "written": "0mvdlhy0w.0000.desk0001",
      "seen": {
-      "phone001": "0mvdlhte8.0000.phone001",
+      "phone001": "0mvdlhx94.0000.phone001",
       "tablet01": "0mvdlhyso.0000.tablet01"
      },
      "focus": {
@@ -9037,6 +9233,20 @@
         "order": "0mvdlhsmg.0000.phone001",
         "deleted": "0mvdlhsmg.0000.phone001"
        }
+      },
+      {
+       "id": "ea9911ee0d4c",
+       "text": "While the desk forgot",
+       "created": "2026-10-18T09:00:30.000+00:00",
+       "completed": null,
+       "order": "R",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhwhc.0000.phone001",
+        "completed": "0mvdlhwhc.0000.phone001",
+        "order": "0mvdlhwhc.0000.phone001",
+        "deleted": "0mvdlhwhc.0000.phone001"
+       }
       }
      ],
      "sheets": [
@@ -9110,9 +9320,9 @@
   },
   {
    "device": "phone001",
-   "now": 1792314032000,
+   "now": 1792314033000,
    "hlc": {
-    "ms": 1792314026000,
+    "ms": 1792314031000,
     "counter": 0
    },
    "before": {
@@ -9190,6 +9400,20 @@
         "completed": "0mvdlhsmg.0000.phone001",
         "order": "0mvdlhsmg.0000.phone001",
         "deleted": "0mvdlhsmg.0000.phone001"
+       }
+      },
+      {
+       "id": "ea9911ee0d4c",
+       "text": "While the desk forgot",
+       "created": "2026-10-18T09:00:30.000+00:00",
+       "completed": null,
+       "order": "R",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhwhc.0000.phone001",
+        "completed": "0mvdlhwhc.0000.phone001",
+        "order": "0mvdlhwhc.0000.phone001",
+        "deleted": "0mvdlhwhc.0000.phone001"
        }
       }
      ],
@@ -9279,22 +9503,22 @@
       }
      },
      "own": {
-      "tag": "t19",
-      "written": "0mvdlhte8.0000.phone001",
+      "tag": "t21",
+      "written": "0mvdlhx94.0000.phone001",
       "pending": null
      },
-     "lastSync": 1792314030000
+     "lastSync": 1792314031000
     },
     "folder": [
      {
       "name": "phone001.json",
-      "tag": "t19",
-      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"phone001\",\"name\":\"Device phone001\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhte8.0000.phone001\",\"seen\":{\"desk0001\":\"0mvdlhr2w.0000.desk0001\",\"tablet01\":\"0mvdlhruo.0000.tablet01\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}},{\"id\":\"b97d367df814\",\"text\":\"Lost answer\",\"created\":\"2026-10-18T09:00:25.000+00:00\",\"completed\":null,\"order\":\"S\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhsmg.0000.phone001\",\"completed\":\"0mvdlhsmg.0000.phone001\",\"order\":\"0mvdlhsmg.0000.phone001\",\"deleted\":\"0mvdlhsmg.0000.phone001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
+      "tag": "t21",
+      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"phone001\",\"name\":\"Device phone001\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhx94.0000.phone001\",\"seen\":{\"desk0001\":\"0mvdlhr2w.0000.desk0001\",\"tablet01\":\"0mvdlhyso.0000.tablet01\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}},{\"id\":\"b97d367df814\",\"text\":\"Lost answer\",\"created\":\"2026-10-18T09:00:25.000+00:00\",\"completed\":null,\"order\":\"S\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhsmg.0000.phone001\",\"completed\":\"0mvdlhsmg.0000.phone001\",\"order\":\"0mvdlhsmg.0000.phone001\",\"deleted\":\"0mvdlhsmg.0000.phone001\"}},{\"id\":\"ea9911ee0d4c\",\"text\":\"While the desk forgot\",\"created\":\"2026-10-18T09:00:30.000+00:00\",\"completed\":null,\"order\":\"R\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhwhc.0000.phone001\",\"completed\":\"0mvdlhwhc.0000.phone001\",\"order\":\"0mvdlhwhc.0000.phone001\",\"deleted\":\"0mvdlhwhc.0000.phone001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
      },
      {
       "name": "desk0001.json",
-      "tag": "t21",
-      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"desk0001\",\"name\":\"Device desk0001\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhx94.0000.desk0001\",\"seen\":{\"phone001\":\"0mvdlhte8.0000.phone001\",\"tablet01\":\"0mvdlhyso.0000.tablet01\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}},{\"id\":\"b97d367df814\",\"text\":\"Lost answer\",\"created\":\"2026-10-18T09:00:25.000+00:00\",\"completed\":null,\"order\":\"S\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhsmg.0000.phone001\",\"completed\":\"0mvdlhsmg.0000.phone001\",\"order\":\"0mvdlhsmg.0000.phone001\",\"deleted\":\"0mvdlhsmg.0000.phone001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
+      "tag": "t22",
+      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"desk0001\",\"name\":\"Device desk0001\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhy0w.0000.desk0001\",\"seen\":{\"phone001\":\"0mvdlhx94.0000.phone001\",\"tablet01\":\"0mvdlhyso.0000.tablet01\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}},{\"id\":\"b97d367df814\",\"text\":\"Lost answer\",\"created\":\"2026-10-18T09:00:25.000+00:00\",\"completed\":null,\"order\":\"S\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhsmg.0000.phone001\",\"completed\":\"0mvdlhsmg.0000.phone001\",\"order\":\"0mvdlhsmg.0000.phone001\",\"deleted\":\"0mvdlhsmg.0000.phone001\"}},{\"id\":\"ea9911ee0d4c\",\"text\":\"While the desk forgot\",\"created\":\"2026-10-18T09:00:30.000+00:00\",\"completed\":null,\"order\":\"R\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhwhc.0000.phone001\",\"completed\":\"0mvdlhwhc.0000.phone001\",\"order\":\"0mvdlhwhc.0000.phone001\",\"deleted\":\"0mvdlhwhc.0000.phone001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
      },
      {
       "name": "tablet01.json",
@@ -9379,6 +9603,20 @@
         "order": "0mvdlhsmg.0000.phone001",
         "deleted": "0mvdlhsmg.0000.phone001"
        }
+      },
+      {
+       "id": "ea9911ee0d4c",
+       "text": "While the desk forgot",
+       "created": "2026-10-18T09:00:30.000+00:00",
+       "completed": null,
+       "order": "R",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhwhc.0000.phone001",
+        "completed": "0mvdlhwhc.0000.phone001",
+        "order": "0mvdlhwhc.0000.phone001",
+        "deleted": "0mvdlhwhc.0000.phone001"
+       }
       }
      ],
      "sheets": [
@@ -9447,16 +9685,16 @@
     "meta": {
      "folder": "folder",
      "seen": {
-      "desk0001": "0mvdlhx94.0000.desk0001",
+      "desk0001": "0mvdlhy0w.0000.desk0001",
       "tablet01": "0mvdlhyso.0000.tablet01"
      },
      "files": {
       "desk0001.json": {
-       "tag": "t21",
+       "tag": "t22",
        "device": "desk0001",
        "name": "Device desk0001",
        "app": "Tack Focus test",
-       "written": "0mvdlhx94.0000.desk0001"
+       "written": "0mvdlhy0w.0000.desk0001"
       },
       "tablet01.json": {
        "tag": "t20",
@@ -9467,11 +9705,11 @@
       }
      },
      "own": {
-      "tag": "t19",
-      "written": "0mvdlhte8.0000.phone001",
+      "tag": "t21",
+      "written": "0mvdlhx94.0000.phone001",
       "pending": null
      },
-     "lastSync": 1792314032000
+     "lastSync": 1792314033000
     },
     "result": {
      "merged": [
@@ -9484,7 +9722,407 @@
   },
   {
    "device": "desk0001",
-   "now": 1792314033000,
+   "now": 1792314034000,
+   "hlc": {
+    "ms": 1792314032000,
+    "counter": 0
+   },
+   "before": {
+    "data": {
+     "focus": {
+      "id": "b7bb08946408",
+      "clk": "0mvdlhfi8.0000.tablet01"
+     },
+     "tasks": [
+      {
+       "id": "04b00c3ddc11",
+       "text": "Book flights",
+       "created": "2026-10-18T09:00:01.000+00:00",
+       "completed": null,
+       "order": "U",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlha3s.0001.desk0001",
+        "completed": "0mvdlha3s.0001.desk0001",
+        "order": "0mvdlha3s.0001.desk0001",
+        "deleted": "0mvdlha3s.0001.desk0001"
+       }
+      },
+      {
+       "id": "655cbf0bb2e9",
+       "text": "Water the plants",
+       "created": "2026-10-18T09:00:02.000+00:00",
+       "completed": null,
+       "order": "T",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhavk.0000.tablet01",
+        "completed": "0mvdlhavk.0000.tablet01",
+        "order": "0mvdlhkwo.0001.tablet01",
+        "deleted": "0mvdlhavk.0000.tablet01"
+       }
+      },
+      {
+       "id": "7af3e4e3eaa9",
+       "text": "Draft the drainage report",
+       "created": "2026-10-18T09:00:01.000+00:00",
+       "completed": "2026-10-18T09:00:08.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhfi8.0000.phone001",
+        "completed": "0mvdlhfi8.0000.desk0001",
+        "order": "0mvdlha3s.0000.desk0001",
+        "deleted": "0mvdlha3s.0000.desk0001"
+       }
+      },
+      {
+       "id": "b7bb08946408",
+       "text": "Call the plumber",
+       "created": "2026-10-18T09:00:00.000+00:00",
+       "completed": null,
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0001.phone001",
+        "completed": "0mvdlh9c0.0001.phone001",
+        "order": "0mvdlh9c0.0001.phone001",
+        "deleted": "0mvdlhkwo.0000.desk0001"
+       }
+      },
+      {
+       "id": "b97d367df814",
+       "text": "Lost answer",
+       "created": "2026-10-18T09:00:25.000+00:00",
+       "completed": null,
+       "order": "S",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhsmg.0000.phone001",
+        "completed": "0mvdlhsmg.0000.phone001",
+        "order": "0mvdlhsmg.0000.phone001",
+        "deleted": "0mvdlhsmg.0000.phone001"
+       }
+      },
+      {
+       "id": "ea9911ee0d4c",
+       "text": "While the desk forgot",
+       "created": "2026-10-18T09:00:30.000+00:00",
+       "completed": null,
+       "order": "R",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhwhc.0000.phone001",
+        "completed": "0mvdlhwhc.0000.phone001",
+        "order": "0mvdlhwhc.0000.phone001",
+        "deleted": "0mvdlhwhc.0000.phone001"
+       }
+      }
+     ],
+     "sheets": [
+      {
+       "id": "147b9ff2dac0",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.phone001",
+        "order": "0mvdlh9c0.0000.phone001",
+        "deleted": "0mvdlh9c0.0000.phone001"
+       }
+      },
+      {
+       "id": "1ba05057f16d",
+       "text": "Shopping\n- eggs\n- milk\n- tea",
+       "updated": "2026-10-18T09:00:15.000+00:00",
+       "order": "W",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhkwo.0000.tablet01",
+        "order": "0mvdlha3s.0002.desk0001",
+        "deleted": "0mvdlha3s.0002.desk0001"
+       }
+      },
+      {
+       "id": "2f3b1484d8d9",
+       "text": "Shopping\n- eggs\n- bread",
+       "updated": "2026-10-18T09:00:08.000+00:00",
+       "order": "X",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhfi8.0001.desk0001",
+        "order": "0mvdlhfi8.0001.desk0001",
+        "deleted": "0mvdlhfi8.0001.desk0001"
+       }
+      },
+      {
+       "id": "4346f2378e22",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.desk0001",
+        "order": "0mvdlh9c0.0000.desk0001",
+        "deleted": "0mvdlh9c0.0000.desk0001"
+       }
+      },
+      {
+       "id": "a326e19faf7f",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.tablet01",
+        "order": "0mvdlh9c0.0000.tablet01",
+        "deleted": "0mvdlh9c0.0000.tablet01"
+       }
+      }
+     ]
+    },
+    "meta": {
+     "folder": "folder",
+     "seen": {
+      "phone001": "0mvdlhx94.0000.phone001",
+      "tablet01": "0mvdlhyso.0000.tablet01"
+     },
+     "files": {
+      "phone001.json": {
+       "tag": "t21",
+       "device": "phone001",
+       "name": "Device phone001",
+       "app": "Tack Focus test",
+       "written": "0mvdlhx94.0000.phone001"
+      },
+      "tablet01.json": {
+       "tag": "t20",
+       "device": "tablet01",
+       "name": "Device tablet01",
+       "app": "Tack Focus test",
+       "written": "0mvdlhyso.0000.tablet01"
+      }
+     },
+     "own": {
+      "tag": "t22",
+      "written": "0mvdlhy0w.0000.desk0001",
+      "pending": null
+     },
+     "lastSync": 1792314032000
+    },
+    "folder": [
+     {
+      "name": "phone001.json",
+      "tag": "t21",
+      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"phone001\",\"name\":\"Device phone001\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhx94.0000.phone001\",\"seen\":{\"desk0001\":\"0mvdlhr2w.0000.desk0001\",\"tablet01\":\"0mvdlhyso.0000.tablet01\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}},{\"id\":\"b97d367df814\",\"text\":\"Lost answer\",\"created\":\"2026-10-18T09:00:25.000+00:00\",\"completed\":null,\"order\":\"S\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhsmg.0000.phone001\",\"completed\":\"0mvdlhsmg.0000.phone001\",\"order\":\"0mvdlhsmg.0000.phone001\",\"deleted\":\"0mvdlhsmg.0000.phone001\"}},{\"id\":\"ea9911ee0d4c\",\"text\":\"While the desk forgot\",\"created\":\"2026-10-18T09:00:30.000+00:00\",\"completed\":null,\"order\":\"R\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhwhc.0000.phone001\",\"completed\":\"0mvdlhwhc.0000.phone001\",\"order\":\"0mvdlhwhc.0000.phone001\",\"deleted\":\"0mvdlhwhc.0000.phone001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
+     },
+     {
+      "name": "desk0001.json",
+      "tag": "t22",
+      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"desk0001\",\"name\":\"Device desk0001\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhy0w.0000.desk0001\",\"seen\":{\"phone001\":\"0mvdlhx94.0000.phone001\",\"tablet01\":\"0mvdlhyso.0000.tablet01\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}},{\"id\":\"b97d367df814\",\"text\":\"Lost answer\",\"created\":\"2026-10-18T09:00:25.000+00:00\",\"completed\":null,\"order\":\"S\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhsmg.0000.phone001\",\"completed\":\"0mvdlhsmg.0000.phone001\",\"order\":\"0mvdlhsmg.0000.phone001\",\"deleted\":\"0mvdlhsmg.0000.phone001\"}},{\"id\":\"ea9911ee0d4c\",\"text\":\"While the desk forgot\",\"created\":\"2026-10-18T09:00:30.000+00:00\",\"completed\":null,\"order\":\"R\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhwhc.0000.phone001\",\"completed\":\"0mvdlhwhc.0000.phone001\",\"order\":\"0mvdlhwhc.0000.phone001\",\"deleted\":\"0mvdlhwhc.0000.phone001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
+     },
+     {
+      "name": "tablet01.json",
+      "tag": "t20",
+      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"tablet01\",\"name\":\"Device tablet01\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhyso.0000.tablet01\",\"seen\":{\"desk0001\":\"0mvdlhr2w.0000.desk0001\",\"phone001\":\"0mvdlhn80.0000.phone001\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
+     }
+    ]
+   },
+   "after": {
+    "data": {
+     "focus": {
+      "id": "b7bb08946408",
+      "clk": "0mvdlhfi8.0000.tablet01"
+     },
+     "tasks": [
+      {
+       "id": "04b00c3ddc11",
+       "text": "Book flights",
+       "created": "2026-10-18T09:00:01.000+00:00",
+       "completed": null,
+       "order": "U",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlha3s.0001.desk0001",
+        "completed": "0mvdlha3s.0001.desk0001",
+        "order": "0mvdlha3s.0001.desk0001",
+        "deleted": "0mvdlha3s.0001.desk0001"
+       }
+      },
+      {
+       "id": "655cbf0bb2e9",
+       "text": "Water the plants",
+       "created": "2026-10-18T09:00:02.000+00:00",
+       "completed": null,
+       "order": "T",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhavk.0000.tablet01",
+        "completed": "0mvdlhavk.0000.tablet01",
+        "order": "0mvdlhkwo.0001.tablet01",
+        "deleted": "0mvdlhavk.0000.tablet01"
+       }
+      },
+      {
+       "id": "7af3e4e3eaa9",
+       "text": "Draft the drainage report",
+       "created": "2026-10-18T09:00:01.000+00:00",
+       "completed": "2026-10-18T09:00:08.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhfi8.0000.phone001",
+        "completed": "0mvdlhfi8.0000.desk0001",
+        "order": "0mvdlha3s.0000.desk0001",
+        "deleted": "0mvdlha3s.0000.desk0001"
+       }
+      },
+      {
+       "id": "b7bb08946408",
+       "text": "Call the plumber",
+       "created": "2026-10-18T09:00:00.000+00:00",
+       "completed": null,
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0001.phone001",
+        "completed": "0mvdlh9c0.0001.phone001",
+        "order": "0mvdlh9c0.0001.phone001",
+        "deleted": "0mvdlhkwo.0000.desk0001"
+       }
+      },
+      {
+       "id": "b97d367df814",
+       "text": "Lost answer",
+       "created": "2026-10-18T09:00:25.000+00:00",
+       "completed": null,
+       "order": "S",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhsmg.0000.phone001",
+        "completed": "0mvdlhsmg.0000.phone001",
+        "order": "0mvdlhsmg.0000.phone001",
+        "deleted": "0mvdlhsmg.0000.phone001"
+       }
+      },
+      {
+       "id": "ea9911ee0d4c",
+       "text": "While the desk forgot",
+       "created": "2026-10-18T09:00:30.000+00:00",
+       "completed": null,
+       "order": "R",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhwhc.0000.phone001",
+        "completed": "0mvdlhwhc.0000.phone001",
+        "order": "0mvdlhwhc.0000.phone001",
+        "deleted": "0mvdlhwhc.0000.phone001"
+       }
+      }
+     ],
+     "sheets": [
+      {
+       "id": "147b9ff2dac0",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.phone001",
+        "order": "0mvdlh9c0.0000.phone001",
+        "deleted": "0mvdlh9c0.0000.phone001"
+       }
+      },
+      {
+       "id": "1ba05057f16d",
+       "text": "Shopping\n- eggs\n- milk\n- tea",
+       "updated": "2026-10-18T09:00:15.000+00:00",
+       "order": "W",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhkwo.0000.tablet01",
+        "order": "0mvdlha3s.0002.desk0001",
+        "deleted": "0mvdlha3s.0002.desk0001"
+       }
+      },
+      {
+       "id": "2f3b1484d8d9",
+       "text": "Shopping\n- eggs\n- bread",
+       "updated": "2026-10-18T09:00:08.000+00:00",
+       "order": "X",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhfi8.0001.desk0001",
+        "order": "0mvdlhfi8.0001.desk0001",
+        "deleted": "0mvdlhfi8.0001.desk0001"
+       }
+      },
+      {
+       "id": "4346f2378e22",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.desk0001",
+        "order": "0mvdlh9c0.0000.desk0001",
+        "deleted": "0mvdlh9c0.0000.desk0001"
+       }
+      },
+      {
+       "id": "a326e19faf7f",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.tablet01",
+        "order": "0mvdlh9c0.0000.tablet01",
+        "deleted": "0mvdlh9c0.0000.tablet01"
+       }
+      }
+     ]
+    },
+    "meta": {
+     "folder": "folder",
+     "seen": {
+      "phone001": "0mvdlhx94.0000.phone001",
+      "tablet01": "0mvdlhyso.0000.tablet01"
+     },
+     "files": {
+      "phone001.json": {
+       "tag": "t21",
+       "device": "phone001",
+       "name": "Device phone001",
+       "app": "Tack Focus test",
+       "written": "0mvdlhx94.0000.phone001"
+      },
+      "tablet01.json": {
+       "tag": "t20",
+       "device": "tablet01",
+       "name": "Device tablet01",
+       "app": "Tack Focus test",
+       "written": "0mvdlhyso.0000.tablet01"
+      }
+     },
+     "own": {
+      "tag": "t22",
+      "written": "0mvdlhy0w.0000.desk0001",
+      "pending": null
+     },
+     "lastSync": 1792314034000
+    },
+    "result": {
+     "merged": [],
+     "wrote": false,
+     "problems": []
+    }
+   }
+  },
+  {
+   "device": "phone001",
+   "now": 1792314035000,
    "hlc": {
     "ms": 1792314031000,
     "counter": 0
@@ -9565,6 +10203,20 @@
         "order": "0mvdlhsmg.0000.phone001",
         "deleted": "0mvdlhsmg.0000.phone001"
        }
+      },
+      {
+       "id": "ea9911ee0d4c",
+       "text": "While the desk forgot",
+       "created": "2026-10-18T09:00:30.000+00:00",
+       "completed": null,
+       "order": "R",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhwhc.0000.phone001",
+        "completed": "0mvdlhwhc.0000.phone001",
+        "order": "0mvdlhwhc.0000.phone001",
+        "deleted": "0mvdlhwhc.0000.phone001"
+       }
       }
      ],
      "sheets": [
@@ -9633,16 +10285,16 @@
     "meta": {
      "folder": "folder",
      "seen": {
-      "phone001": "0mvdlhte8.0000.phone001",
+      "desk0001": "0mvdlhy0w.0000.desk0001",
       "tablet01": "0mvdlhyso.0000.tablet01"
      },
      "files": {
-      "phone001.json": {
-       "tag": "t19",
-       "device": "phone001",
-       "name": "Device phone001",
+      "desk0001.json": {
+       "tag": "t22",
+       "device": "desk0001",
+       "name": "Device desk0001",
        "app": "Tack Focus test",
-       "written": "0mvdlhte8.0000.phone001"
+       "written": "0mvdlhy0w.0000.desk0001"
       },
       "tablet01.json": {
        "tag": "t20",
@@ -9654,21 +10306,21 @@
      },
      "own": {
       "tag": "t21",
-      "written": "0mvdlhx94.0000.desk0001",
+      "written": "0mvdlhx94.0000.phone001",
       "pending": null
      },
-     "lastSync": 1792314031000
+     "lastSync": 1792314033000
     },
     "folder": [
      {
       "name": "phone001.json",
-      "tag": "t19",
-      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"phone001\",\"name\":\"Device phone001\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhte8.0000.phone001\",\"seen\":{\"desk0001\":\"0mvdlhr2w.0000.desk0001\",\"tablet01\":\"0mvdlhruo.0000.tablet01\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}},{\"id\":\"b97d367df814\",\"text\":\"Lost answer\",\"created\":\"2026-10-18T09:00:25.000+00:00\",\"completed\":null,\"order\":\"S\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhsmg.0000.phone001\",\"completed\":\"0mvdlhsmg.0000.phone001\",\"order\":\"0mvdlhsmg.0000.phone001\",\"deleted\":\"0mvdlhsmg.0000.phone001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
+      "tag": "t21",
+      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"phone001\",\"name\":\"Device phone001\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhx94.0000.phone001\",\"seen\":{\"desk0001\":\"0mvdlhr2w.0000.desk0001\",\"tablet01\":\"0mvdlhyso.0000.tablet01\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}},{\"id\":\"b97d367df814\",\"text\":\"Lost answer\",\"created\":\"2026-10-18T09:00:25.000+00:00\",\"completed\":null,\"order\":\"S\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhsmg.0000.phone001\",\"completed\":\"0mvdlhsmg.0000.phone001\",\"order\":\"0mvdlhsmg.0000.phone001\",\"deleted\":\"0mvdlhsmg.0000.phone001\"}},{\"id\":\"ea9911ee0d4c\",\"text\":\"While the desk forgot\",\"created\":\"2026-10-18T09:00:30.000+00:00\",\"completed\":null,\"order\":\"R\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhwhc.0000.phone001\",\"completed\":\"0mvdlhwhc.0000.phone001\",\"order\":\"0mvdlhwhc.0000.phone001\",\"deleted\":\"0mvdlhwhc.0000.phone001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
      },
      {
       "name": "desk0001.json",
-      "tag": "t21",
-      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"desk0001\",\"name\":\"Device desk0001\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhx94.0000.desk0001\",\"seen\":{\"phone001\":\"0mvdlhte8.0000.phone001\",\"tablet01\":\"0mvdlhyso.0000.tablet01\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}},{\"id\":\"b97d367df814\",\"text\":\"Lost answer\",\"created\":\"2026-10-18T09:00:25.000+00:00\",\"completed\":null,\"order\":\"S\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhsmg.0000.phone001\",\"completed\":\"0mvdlhsmg.0000.phone001\",\"order\":\"0mvdlhsmg.0000.phone001\",\"deleted\":\"0mvdlhsmg.0000.phone001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
+      "tag": "t22",
+      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"desk0001\",\"name\":\"Device desk0001\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhy0w.0000.desk0001\",\"seen\":{\"phone001\":\"0mvdlhx94.0000.phone001\",\"tablet01\":\"0mvdlhyso.0000.tablet01\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}},{\"id\":\"b97d367df814\",\"text\":\"Lost answer\",\"created\":\"2026-10-18T09:00:25.000+00:00\",\"completed\":null,\"order\":\"S\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhsmg.0000.phone001\",\"completed\":\"0mvdlhsmg.0000.phone001\",\"order\":\"0mvdlhsmg.0000.phone001\",\"deleted\":\"0mvdlhsmg.0000.phone001\"}},{\"id\":\"ea9911ee0d4c\",\"text\":\"While the desk forgot\",\"created\":\"2026-10-18T09:00:30.000+00:00\",\"completed\":null,\"order\":\"R\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhwhc.0000.phone001\",\"completed\":\"0mvdlhwhc.0000.phone001\",\"order\":\"0mvdlhwhc.0000.phone001\",\"deleted\":\"0mvdlhwhc.0000.phone001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
      },
      {
       "name": "tablet01.json",
@@ -9753,6 +10405,20 @@
         "order": "0mvdlhsmg.0000.phone001",
         "deleted": "0mvdlhsmg.0000.phone001"
        }
+      },
+      {
+       "id": "ea9911ee0d4c",
+       "text": "While the desk forgot",
+       "created": "2026-10-18T09:00:30.000+00:00",
+       "completed": null,
+       "order": "R",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhwhc.0000.phone001",
+        "completed": "0mvdlhwhc.0000.phone001",
+        "order": "0mvdlhwhc.0000.phone001",
+        "deleted": "0mvdlhwhc.0000.phone001"
+       }
       }
      ],
      "sheets": [
@@ -9821,16 +10487,16 @@
     "meta": {
      "folder": "folder",
      "seen": {
-      "phone001": "0mvdlhte8.0000.phone001",
+      "desk0001": "0mvdlhy0w.0000.desk0001",
       "tablet01": "0mvdlhyso.0000.tablet01"
      },
      "files": {
-      "phone001.json": {
-       "tag": "t19",
-       "device": "phone001",
-       "name": "Device phone001",
+      "desk0001.json": {
+       "tag": "t22",
+       "device": "desk0001",
+       "name": "Device desk0001",
        "app": "Tack Focus test",
-       "written": "0mvdlhte8.0000.phone001"
+       "written": "0mvdlhy0w.0000.desk0001"
       },
       "tablet01.json": {
        "tag": "t20",
@@ -9842,10 +10508,410 @@
      },
      "own": {
       "tag": "t21",
-      "written": "0mvdlhx94.0000.desk0001",
+      "written": "0mvdlhx94.0000.phone001",
       "pending": null
      },
-     "lastSync": 1792314033000
+     "lastSync": 1792314035000
+    },
+    "result": {
+     "merged": [],
+     "wrote": false,
+     "problems": []
+    }
+   }
+  },
+  {
+   "device": "desk0001",
+   "now": 1792314036000,
+   "hlc": {
+    "ms": 1792314032000,
+    "counter": 0
+   },
+   "before": {
+    "data": {
+     "focus": {
+      "id": "b7bb08946408",
+      "clk": "0mvdlhfi8.0000.tablet01"
+     },
+     "tasks": [
+      {
+       "id": "04b00c3ddc11",
+       "text": "Book flights",
+       "created": "2026-10-18T09:00:01.000+00:00",
+       "completed": null,
+       "order": "U",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlha3s.0001.desk0001",
+        "completed": "0mvdlha3s.0001.desk0001",
+        "order": "0mvdlha3s.0001.desk0001",
+        "deleted": "0mvdlha3s.0001.desk0001"
+       }
+      },
+      {
+       "id": "655cbf0bb2e9",
+       "text": "Water the plants",
+       "created": "2026-10-18T09:00:02.000+00:00",
+       "completed": null,
+       "order": "T",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhavk.0000.tablet01",
+        "completed": "0mvdlhavk.0000.tablet01",
+        "order": "0mvdlhkwo.0001.tablet01",
+        "deleted": "0mvdlhavk.0000.tablet01"
+       }
+      },
+      {
+       "id": "7af3e4e3eaa9",
+       "text": "Draft the drainage report",
+       "created": "2026-10-18T09:00:01.000+00:00",
+       "completed": "2026-10-18T09:00:08.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhfi8.0000.phone001",
+        "completed": "0mvdlhfi8.0000.desk0001",
+        "order": "0mvdlha3s.0000.desk0001",
+        "deleted": "0mvdlha3s.0000.desk0001"
+       }
+      },
+      {
+       "id": "b7bb08946408",
+       "text": "Call the plumber",
+       "created": "2026-10-18T09:00:00.000+00:00",
+       "completed": null,
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0001.phone001",
+        "completed": "0mvdlh9c0.0001.phone001",
+        "order": "0mvdlh9c0.0001.phone001",
+        "deleted": "0mvdlhkwo.0000.desk0001"
+       }
+      },
+      {
+       "id": "b97d367df814",
+       "text": "Lost answer",
+       "created": "2026-10-18T09:00:25.000+00:00",
+       "completed": null,
+       "order": "S",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhsmg.0000.phone001",
+        "completed": "0mvdlhsmg.0000.phone001",
+        "order": "0mvdlhsmg.0000.phone001",
+        "deleted": "0mvdlhsmg.0000.phone001"
+       }
+      },
+      {
+       "id": "ea9911ee0d4c",
+       "text": "While the desk forgot",
+       "created": "2026-10-18T09:00:30.000+00:00",
+       "completed": null,
+       "order": "R",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhwhc.0000.phone001",
+        "completed": "0mvdlhwhc.0000.phone001",
+        "order": "0mvdlhwhc.0000.phone001",
+        "deleted": "0mvdlhwhc.0000.phone001"
+       }
+      }
+     ],
+     "sheets": [
+      {
+       "id": "147b9ff2dac0",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.phone001",
+        "order": "0mvdlh9c0.0000.phone001",
+        "deleted": "0mvdlh9c0.0000.phone001"
+       }
+      },
+      {
+       "id": "1ba05057f16d",
+       "text": "Shopping\n- eggs\n- milk\n- tea",
+       "updated": "2026-10-18T09:00:15.000+00:00",
+       "order": "W",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhkwo.0000.tablet01",
+        "order": "0mvdlha3s.0002.desk0001",
+        "deleted": "0mvdlha3s.0002.desk0001"
+       }
+      },
+      {
+       "id": "2f3b1484d8d9",
+       "text": "Shopping\n- eggs\n- bread",
+       "updated": "2026-10-18T09:00:08.000+00:00",
+       "order": "X",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhfi8.0001.desk0001",
+        "order": "0mvdlhfi8.0001.desk0001",
+        "deleted": "0mvdlhfi8.0001.desk0001"
+       }
+      },
+      {
+       "id": "4346f2378e22",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.desk0001",
+        "order": "0mvdlh9c0.0000.desk0001",
+        "deleted": "0mvdlh9c0.0000.desk0001"
+       }
+      },
+      {
+       "id": "a326e19faf7f",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.tablet01",
+        "order": "0mvdlh9c0.0000.tablet01",
+        "deleted": "0mvdlh9c0.0000.tablet01"
+       }
+      }
+     ]
+    },
+    "meta": {
+     "folder": "folder",
+     "seen": {
+      "phone001": "0mvdlhx94.0000.phone001",
+      "tablet01": "0mvdlhyso.0000.tablet01"
+     },
+     "files": {
+      "phone001.json": {
+       "tag": "t21",
+       "device": "phone001",
+       "name": "Device phone001",
+       "app": "Tack Focus test",
+       "written": "0mvdlhx94.0000.phone001"
+      },
+      "tablet01.json": {
+       "tag": "t20",
+       "device": "tablet01",
+       "name": "Device tablet01",
+       "app": "Tack Focus test",
+       "written": "0mvdlhyso.0000.tablet01"
+      }
+     },
+     "own": {
+      "tag": "t22",
+      "written": "0mvdlhy0w.0000.desk0001",
+      "pending": null
+     },
+     "lastSync": 1792314034000
+    },
+    "folder": [
+     {
+      "name": "phone001.json",
+      "tag": "t21",
+      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"phone001\",\"name\":\"Device phone001\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhx94.0000.phone001\",\"seen\":{\"desk0001\":\"0mvdlhr2w.0000.desk0001\",\"tablet01\":\"0mvdlhyso.0000.tablet01\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}},{\"id\":\"b97d367df814\",\"text\":\"Lost answer\",\"created\":\"2026-10-18T09:00:25.000+00:00\",\"completed\":null,\"order\":\"S\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhsmg.0000.phone001\",\"completed\":\"0mvdlhsmg.0000.phone001\",\"order\":\"0mvdlhsmg.0000.phone001\",\"deleted\":\"0mvdlhsmg.0000.phone001\"}},{\"id\":\"ea9911ee0d4c\",\"text\":\"While the desk forgot\",\"created\":\"2026-10-18T09:00:30.000+00:00\",\"completed\":null,\"order\":\"R\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhwhc.0000.phone001\",\"completed\":\"0mvdlhwhc.0000.phone001\",\"order\":\"0mvdlhwhc.0000.phone001\",\"deleted\":\"0mvdlhwhc.0000.phone001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
+     },
+     {
+      "name": "desk0001.json",
+      "tag": "t22",
+      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"desk0001\",\"name\":\"Device desk0001\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhy0w.0000.desk0001\",\"seen\":{\"phone001\":\"0mvdlhx94.0000.phone001\",\"tablet01\":\"0mvdlhyso.0000.tablet01\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}},{\"id\":\"b97d367df814\",\"text\":\"Lost answer\",\"created\":\"2026-10-18T09:00:25.000+00:00\",\"completed\":null,\"order\":\"S\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhsmg.0000.phone001\",\"completed\":\"0mvdlhsmg.0000.phone001\",\"order\":\"0mvdlhsmg.0000.phone001\",\"deleted\":\"0mvdlhsmg.0000.phone001\"}},{\"id\":\"ea9911ee0d4c\",\"text\":\"While the desk forgot\",\"created\":\"2026-10-18T09:00:30.000+00:00\",\"completed\":null,\"order\":\"R\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhwhc.0000.phone001\",\"completed\":\"0mvdlhwhc.0000.phone001\",\"order\":\"0mvdlhwhc.0000.phone001\",\"deleted\":\"0mvdlhwhc.0000.phone001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
+     },
+     {
+      "name": "tablet01.json",
+      "tag": "t20",
+      "text": "{\"format\":\"tack-sync-device\",\"version\":1,\"device\":\"tablet01\",\"name\":\"Device tablet01\",\"app\":\"Tack Focus test\",\"written\":\"0mvdlhyso.0000.tablet01\",\"seen\":{\"desk0001\":\"0mvdlhr2w.0000.desk0001\",\"phone001\":\"0mvdlhn80.0000.phone001\"},\"focus\":{\"id\":\"b7bb08946408\",\"clk\":\"0mvdlhfi8.0000.tablet01\"},\"tasks\":[{\"id\":\"04b00c3ddc11\",\"text\":\"Book flights\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":null,\"order\":\"U\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlha3s.0001.desk0001\",\"completed\":\"0mvdlha3s.0001.desk0001\",\"order\":\"0mvdlha3s.0001.desk0001\",\"deleted\":\"0mvdlha3s.0001.desk0001\"}},{\"id\":\"655cbf0bb2e9\",\"text\":\"Water the plants\",\"created\":\"2026-10-18T09:00:02.000+00:00\",\"completed\":null,\"order\":\"T\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhavk.0000.tablet01\",\"completed\":\"0mvdlhavk.0000.tablet01\",\"order\":\"0mvdlhkwo.0001.tablet01\",\"deleted\":\"0mvdlhavk.0000.tablet01\"}},{\"id\":\"7af3e4e3eaa9\",\"text\":\"Draft the drainage report\",\"created\":\"2026-10-18T09:00:01.000+00:00\",\"completed\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0000.phone001\",\"completed\":\"0mvdlhfi8.0000.desk0001\",\"order\":\"0mvdlha3s.0000.desk0001\",\"deleted\":\"0mvdlha3s.0000.desk0001\"}},{\"id\":\"b7bb08946408\",\"text\":\"Call the plumber\",\"created\":\"2026-10-18T09:00:00.000+00:00\",\"completed\":null,\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0001.phone001\",\"completed\":\"0mvdlh9c0.0001.phone001\",\"order\":\"0mvdlh9c0.0001.phone001\",\"deleted\":\"0mvdlhkwo.0000.desk0001\"}}],\"sheets\":[{\"id\":\"147b9ff2dac0\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.phone001\",\"order\":\"0mvdlh9c0.0000.phone001\",\"deleted\":\"0mvdlh9c0.0000.phone001\"}},{\"id\":\"1ba05057f16d\",\"text\":\"Shopping\\n- eggs\\n- milk\\n- tea\",\"updated\":\"2026-10-18T09:00:15.000+00:00\",\"order\":\"W\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhkwo.0000.tablet01\",\"order\":\"0mvdlha3s.0002.desk0001\",\"deleted\":\"0mvdlha3s.0002.desk0001\"}},{\"id\":\"2f3b1484d8d9\",\"text\":\"Shopping\\n- eggs\\n- bread\",\"updated\":\"2026-10-18T09:00:08.000+00:00\",\"order\":\"X\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlhfi8.0001.desk0001\",\"order\":\"0mvdlhfi8.0001.desk0001\",\"deleted\":\"0mvdlhfi8.0001.desk0001\"}},{\"id\":\"4346f2378e22\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.desk0001\",\"order\":\"0mvdlh9c0.0000.desk0001\",\"deleted\":\"0mvdlh9c0.0000.desk0001\"}},{\"id\":\"a326e19faf7f\",\"text\":\"\",\"updated\":\"2026-10-18T09:00:00.000+00:00\",\"order\":\"V\",\"deleted\":false,\"clk\":{\"text\":\"0mvdlh9c0.0000.tablet01\",\"order\":\"0mvdlh9c0.0000.tablet01\",\"deleted\":\"0mvdlh9c0.0000.tablet01\"}}],\"deleted\":{\"tasks\":{},\"sheets\":{}}}"
+     }
+    ]
+   },
+   "after": {
+    "data": {
+     "focus": {
+      "id": "b7bb08946408",
+      "clk": "0mvdlhfi8.0000.tablet01"
+     },
+     "tasks": [
+      {
+       "id": "04b00c3ddc11",
+       "text": "Book flights",
+       "created": "2026-10-18T09:00:01.000+00:00",
+       "completed": null,
+       "order": "U",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlha3s.0001.desk0001",
+        "completed": "0mvdlha3s.0001.desk0001",
+        "order": "0mvdlha3s.0001.desk0001",
+        "deleted": "0mvdlha3s.0001.desk0001"
+       }
+      },
+      {
+       "id": "655cbf0bb2e9",
+       "text": "Water the plants",
+       "created": "2026-10-18T09:00:02.000+00:00",
+       "completed": null,
+       "order": "T",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhavk.0000.tablet01",
+        "completed": "0mvdlhavk.0000.tablet01",
+        "order": "0mvdlhkwo.0001.tablet01",
+        "deleted": "0mvdlhavk.0000.tablet01"
+       }
+      },
+      {
+       "id": "7af3e4e3eaa9",
+       "text": "Draft the drainage report",
+       "created": "2026-10-18T09:00:01.000+00:00",
+       "completed": "2026-10-18T09:00:08.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhfi8.0000.phone001",
+        "completed": "0mvdlhfi8.0000.desk0001",
+        "order": "0mvdlha3s.0000.desk0001",
+        "deleted": "0mvdlha3s.0000.desk0001"
+       }
+      },
+      {
+       "id": "b7bb08946408",
+       "text": "Call the plumber",
+       "created": "2026-10-18T09:00:00.000+00:00",
+       "completed": null,
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0001.phone001",
+        "completed": "0mvdlh9c0.0001.phone001",
+        "order": "0mvdlh9c0.0001.phone001",
+        "deleted": "0mvdlhkwo.0000.desk0001"
+       }
+      },
+      {
+       "id": "b97d367df814",
+       "text": "Lost answer",
+       "created": "2026-10-18T09:00:25.000+00:00",
+       "completed": null,
+       "order": "S",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhsmg.0000.phone001",
+        "completed": "0mvdlhsmg.0000.phone001",
+        "order": "0mvdlhsmg.0000.phone001",
+        "deleted": "0mvdlhsmg.0000.phone001"
+       }
+      },
+      {
+       "id": "ea9911ee0d4c",
+       "text": "While the desk forgot",
+       "created": "2026-10-18T09:00:30.000+00:00",
+       "completed": null,
+       "order": "R",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhwhc.0000.phone001",
+        "completed": "0mvdlhwhc.0000.phone001",
+        "order": "0mvdlhwhc.0000.phone001",
+        "deleted": "0mvdlhwhc.0000.phone001"
+       }
+      }
+     ],
+     "sheets": [
+      {
+       "id": "147b9ff2dac0",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.phone001",
+        "order": "0mvdlh9c0.0000.phone001",
+        "deleted": "0mvdlh9c0.0000.phone001"
+       }
+      },
+      {
+       "id": "1ba05057f16d",
+       "text": "Shopping\n- eggs\n- milk\n- tea",
+       "updated": "2026-10-18T09:00:15.000+00:00",
+       "order": "W",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhkwo.0000.tablet01",
+        "order": "0mvdlha3s.0002.desk0001",
+        "deleted": "0mvdlha3s.0002.desk0001"
+       }
+      },
+      {
+       "id": "2f3b1484d8d9",
+       "text": "Shopping\n- eggs\n- bread",
+       "updated": "2026-10-18T09:00:08.000+00:00",
+       "order": "X",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlhfi8.0001.desk0001",
+        "order": "0mvdlhfi8.0001.desk0001",
+        "deleted": "0mvdlhfi8.0001.desk0001"
+       }
+      },
+      {
+       "id": "4346f2378e22",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.desk0001",
+        "order": "0mvdlh9c0.0000.desk0001",
+        "deleted": "0mvdlh9c0.0000.desk0001"
+       }
+      },
+      {
+       "id": "a326e19faf7f",
+       "text": "",
+       "updated": "2026-10-18T09:00:00.000+00:00",
+       "order": "V",
+       "deleted": false,
+       "clk": {
+        "text": "0mvdlh9c0.0000.tablet01",
+        "order": "0mvdlh9c0.0000.tablet01",
+        "deleted": "0mvdlh9c0.0000.tablet01"
+       }
+      }
+     ]
+    },
+    "meta": {
+     "folder": "folder",
+     "seen": {
+      "phone001": "0mvdlhx94.0000.phone001",
+      "tablet01": "0mvdlhyso.0000.tablet01"
+     },
+     "files": {
+      "phone001.json": {
+       "tag": "t21",
+       "device": "phone001",
+       "name": "Device phone001",
+       "app": "Tack Focus test",
+       "written": "0mvdlhx94.0000.phone001"
+      },
+      "tablet01.json": {
+       "tag": "t20",
+       "device": "tablet01",
+       "name": "Device tablet01",
+       "app": "Tack Focus test",
+       "written": "0mvdlhyso.0000.tablet01"
+      }
+     },
+     "own": {
+      "tag": "t22",
+      "written": "0mvdlhy0w.0000.desk0001",
+      "pending": null
+     },
+     "lastSync": 1792314036000
     },
     "result": {
      "merged": [],

@@ -1,6 +1,7 @@
 import { encode } from '../model/hlc';
 import { pastedLines } from '../model/text';
 import { dayKey, msUntilMidnight } from '../model/time';
+import type { Task } from '../model/types';
 import type { Workspace } from '../model/workspace';
 import type { Store } from '../store/persist';
 import type { SyncController } from '../sync/controller';
@@ -491,9 +492,19 @@ export function seedWelcome(ws: Workspace): { tasks: Record<string, string>; she
  */
 export function dropUntouchedWelcome(ws: Workspace): void {
   const welcome = prefs().welcome ?? { tasks: {}, sheets: {} };
-  const tasks = Object.entries(welcome.tasks).filter(([id, text]) => ws.tasks.get(id)?.text === text).map(([id]) => id);
+  const me = ws.hlc.node;
+  const mine = (stamp: string) => stamp.endsWith(`.${me}`);
+  // Untouched: not edited, ticked or moved (every clock still the one it was made with, here).
+  const untouched = (t: Task) => mine(t.clk.text) && t.clk.completed === t.clk.text && t.clk.order === t.clk.text && t.clk.deleted === t.clk.text;
+  const tasks = Object.entries(welcome.tasks)
+    .filter(([id, text]) => {
+      const t = ws.tasks.get(id);
+      return !!t && !t.deleted && t.text === text && untouched(t);
+    })
+    .map(([id]) => id);
+  // Only this device's own sheets (never one that just arrived from another device).
   const sheets = ws.sheetList
-    .filter((s) => welcome.sheets[s.id] === s.text || (s.text === '' && s.clk.text === s.clk.deleted))
+    .filter((s) => mine(s.clk.deleted) && (welcome.sheets[s.id] === s.text || (s.text === '' && s.clk.text === s.clk.deleted)))
     .map((s) => s.id);
   const keepOne = sheets.length === ws.sheetList.length ? sheets.slice(1) : sheets;
   if (tasks.length || keepOne.length) ws.discard({ tasks, sheets: keepOne }, 'local');
