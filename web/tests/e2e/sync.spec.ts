@@ -77,9 +77,12 @@ async function turnOn(page: Page): Promise<void> {
   await expect.poll(() => page.evaluate(() => location.hash)).toBe('');
 }
 
+/** Sync now, and wait for that sync (not an earlier one) to finish. */
 async function syncNow(page: Page): Promise<void> {
   await openSettings(page);
+  const before = (await syncStatus(page).getAttribute('data-synced')) ?? '0';
   await settings(page).getByRole('button', { name: 'Sync now' }).click();
+  await expect(syncStatus(page)).not.toHaveAttribute('data-synced', before, { timeout: 10_000 });
   await expect(syncStatus(page)).toHaveText(/Up to date/, { timeout: 10_000 });
 }
 

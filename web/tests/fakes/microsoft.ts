@@ -92,6 +92,16 @@ export class FakeMicrosoft {
     return out;
   }
 
+  /** Puts a file into devices/ as another device would (e.g. one Tack for Windows wrote on a PC). */
+  putDeviceFile(name: string, text: string): void {
+    const devices = [...this.items.values()].find((i) => i.name === 'devices' && i.folder);
+    if (!devices) throw new Error('No devices folder yet');
+    const existing = [...this.items.values()].find((i) => i.parent === devices.id && i.name === name);
+    const item = existing ?? this.create(devices.id, name, false);
+    item.text = text;
+    item.version++;
+  }
+
   /** Every item's path, e.g. "Apps/Tack Focus/devices/abc.json". */
   paths(): string[] {
     const path = (i: Item): string => (i.parent && i.parent !== 'root' ? `${path(this.items.get(i.parent)!)}/${i.name}` : i.name);

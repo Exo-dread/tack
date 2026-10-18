@@ -14,6 +14,8 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // --interop <folder> <task>: one PC syncing through a folder (used by Tack Focus's browser tests).
+        if (args.Length >= 3 && args[0] == "--interop") return Interop.Run(args[1], args[2]);
         Update = args.Contains("--update");
         // The shared vectors are computed in UTC; dates without their own offset are read in this zone.
         IsoTime.ZoneOverride = TimeZoneInfo.Utc;

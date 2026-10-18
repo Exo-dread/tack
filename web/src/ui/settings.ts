@@ -219,7 +219,7 @@ export class Settings {
     }
 
     const action = (label: string, run: () => void) => h('button.text-button.inline', { type: 'button', text: label, onclick: run });
-    const status = h('p.note.sync-status', { role: 'status' });
+    const status = h('p.note.sync-status', { role: 'status', 'data-synced': String(st.lastSync) });
     switch (st.phase) {
       case 'syncing':
         status.append('Syncing…');
