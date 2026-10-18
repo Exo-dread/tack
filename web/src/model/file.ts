@@ -109,8 +109,8 @@ function parseFile(text: string, ws: Workspace, options: ReadOptions): { data: W
 
   const extra = doc.tackFocus;
   if (isObject(extra) && Array.isArray(extra.tasks) && Array.isArray(extra.sheets)) {
-    const tasks = extra.tasks.map(readTaskRecord).filter((t): t is Task => t !== null);
-    const sheets = extra.sheets.map(readSheetRecord).filter((s): s is Sheet => s !== null);
+    const tasks = extra.tasks.map((r) => readTaskRecord(r)).filter((t): t is Task => t !== null);
+    const sheets = extra.sheets.map((r) => readSheetRecord(r)).filter((s): s is Sheet => s !== null);
     const focus = readFocus(extra.focus);
     return { data: { tasks, sheets, focus }, withClocks: true };
   }
@@ -241,10 +241,10 @@ function validId(raw: unknown, used: Set<string>, seed: string): string {
 /** Ids from files: the shape Tack itself makes (and nothing that could upset a selector or object key). */
 const ID = /^[\w-]{1,64}$/;
 
-function readTaskRecord(r: unknown): Task | null {
+export function readTaskRecord(r: unknown, now = Date.now()): Task | null {
   if (!isObject(r) || typeof r.id !== 'string' || !ID.test(r.id) || !isObject(r.clk)) return null;
   const clk = r.clk;
-  if (![clk.text, clk.completed, clk.order, clk.deleted].every((c) => isPlausibleStamp(c))) return null;
+  if (![clk.text, clk.completed, clk.order, clk.deleted].every((c) => isPlausibleStamp(c, now))) return null;
   const text = cleanTaskText(typeof r.text === 'string' ? r.text : '');
   if (!text && r.deleted !== true) return null;
   return {
@@ -258,10 +258,10 @@ function readTaskRecord(r: unknown): Task | null {
   };
 }
 
-function readSheetRecord(r: unknown): Sheet | null {
+export function readSheetRecord(r: unknown, now = Date.now()): Sheet | null {
   if (!isObject(r) || typeof r.id !== 'string' || !ID.test(r.id) || !isObject(r.clk)) return null;
   const clk = r.clk;
-  if (![clk.text, clk.order, clk.deleted].every((c) => isPlausibleStamp(c))) return null;
+  if (![clk.text, clk.order, clk.deleted].every((c) => isPlausibleStamp(c, now))) return null;
   return {
     id: r.id,
     text: noteText(typeof r.text === 'string' ? r.text : ''),
@@ -272,14 +272,14 @@ function readSheetRecord(r: unknown): Sheet | null {
   };
 }
 
-function readFocus(r: unknown): Focus {
-  if (isObject(r) && isPlausibleStamp(r.clk) && (r.id === null || (typeof r.id === 'string' && ID.test(r.id)))) {
+export function readFocus(r: unknown, now = Date.now()): Focus {
+  if (isObject(r) && isPlausibleStamp(r.clk, now) && (r.id === null || (typeof r.id === 'string' && ID.test(r.id)))) {
     return { id: r.id as string | null, clk: r.clk };
   }
   return { id: null, clk: ZERO };
 }
 
-function isObject(v: unknown): v is Record<string, unknown> {
+export function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 

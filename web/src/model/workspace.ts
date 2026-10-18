@@ -1,6 +1,6 @@
 import { Hlc, ZERO, type Stamp } from './hlc';
 import { newId } from './ids';
-import { cloneSheet, cloneTask, mergeFocus, mergeSheet, mergeTask } from './merge';
+import { cloneSheet, cloneTask, mergeFocus, mergeSheet, mergeTask, type ConcurrentText } from './merge';
 import { keyAfter, keyBefore, keysAt } from './order';
 import { cleanTaskText, noteText } from './text';
 import { isoLocal, parseDate, sameLocalDay } from './time';
@@ -309,7 +309,7 @@ export class Workspace {
    * Merges records from elsewhere (this device's storage, another tab, a file or another
    * device) into the workspace. Newer edits win field by field; nothing newer is lost.
    */
-  merge(data: Partial<WorkspaceData>, origin: Origin, base?: Stamp): void {
+  merge(data: Partial<WorkspaceData>, origin: Origin, base?: Stamp | ConcurrentText): void {
     this.batch(() => {
       if (this.depth === 1) this.current().origin = origin;
       for (const remote of data.tasks ?? []) {
@@ -399,6 +399,31 @@ export class Workspace {
     for (const s of this.sheets.values()) {
       if (s.deleted && stampTime(s.clk.deleted) < cutoff) sheets.push(s.id);
     }
+    tasks.forEach((id) => this.tasks.delete(id));
+    sheets.forEach((id) => this.sheets.delete(id));
+    if (tasks.length || sheets.length) this.views = {};
+    return { tasks, sheets };
+  }
+
+  /**
+   * Deletes records for sync (they were deleted elsewhere long ago, see sync/engine.ts), as
+   * fresh deletions so they win over the copies they replace.
+   */
+  discard(ids: { tasks: string[]; sheets: string[] }, origin: Origin = 'remote'): void {
+    this.batch(() => {
+      if (this.depth === 1) this.current().origin = origin;
+      for (const id of ids.tasks) this.removeTask(id);
+      for (const id of ids.sheets) {
+        const s = this.sheets.get(id);
+        if (s && !s.deleted) this.setSheetDeleted(s, true);
+      }
+    });
+  }
+
+  /** Forgets tombstones for good (sync decides when every device has seen them). Returns the ids removed. */
+  forget(ids: { tasks: string[]; sheets: string[] }): { tasks: string[]; sheets: string[] } {
+    const tasks = ids.tasks.filter((id) => this.tasks.get(id)?.deleted);
+    const sheets = ids.sheets.filter((id) => this.sheets.get(id)?.deleted);
     tasks.forEach((id) => this.tasks.delete(id));
     sheets.forEach((id) => this.sheets.delete(id));
     if (tasks.length || sheets.length) this.views = {};

@@ -19,8 +19,9 @@ internal static class Merge
             value = value with { Order = remote.Order, Clk = value.Clk with { Order = remote.Clk.Order } };
         if (Wins(remote.Clk.Deleted, remote.Deleted, local.Clk.Deleted, local.Deleted))
             value = value with { Deleted = remote.Deleted, Clk = value.Clk with { Deleted = remote.Clk.Deleted } };
-        // Creation time never changes; if copies disagree (hand edits), keep the earlier one.
-        if (remote.Created.Length > 0 && string.CompareOrdinal(remote.Created, value.Created) < 0)
+        // Creation time never changes; if copies disagree (hand edits), keep the earlier one. A
+        // deletion that arrived before the task did (device files carry deletions bare) has none.
+        if (remote.Created.Length > 0 && (value.Created.Length == 0 || string.CompareOrdinal(remote.Created, value.Created) < 0))
             value = value with { Created = remote.Created };
         return (value, !ReferenceEquals(value, local));
     }
