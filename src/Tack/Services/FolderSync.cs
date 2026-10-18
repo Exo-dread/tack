@@ -292,7 +292,7 @@ internal sealed class FolderSync : IDisposable
                 return Task.CompletedTask;
             },
             SaveMetaAsync = SaveMetaAsync,
-            Joined = _ws.DropBlankSheet,
+            Joined = () => _ws.LeaveWelcomeBehind(App.IsWelcomeTip),
         });
         try
         {

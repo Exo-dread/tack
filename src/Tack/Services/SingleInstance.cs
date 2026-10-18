@@ -19,7 +19,9 @@ internal sealed class SingleInstance : IDisposable
     /// <summary>Returns null (after signalling the running instance) if Tack is already running.</summary>
     public static SingleInstance? TryAcquire()
     {
-        string id = $"Tack.{Environment.UserName}";
+        // TACK_INSTANCE (development only) lets a test copy run beside your installed Tack; give it
+        // its own data with a TackData folder next to its exe (portable mode).
+        string id = $"Tack.{Environment.UserName}{Environment.GetEnvironmentVariable("TACK_INSTANCE")}";
         var mutex = new Mutex(initiallyOwned: true, $@"Local\{id}.Instance", out bool created);
         var signal = new EventWaitHandle(false, EventResetMode.AutoReset, $@"Local\{id}.Show");
         if (created) return new SingleInstance(mutex, signal);

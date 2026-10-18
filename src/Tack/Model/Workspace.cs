@@ -306,15 +306,22 @@ public sealed class Workspace : Observable, IImportTarget
     internal Func<bool> KeepDeletions { get; set; }
 
     /// <summary>
-    /// Joining a sync folder your other devices already use: a blank sheet that was never written on
-    /// (every PC starts with one) stays behind, instead of turning up on every device.
+    /// Joining a sync folder your other devices already use: the welcome tasks you never touched
+    /// (not edited, ticked or moved: all their clocks are still the one they were made with, here)
+    /// and a blank sheet never written on stay behind, instead of turning up on every device.
+    /// A sheet stays if it would be the last one.
     /// </summary>
-    internal void DropBlankSheet()
+    internal void LeaveWelcomeBehind(Func<string, bool> isWelcomeTip)
     {
+        bool Untouched(TaskItem t) =>
+            isWelcomeTip(t.Text) && Stamp.Node(t.Clk.Text) == Clock.Node
+            && t.Clk.Completed == t.Clk.Text && t.Clk.Order == t.Clk.Text && t.Clk.Deleted == t.Clk.Text;
+        var tasks = _allTasks.Where(t => !t.IsDeleted && Untouched(t)).ToList();
+        foreach (var t in tasks) Remove(t);
         var blank = Sheets.Where(s => s.Text.Length == 0 && s.Clk.Text == s.Clk.Deleted).ToList();
-        if (blank.Count == 0 || blank.Count == Sheets.Count) return;
+        if (blank.Count == Sheets.Count) blank = blank.Skip(1).ToList();
         foreach (var s in blank) SetSheetDeleted(s, true);
-        Rebuild();
+        if (tasks.Count > 0 || blank.Count > 0) Rebuild();
     }
 
     /// <summary>

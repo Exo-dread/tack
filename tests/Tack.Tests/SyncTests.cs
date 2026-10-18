@@ -38,6 +38,7 @@ internal static class SyncTests
         yield return ("sync folder: two PCs through a folder on disk, notes kept twice, deletions kept", TwoPcs);
         yield return ("sync folder: finds Tack Focus's folder in OneDrive (localised Apps too)", FindsOneDriveFolder);
         yield return ("sync: deletions are never forgotten while syncing", KeepsDeletions);
+        yield return ("sync: a new PC joining leaves its untouched welcome tasks and blank sheet behind", JoinsWithoutWelcome);
     }
 
     // ---------------------------------------------------------------- the shared vectors
@@ -222,6 +223,34 @@ internal static class SyncTests
         Check.True(pc.Ws.TaskById(t.Id) == null, "forgotten after 90 days without sync");
     }
 
+    private static void JoinsWithoutWelcome()
+    {
+        using var temp = new TempDir();
+        long wall = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var phone = new Pc("phoneAAA", temp.Path, () => wall);
+        var call = phone.Ws.AddTask("Call the plumber");
+        phone.Ws.SetNow(call);
+        phone.Ws.Sheets[0].Text = "Shopping";
+        phone.Sync();
+
+        wall += 1000;
+        var pc = new Pc("pcNEWNEW", temp.Path, () => wall);
+        foreach (string tip in new[] { "Fold Tack into its orb with Esc — then drag the orb anywhere", "Press Ctrl+Alt+Space in any app to open or hide Tack" })
+            pc.Ws.AddTask(tip);
+        var ticked = pc.Ws.AddTask("Drag the dots on the left to reorder");
+        pc.Ws.Complete(ticked); // touched: it stays
+        pc.Ws.AddTask("Tick this circle to finish your first task", asNow: true);
+        pc.Ws.YieldFocus();
+        pc.Ws.AddTask("A real task, typed before syncing");
+        pc.Sync(meta => pc.Ws.LeaveWelcomeBehind(App.IsWelcomeTip));
+        phone.Sync();
+
+        Check.Equal("now=" + call.Id, Json.Views(phone.Ws).Split(' ')[0], "the phone's focus wins");
+        Check.Equal("A real task, typed before syncing", string.Join(",", phone.Ws.Open.Select(t => t.Text)), "only the real task reaches the phone");
+        Check.Equal("Drag the dots on the left to reorder", string.Join(",", phone.Ws.Done.Select(t => t.Text)), "a welcome task you ticked counts as yours");
+        Check.Equal("Shopping", string.Join(",", pc.Ws.Sheets.Select(s => s.Text)), "the PC's blank sheet stayed behind");
+    }
+
     private static void FindsOneDriveFolder()
     {
         using var temp = new TempDir();
@@ -309,13 +338,14 @@ internal static class SyncTests
 
         private Func<long> Wall { get; }
 
-        public void Sync()
+        public void Sync(Action<SyncMeta>? joined = null)
         {
             var engine = new SyncEngine(Ws, _folder, new SyncHooks
             {
                 Label = () => (Ws.Clock.Node, "Tack for Windows test"),
                 FlushAsync = () => Task.CompletedTask,
                 SaveMetaAsync = _ => Task.CompletedTask,
+                Joined = joined == null ? null : () => joined(_meta),
             });
             engine.CycleAsync(_meta, Wall()).GetAwaiter().GetResult();
         }

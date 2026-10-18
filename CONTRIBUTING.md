@@ -19,7 +19,8 @@ built exe (for example `src/Tack/bin/Debug/net8.0-windows/TackData`). Tack then 
 experience again.
 
 Only one Tack runs per user. Launching it again just opens the running one, so quit your installed copy
-(right-click the orb → Quit) before debugging.
+(right-click the orb → Quit) before debugging, or set `TACK_INSTANCE=dev` (any value) for the debug copy
+so both can run side by side (with its own `TackData` folder, as above).
 
 ## Where things live
 
