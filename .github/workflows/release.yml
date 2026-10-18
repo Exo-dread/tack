@@ -28,4 +28,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $files = Get-ChildItem artifacts -File | Where-Object { $_.Name -like 'Tack-*.zip' -or $_.Name -eq 'SHA256SUMS.txt' }
-          gh release create "${{ github.ref_name }}" $files.FullName --title "Tack ${{ github.ref_name }}" --generate-notes
+          # The release text is the version's CHANGELOG.md section; GitHub's commit list if there is none.
+          $notes = ./tools/release-notes.ps1 -Version "${{ github.ref_name }}"
+          if ($notes) {
+            Set-Content -Path release-notes.md -Value $notes -Encoding utf8
+            gh release create "${{ github.ref_name }}" $files.FullName --title "Tack ${{ github.ref_name }}" --notes-file release-notes.md
+          } else {
+            gh release create "${{ github.ref_name }}" $files.FullName --title "Tack ${{ github.ref_name }}" --generate-notes
+          }

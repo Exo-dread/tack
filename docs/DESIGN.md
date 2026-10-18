@@ -199,4 +199,6 @@ at a few MB of working set and zero CPU.
 - **Localisation** isn't wired up; strings are in XAML and code.
 - **Keyboard access to row actions** goes through shortcuts (Ctrl+Enter, Ctrl+D, Backspace) and the context
   menu (Shift+F10), not Tab, because the hover toolbar isn't in the tab order.
-- Deliberately **not** planned: reminders, due dates, sync, projects, tags, collaboration.
+- Deliberately **not** planned: reminders, due dates, projects, tags, collaboration.
+- **Sync** with Tack Focus is planned, opt-in and serverless: through a folder in your own OneDrive or
+  Google Drive, never a Tack server. See [SYNC.md](SYNC.md).
