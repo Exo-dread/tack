@@ -263,6 +263,21 @@ test.describe('tasks', () => {
     expect(addMs).toBeLessThan(250);
   });
 
+  test('a toast waits while you are on it', async ({ page }) => {
+    test.skip(test.info().project.name !== 'desktop-chromium', 'pointer hover');
+    await open(page);
+    await addTask(page, 'Short-lived');
+    await page.locator('.open-list li').first().hover();
+    await page.locator('.open-list li').first().locator('.act-delete').click();
+    const toast = page.locator('.toast');
+    await expect(toast).toContainText('Deleted');
+    await toast.hover();
+    await page.waitForTimeout(6000); // longer than its 5 seconds
+    await expect(toast).toBeVisible();
+    await page.mouse.move(5, 5);
+    await expect(toast).toHaveCount(0, { timeout: 6000 });
+  });
+
   test('works with reduced motion', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await open(page);

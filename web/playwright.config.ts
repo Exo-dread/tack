@@ -10,7 +10,10 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 5_000 },
   fullyParallel: true,
-  workers: 4,
+  // GitHub's shared runners are slow, and WebKit especially so with several browsers at once:
+  // fewer at a time there, and a retry for timing hiccups (a real bug fails every attempt).
+  workers: process.env.CI ? 2 : 4,
+  retries: process.env.CI ? 2 : 0,
   reporter: [['list']],
   use: {
     baseURL: 'http://localhost:4173',

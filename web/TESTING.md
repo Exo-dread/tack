@@ -19,7 +19,7 @@ storage (in an in-memory IndexedDB) merging every write so a stale tab can't und
 reproduce exactly (`tests/Tack.Tests`), and reads back the file the desktop saved for its round-trip
 export to check nothing was lost on the way.
 
-**End-to-end tests (78 runs across three projects)** run against `vite build` + `vite preview`, so the real
+**End-to-end tests (79 runs across three projects)** run against `vite build` + `vite preview`, so the real
 service worker and bundle are tested:
 
 | Project | Engine | Emulates |
@@ -39,7 +39,7 @@ offline after the first visit (Chromium); running clean under the production CSP
 accessibility scans (WCAG 2.2 AA rules) of Tasks, Notes and Settings in light and dark; a note edited
 in another window reaching this one mid-writing; an emptied edit surviving the app being hidden;
 Undo after deleting from an emptied edit; a tick landing during a swipe; the one-time install
-suggestion; and a speed guard (500 pasted tasks).
+suggestion; a toast that waits while you hold it; and a speed guard (500 pasted tasks).
 
 Gestures are driven with synthetic pointer events (Playwright can only tap), so they test the
 gesture logic, not a real finger. WebKit on Windows is close to Safari's engine but isn't iOS:

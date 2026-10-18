@@ -54,8 +54,28 @@ export class Toasts {
       duration: SPRING.duration,
       easing: SPRING.easing,
     });
-    const duration = options.duration ?? (undo ? 5000 : 2600);
-    this.current = { node, undo, timer: setTimeout(() => this.dismiss(), duration) };
+    // The countdown pauses while you're touching, hovering or tabbed onto the toast, so it never
+    // vanishes under your finger (and anyone who needs longer can take it).
+    let remaining = options.duration ?? (undo ? 5000 : 2600);
+    let startedAt = performance.now();
+    let paused = false;
+    const pause = () => {
+      if (paused || this.current?.node !== node) return;
+      paused = true;
+      clearTimeout(this.current.timer);
+      remaining = Math.max(2000, remaining - (performance.now() - startedAt));
+    };
+    const resume = () => {
+      if (!paused || this.current?.node !== node || node.contains(document.activeElement)) return;
+      paused = false;
+      startedAt = performance.now();
+      this.current.timer = setTimeout(() => this.dismiss(), remaining);
+    };
+    node.addEventListener('pointerenter', pause);
+    node.addEventListener('focusin', pause);
+    node.addEventListener('pointerleave', resume);
+    node.addEventListener('focusout', () => requestAnimationFrame(resume));
+    this.current = { node, undo, timer: setTimeout(() => this.dismiss(), remaining) };
     this.announce(undo ? `${message}. Undo available.` : message);
   }
 
