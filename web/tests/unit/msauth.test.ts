@@ -56,6 +56,9 @@ describe('signing in to Microsoft', () => {
     }
   });
 
+  /** Waits until the page has been sent to Microsoft `count` times in all. */
+  const sent = (count: number) => vi.waitFor(() => expect(page.assigned.length).toBe(count));
+
   /** Follows the last redirect to Microsoft and back, as the browser would. */
   function goThrough(): void {
     const url = page.assigned.at(-1)!;
@@ -66,7 +69,7 @@ describe('signing in to Microsoft', () => {
 
   it('asks for the narrowest scopes, with PKCE, and comes back signed in', async () => {
     void auth.signIn({ loginHint: 'ada@outlook.com' });
-    await new Promise((r) => setTimeout(r, 0));
+    await sent(1);
     const url = new URL(page.assigned[0]!);
     expect(url.origin + url.pathname).toBe(`${AUTHORITY}/oauth2/v2.0/authorize`);
     expect(url.searchParams.get('scope')).toBe('openid profile offline_access https://graph.microsoft.com/Files.ReadWrite.AppFolder');
@@ -90,7 +93,7 @@ describe('signing in to Microsoft', () => {
   it('says so when you cancel', async () => {
     ms.userCancels = true;
     void auth.signIn();
-    await new Promise((r) => setTimeout(r, 0));
+    await sent(1);
     goThrough();
     const result = await auth.completeRedirect();
     expect(result && 'error' in result ? result.error.kind : null).toBe('cancelled');
@@ -100,8 +103,7 @@ describe('signing in to Microsoft', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(Date.UTC(2026, 9, 18, 8));
     void auth.signIn();
-    await Promise.resolve();
-    await vi.waitFor(() => expect(page.assigned.length).toBe(1));
+    await sent(1);
     goThrough();
     const first = (await auth.completeRedirect()) as { tokens: Tokens };
     vi.setSystemTime(Date.now() + 20 * 3600_000);
@@ -122,7 +124,7 @@ describe('signing in to Microsoft', () => {
   it('renews without a sign-in form by visiting Microsoft, and reports when it needs you', async () => {
     const account = { username: 'ada@outlook.com', name: 'Ada', tenant: CONSUMERS, id: 'oid-ada' };
     void auth.renewByVisit(account);
-    await new Promise((r) => setTimeout(r, 0));
+    await sent(1);
     const url = new URL(page.assigned[0]!);
     expect(url.searchParams.get('prompt')).toBe('none');
     expect(url.searchParams.get('login_hint')).toBe('ada@outlook.com');
@@ -133,7 +135,7 @@ describe('signing in to Microsoft', () => {
 
     ms.account = null; // signed out of Microsoft meanwhile
     void auth.renewByVisit(account);
-    await new Promise((r) => setTimeout(r, 0));
+    await sent(2);
     goThrough();
     const failed = await auth.completeRedirect();
     expect(failed && 'error' in failed ? [failed.kind, failed.error.kind] : null).toEqual(['renew', 'interaction']);
