@@ -27,12 +27,15 @@ Only one Tack runs per user. Launching it again just opens the running one, so q
 |---|---|
 | `src/Tack/AppShell.cs` | Coordinates the orb and panel: expand/collapse, placement, shortcut, full-screen handling |
 | `src/Tack/Model/` | `Workspace` (all user state and every mutation), `TaskItem`, `NoteSheet`, `Settings` |
-| `src/Tack/Services/` | `StateStore` (JSON persistence), accent colour, startup registration, log, single instance |
+| `src/Tack/Sync/` | The data model shared with Tack Focus: clocks, sort keys, merges, the `tackFocus` section of tack.json. A port of `web/src/model` that must give exactly the same results |
+| `src/Tack/Services/` | `StateStore` (JSON persistence), `StateFile` (tack.json and records), Import, accent colour, startup registration, log, single instance |
 | `src/Tack/Interop/` | Win32 and DWM: glass, monitors/DPI, hotkey, shell watcher. All P/Invoke is in `NativeMethods.cs` |
 | `src/Tack/Windows/` | The three windows: orb, peek bubble, panel |
 | `src/Tack/Views/` | Tasks, Notes and Settings pages shown inside the panel |
 | `src/Tack/Controls/` | Custom-drawn orb, animation helpers, converters |
 | `src/Tack/Themes/` | `Theme.xaml` (fonts and every control style), `Dark.xaml` / `Light.xaml` (colour palettes) |
+| `tests/Tack.Tests/` | Tests for the sync model and tack.json (a plain console app: no test packages) |
+| `tests/vectors/` | Shared test vectors: `sync.json` from Tack Focus's model, `desktop-export.json` from Tack for Windows, `legacy-1.1.json` written by Tack 1.1 |
 | `tools/make_icon.py` | Regenerates `Assets/Tack.ico` and `docs/icon.png` (needs Pillow) |
 | `build.ps1` | Builds the release zips into `artifacts/` |
 | `web/` | Tack Focus, the web and mobile app (TypeScript, no runtime dependencies). See [web/README.md](web/README.md) |
@@ -52,9 +55,22 @@ Only one Tack runs per user. Launching it again just opens the running one, so q
 - **Icon-only buttons need `AutomationProperties.Name`** so screen readers can announce them.
 - Match the surrounding code: file-scoped namespaces, `_camelCase` fields, small focused classes.
 
+## Testing
+
+```powershell
+dotnet run --project tests/Tack.Tests -c Release            # sync model and tack.json tests
+cd web; npm test                                            # Tack Focus, including the shared vectors
+```
+
+The two apps must merge identically, so Tack for Windows' `Sync` code is checked against vectors
+computed by Tack Focus's own model. If you change `web/src/model`, regenerate them and port the
+change: `npm run vectors` (in `web/`) rewrites `tests/vectors/sync.json`, then
+`dotnet run --project tests/Tack.Tests -c Release -- --update` rewrites `desktop-export.json`
+(what the desktop saves for Tack Focus's round-trip export, which the web tests read back).
+
 ## Before you open a pull request
 
-- `dotnet build src/Tack -c Release -warnaserror` passes.
+- `dotnet build src/Tack -c Release -warnaserror` passes, and so does `dotnet run --project tests/Tack.Tests -c Release`.
 - You've tried the change at 100% and at least one other display scale (150% is a good test), and on a
   second monitor if it touches placement.
 - You've tried it in both the **Light** and **Dark** themes, with **Frosted glass** on and off.

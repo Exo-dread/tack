@@ -7,6 +7,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{B3F1A7CD-452
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tack", "src\Tack\Tack.csproj", "{847926CC-6322-493F-BB56-93895290979E}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{B8486064-83BA-4526-BB9B-DFD7A90DDAD3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tack.Tests", "tests\Tack.Tests\Tack.Tests.csproj", "{85DF0096-6524-44DD-A33B-748366F3C6FC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,8 +24,13 @@ Global
 		{847926CC-6322-493F-BB56-93895290979E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{847926CC-6322-493F-BB56-93895290979E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{847926CC-6322-493F-BB56-93895290979E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{85DF0096-6524-44DD-A33B-748366F3C6FC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{85DF0096-6524-44DD-A33B-748366F3C6FC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{85DF0096-6524-44DD-A33B-748366F3C6FC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{85DF0096-6524-44DD-A33B-748366F3C6FC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{847926CC-6322-493F-BB56-93895290979E} = {B3F1A7CD-4521-4012-BD7D-42B8D36EB089}
+		{85DF0096-6524-44DD-A33B-748366F3C6FC} = {B8486064-83BA-4526-BB9B-DFD7A90DDAD3}
 	EndGlobalSection
 EndGlobal

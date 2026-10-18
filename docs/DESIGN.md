@@ -163,6 +163,14 @@ write-through, then swapped in with `File.Replace`, which also keeps the previou
 Unreadable files are kept aside (`tack.json.unreadable-<time>`) rather than overwritten. Loading tolerates
 a BOM, comments and trailing commas, for people who edit the file by hand.
 
+The file also carries Tack Focus's `tackFocus` section (`StateFile`, `Sync/`): per-field hybrid
+logical clocks, fractional sort keys, tombstones and the focus register, the model in
+[SYNC.md](SYNC.md). The top level is still written exactly as before and is the source of truth for
+what you see: a hand edit there (or a file saved by 1.1, which drops the section) is taken as a fresh
+edit, and the section's records are checked one by one, so a damaged section never stops the file
+from loading. `Workspace` stamps every mutation the same way Tack Focus does, and keeps the open
+list sorted by key, so both apps produce the same records for the same edits.
+
 ### Staying light
 - **Software rendering.** Tack's UI is small and mostly still, so WPF's software renderer is just as smooth
   here while skipping the GPU driver stack: roughly half the private memory. DWM still composites the

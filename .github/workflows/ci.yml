@@ -21,6 +21,9 @@ jobs:
       - name: Build
         run: dotnet build src/Tack/Tack.csproj -c Release -warnaserror
 
+      - name: Tests (sync model against Tack Focus's vectors, tack.json compatibility)
+        run: dotnet run --project tests/Tack.Tests -c Release
+
       - name: Publish portable build
         run: dotnet publish src/Tack/Tack.csproj -c Release -p:Portable=true -o artifacts/portable
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Ready to sync with Tack Focus.** tack.json gains the `tackFocus` section Tack Focus writes: a clock
+  for every field, sort keys for the list, and deletions remembered for 90 days. The top level is
+  unchanged, so Tack 1.1 still opens the file; a file saved by 1.1, or edited by hand, is taken as it
+  is. Merging is a port of Tack Focus's engine, checked against the same test vectors.
+- **Settings → Import.** Merges a tack.json from Tack Focus, another PC or a backup: new things are
+  added, the newer edit wins, a note changed in both places is kept twice. Undo puts it all back.
+
 ## 1.1.0 (2026-10-17)
 
 - **Light mode.** Settings → Theme: System (follows Windows' light/dark mode, live), Light or Dark.

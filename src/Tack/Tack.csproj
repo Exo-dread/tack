@@ -49,6 +49,11 @@
     <Resource Include="Assets\Tack.ico" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- tests/Tack.Tests checks the sync model against Tack Focus's test vectors. -->
+    <InternalsVisibleTo Include="Tack.Tests" />
+  </ItemGroup>
+
   <!-- The WPF runtime pack drags in Windows Forms (for WindowsFormsHost) and a few other
        libraries Tack never loads. Leaving them out of the portable .exe saves ~30 MB.
        If you add a feature that needs one of these, remove it from this list. -->

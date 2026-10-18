@@ -3,17 +3,21 @@
 ## Automated
 
 ```bash
-npm test        # Vitest: model, clocks, order keys, merging, tack.json
+npm test        # Vitest: model, clocks, order keys, merging, tack.json, shared vectors
+npm run vectors # rewrite tests/vectors/sync.json (Tack for Windows' C# port is checked against it)
 npm run e2e     # Playwright: the production build in three browsers
 ```
 
-**Unit tests (45)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
+**Unit tests (49)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
 random inserts, clock monotonicity and skew, .NET date parsing, every workspace mutation and its
 undo, snapshot restore, two- and three-device merges with a randomised convergence test, concurrent
 note edits (conflict copies), and tack.json import/export against a file shaped exactly like
 Tack for Windows writes it (BOM, comments, trailing commas, seven-digit fractions), including
 re-importing after edits on the desktop, on the phone, or both (newer wins; notes kept twice), and
 storage (in an in-memory IndexedDB) merging every write so a stale tab can't undo a newer edit.
+`vectors.test.ts` computes the shared test vectors that Tack for Windows' port of the model must
+reproduce exactly (`tests/Tack.Tests`), and reads back the file the desktop saved for its round-trip
+export to check nothing was lost on the way.
 
 **End-to-end tests (75 runs across three projects)** run against `vite build` + `vite preview`, so the real
 service worker and bundle are tested:

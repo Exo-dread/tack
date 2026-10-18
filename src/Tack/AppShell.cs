@@ -41,6 +41,7 @@ internal sealed class AppShell : IDisposable
     private WindowBoundsAnimator? _panelBounds;
     private bool _expanded;
     private bool _hiddenForFullscreen;
+    private bool _dialogOpen;
     private bool _anchorRight, _anchorBottom;
 
     public AppShell(Workspace ws, StateStore store)
@@ -244,7 +245,7 @@ internal sealed class AppShell : IDisposable
 
     private void CollapseIfAbandoned()
     {
-        if (!_expanded || _ws.Settings.Pinned || _panel.IsActive) return;
+        if (!_expanded || _ws.Settings.Pinned || _panel.IsActive || _dialogOpen) return;
         Collapse();
     }
 
@@ -501,6 +502,27 @@ internal sealed class AppShell : IDisposable
     {
         try { Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_store.Folder}\"") { UseShellExecute = true }); }
         catch (Exception ex) { Log.Error("Could not open data folder", ex); }
+    }
+
+    /// <summary>Settings → Import: picks a tack.json (from Tack Focus, another PC or a backup) and merges it in.</summary>
+    public void ImportFile()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import a tack.json",
+            Filter = "Tack files (*.json)|*.json|All files (*.*)|*.*",
+            CheckFileExists = true,
+        };
+        bool picked;
+        _dialogOpen = true; // the panel loses focus to the dialog; it mustn't fold away meanwhile
+        try { picked = dialog.ShowDialog(_panel) == true; }
+        finally { _dialogOpen = false; }
+        BringPanelForward();
+        if (!picked) return;
+
+        var (message, undo) = FileImport.Run(_ws, dialog.FileName);
+        _store.Flush();
+        _panel.ShowToast(message, undo);
     }
 
     // ================= Housekeeping =================
