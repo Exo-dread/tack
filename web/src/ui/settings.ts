@@ -4,6 +4,7 @@ import type { Workspace } from '../model/workspace';
 import type { Snapshot } from '../store/db';
 import { isPersisted, persistenceNeedsPrompt, requestPersistence, type Store } from '../store/persist';
 import { prefs, setPrefs, type ThemePref } from '../store/prefs';
+import type { SyncController, SyncStatus } from '../sync/controller';
 import { h, svg } from './dom';
 import { hapticsSupported, setHaptics } from './haptics';
 import { icons } from './icons';
@@ -14,6 +15,7 @@ import type { Toasts } from './toast';
 
 const VERSION = __APP_VERSION__;
 const SOURCE_URL = 'https://github.com/Exo-dread/tack';
+const PRIVACY_URL = '/privacy/';
 
 /**
  * Settings, as a sheet that slides up from the bottom (within thumb reach) and can be swiped
@@ -28,6 +30,7 @@ export class Settings {
     private readonly ws: Workspace,
     private readonly store: Store,
     private readonly toasts: Toasts,
+    private readonly sync: SyncController,
   ) {}
 
   open(): void {
@@ -127,7 +130,11 @@ export class Settings {
     this.dataStatus = h('p.note.small.data-status', { role: 'status', hidden: true });
     const data = group(
       'Your data',
-      h('p.note', { text: 'Your tasks and notes are kept on this device only. Tack Focus has no servers and sends nothing anywhere.' }),
+      h('p.note', {
+        text: this.sync.status.enabled
+          ? 'Your tasks and notes are kept on this device, and in your OneDrive while sync is on. Tack Focus has no servers of its own.'
+          : 'Your tasks and notes are kept on this device only. Tack Focus has no servers and sends nothing anywhere.',
+      }),
       persistLine,
       h(
         'div.button-row',
@@ -178,7 +185,100 @@ export class Settings {
       ),
     );
 
-    return [h('div.sheet-grip', { 'aria-hidden': 'true' }), title, h('div.sheet-scroll', {}, appearance, feel, install, data, about)];
+    return [h('div.sheet-grip', { 'aria-hidden': 'true' }), title, h('div.sheet-scroll', {}, appearance, feel, this.syncSection(), install, data, about)];
+  }
+
+  // ------------------------------------------------------------------ sync
+
+  private syncSection(): HTMLElement | null {
+    if (!this.sync.status.available) return null;
+    const body = h('div.sync');
+    const render = () => body.replaceChildren(...this.syncBody(this.sync.status));
+    render();
+    this.cleanups.push(this.sync.onStatus(render));
+    const tick = setInterval(render, 30_000); // "2 min ago" stays true while you look
+    this.cleanups.push(() => clearInterval(tick));
+    return group('Sync', body);
+  }
+
+  private syncBody(st: SyncStatus): Node[] {
+    const privacy = h('a', { href: PRIVACY_URL, target: '_blank', rel: 'noopener', text: 'Privacy' });
+    if (!st.enabled) {
+      const nodes: (HTMLElement | null)[] = [
+        h('p.note', { text: 'Keep Tack Focus and Tack for Windows in step through your own OneDrive. There’s no Tack server in between: your tasks go straight between your devices and your OneDrive.' }),
+        h('div.button-row', {}, h('button.button.primary', { type: 'button', onclick: () => void this.sync.turnOn() }, svg(icons.cloud), 'Turn on sync')),
+        st.message ? h('p.note.small.warn', { role: 'status', text: st.message }) : null,
+        h(
+          'p.note.small',
+          {},
+          'You’ll sign in with Microsoft. Tack can open only its own folder in your OneDrive (Apps › Tack Focus), nothing else. What’s on this device and what’s already there are combined. ',
+          privacy,
+        ),
+      ];
+      return nodes.filter((n): n is HTMLElement => n !== null);
+    }
+
+    const action = (label: string, run: () => void) => h('button.text-button.inline', { type: 'button', text: label, onclick: run });
+    const status = h('p.note.sync-status', { role: 'status' });
+    switch (st.phase) {
+      case 'syncing':
+        status.append('Syncing…');
+        break;
+      case 'offline':
+        status.append('Offline. Changes are kept here and sync when you’re back online.');
+        break;
+      case 'renew':
+        status.append('Paused until Tack checks in with Microsoft, which it does by itself the next time you open it. ', action('Reconnect now', () => void this.sync.reconnect()));
+        break;
+      case 'signin':
+        status.classList.add('warn');
+        status.append('Microsoft asked you to sign in again. ', action('Sign in', () => void this.sync.signInAgain()));
+        break;
+      case 'error':
+        status.classList.add('warn');
+        status.append(`${st.message ?? 'Sync stopped.'} `, action('Try again', () => this.sync.syncNow()));
+        break;
+      default:
+        status.append(st.lastSync ? `Up to date · ${ago(st.lastSync)}` : 'Up to date');
+    }
+
+    const nodes: Node[] = [
+      h('div.setting', {}, h('div.setting-label', {}, h('span', { text: 'OneDrive' }), h('small', { text: st.account?.username || st.account?.name || 'Signed in' })), svg(icons.cloud)),
+      status,
+    ];
+    if (st.peers.length) {
+      nodes.push(h('p.note.small', { text: `Also syncing: ${st.peers.map((p) => `${p.name || 'another device'} (${ago(p.written)})`).join(', ')}.` }));
+    }
+    for (const problem of st.problems) {
+      const who = st.peers.find((p) => p.device === problem.device)?.name || 'another device';
+      nodes.push(
+        h('p.note.small.warn', {
+          text:
+            problem.reason === 'newer'
+              ? `${who} has a newer Tack. Update Tack here to keep syncing with it.`
+              : `The sync file from ${who} couldn’t be read. It’ll be written again the next time that device syncs.`,
+        }),
+      );
+    }
+    nodes.push(
+      h(
+        'div.button-row',
+        {},
+        h('button.button', { type: 'button', onclick: () => this.sync.syncNow() }, 'Sync now'),
+        h('button.button', {
+          type: 'button',
+          text: 'Turn off',
+          onclick: () => void this.sync.turnOff().then(() => this.say('Sync is off. Your tasks stay on this device, and in OneDrive for your other devices.')),
+        }),
+      ),
+      h(
+        'p.note.small',
+        {},
+        'Your tasks are saved in your OneDrive as ordinary files: readable by you, by Microsoft as your storage provider, and by any app you’ve given your whole OneDrive to. They aren’t end-to-end encrypted yet. ',
+        privacy,
+      ),
+    );
+    return nodes;
   }
 
   private installSection(): Node[] {
@@ -388,6 +488,16 @@ export class Settings {
       el.addEventListener('pointercancel', end);
     }
   }
+}
+
+/** "just now", "5 min. ago", "yesterday"... */
+function ago(ms: number, now = Date.now()): string {
+  const s = Math.max(0, Math.round((now - ms) / 1000));
+  if (s < 60) return 'just now';
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto', style: 'short' });
+  if (s < 3600) return rtf.format(-Math.round(s / 60), 'minute');
+  if (s < 86400) return rtf.format(-Math.round(s / 3600), 'hour');
+  return rtf.format(-Math.round(s / 86400), 'day');
 }
 
 function group(title: string, ...children: (Node | null)[]): HTMLElement {

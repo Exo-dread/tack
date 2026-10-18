@@ -1,7 +1,9 @@
+import { encode } from '../model/hlc';
 import { pastedLines } from '../model/text';
 import { dayKey, msUntilMidnight } from '../model/time';
 import type { Workspace } from '../model/workspace';
 import type { Store } from '../store/persist';
+import type { SyncController } from '../sync/controller';
 import { loadDraft, prefs, saveDraft, setPrefs, type Mode } from '../store/prefs';
 import { coarsePointer, h, isEditable, isIOS, isStandalone, svg } from './dom';
 import { haptics, setHaptics } from './haptics';
@@ -39,12 +41,14 @@ export class App {
   private readonly sheetDelete: HTMLButtonElement;
   private readonly tabs: Record<Mode, HTMLButtonElement>;
   private readonly glow: HTMLElement;
+  private readonly gear = h('button.icon-button.settings-open', { type: 'button', 'aria-label': 'Settings', title: 'Settings (,)', onclick: () => this.settings.open() }, svg(icons.gear));
   private mode: Mode = prefs().mode;
   private midnight: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly ws: Workspace,
     private readonly store: Store,
+    sync: SyncController,
   ) {
     watchTheme();
     watchInstall();
@@ -59,7 +63,7 @@ export class App {
       toasts: this.toasts,
       sentToTasks: () => this.nudgeTasksTab(),
     });
-    this.settings = new Settings(ws, store, this.toasts);
+    this.settings = new Settings(ws, store, this.toasts, sync);
 
     // ---- composer: the fastest way into Tack
     this.input = h('input.composer-input', {
@@ -116,8 +120,17 @@ export class App {
         h('h1.title', {}, h('span.t-tasks', { text: 'Tasks' }), h('span.t-notes', { text: 'Notes' }), h('span.t-wide', { text: 'Tack' })),
         this.subtitle,
       ),
-      h('div.actions', {}, this.sheetDelete, h('button.icon-button.settings-open', { type: 'button', 'aria-label': 'Settings', title: 'Settings (,)', onclick: () => this.settings.open() }, svg(icons.gear))),
+      h('div.actions', {}, this.sheetDelete, this.gear),
     );
+    // A small dot on Settings when sync needs you (and only then: syncing itself is silent).
+    const attention = () => {
+      const p = sync.status.phase;
+      const needs = p === 'signin' || p === 'error';
+      this.gear.classList.toggle('attention', needs);
+      this.gear.setAttribute('aria-label', needs ? 'Settings (sync needs attention)' : 'Settings');
+    };
+    sync.onStatus(attention);
+    attention();
 
     // ---- dock
     const tab = (mode: Mode, label: string, icon: string) => {
@@ -379,6 +392,11 @@ export class App {
     this.installCard = card;
   }
 
+  /** Just back from signing in to turn sync on: say so, where the result will show. */
+  syncTurnedOn(): void {
+    this.toasts.show('Sync is on. Your tasks will appear on your other devices.', undefined, { duration: 5000 });
+  }
+
   // ================================================================== launch and keys
 
   /** Home-screen shortcuts: /?new opens straight into the task box, /?notes into Notes. */
@@ -417,8 +435,11 @@ export class App {
   };
 }
 
-/** A first-run list that teaches Tack by using it (as on the desktop). Delete or tick them off. */
-export function seedWelcome(ws: Workspace): void {
+/**
+ * A first-run list that teaches Tack by using it (as on the desktop). Delete or tick them off.
+ * Returns what it wrote (id → text), see Prefs.welcome.
+ */
+export function seedWelcome(ws: Workspace): { tasks: Record<string, string>; sheets: Record<string, string> } {
   const touch = coarsePointer();
   const tips = touch
     ? [
@@ -435,16 +456,40 @@ export function seedWelcome(ws: Workspace): void {
   if (!isStandalone()) {
     tips.push(isIOS() ? 'Add Tack to your Home Screen: Share, then Add to Home Screen' : 'Install Tack from your browser’s menu to keep it one tap away');
   }
+  const written = { tasks: {} as Record<string, string>, sheets: {} as Record<string, string> };
   ws.batch(() => {
-    for (let i = tips.length - 1; i >= 0; i--) ws.addTask(tips[i]);
-    ws.addTask('Tick this circle to finish your first task', { asNow: true });
+    const add = (text: string, asNow = false) => {
+      const t = ws.addTask(text, { asNow });
+      if (t) written.tasks[t.id] = t.text;
+    };
+    for (let i = tips.length - 1; i >= 0; i--) add(tips[i]!);
+    add('Tick this circle to finish your first task', true);
+    // The earliest clock there is (but still a clock, so it outlasts a reload): whatever you put
+    // in focus on another device wins over this one when they first sync, instead of a phone's
+    // tutorial replacing your PC's real focus.
+    ws.focus = { id: ws.focus.id, clk: encode(1, 0, '') };
     const sheet = ws.ensureSheet();
     if (!sheet.text) {
       ws.editSheet(
         sheet.id,
         'Scrap paper\n\nNotes save as you type. Lists continue themselves:\n- like this\n- press return for the next line\n\nPut the cursor on a line and tap Make task to send it to Tasks.',
       );
+      written.sheets[sheet.id] = ws.sheets.get(sheet.id)!.text;
     }
   });
+  return written;
+}
+
+/**
+ * Joining a sync folder your other devices already use: the welcome tasks and sheet you never
+ * touched stay behind (deleted here), instead of turning up on every device.
+ */
+export function dropUntouchedWelcome(ws: Workspace): void {
+  const welcome = prefs().welcome;
+  if (!welcome) return;
+  const tasks = Object.entries(welcome.tasks).filter(([id, text]) => ws.tasks.get(id)?.text === text).map(([id]) => id);
+  const sheets = Object.entries(welcome.sheets).filter(([id, text]) => ws.sheets.get(id)?.text === text).map(([id]) => id);
+  if (tasks.length || sheets.length) ws.discard({ tasks, sheets }, 'local');
+  setPrefs({ welcome: null });
 }
 

@@ -115,6 +115,8 @@ export interface EngineHooks {
   flush(): Promise<void>;
   /** Saves `meta` (called before a write, so an interrupted one is recognised later). */
   saveMeta(meta: SyncMeta): Promise<void>;
+  /** This device is joining a folder other devices already use (after merging theirs, before its first write). */
+  joined?(): void;
 }
 
 const nodeOf = (stamp: Stamp): string => decode(stamp)?.node ?? '';
@@ -211,6 +213,8 @@ export class SyncEngine {
     } finally {
       off();
     }
+
+    if (meta.own.written === null && meta.own.pending === null && present.size > 0) this.hooks.joined?.();
 
     // ---- write this device's file if it knows something its file doesn't say
     const edited = ownClock(this.ws, me) > (meta.own.written ?? ZERO);

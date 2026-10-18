@@ -1,7 +1,8 @@
 /* Tack Focus service worker. Generated at build time: the precache list and version are filled in
  * by vite.config.ts. Offline-first: the app shell and every asset come from the cache; the network
  * is only used to fetch updates (which arrive as a new version of this file). No data passes
- * through here: tasks and notes live in IndexedDB, and Tack makes no network requests of its own. */
+ * through here: tasks and notes live in IndexedDB, and sync (if you turn it on) talks to
+ * Microsoft's servers directly, which this worker leaves alone. */
 
 const VERSION = '__TACK_VERSION__';
 const PRECACHE = __TACK_PRECACHE__;
@@ -48,7 +49,13 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
-    // Every page load gets the cached app shell: instant, and identical offline.
+    // A few plain pages live beside the app (the sign-in landing page, privacy): those load as themselves.
+    const page = url.pathname !== '/' && url.pathname.endsWith('/') ? `${url.pathname}index.html` : null;
+    if (page && PRECACHE.includes(page)) {
+      event.respondWith(caches.open(CACHE).then((cache) => cache.match(page, { ignoreVary: true }).then((cached) => cached || fetch(request))));
+      return;
+    }
+    // Every other page load gets the cached app shell: instant, and identical offline.
     event.respondWith(
       caches.open(CACHE).then((cache) =>
         cache.match(SHELL, { ignoreSearch: true, ignoreVary: true }).then((cached) => cached || fetch(request)),

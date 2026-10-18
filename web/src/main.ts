@@ -6,7 +6,8 @@ import { Workspace } from './model/workspace';
 import { openBackend, StorageUnavailable, stranded, type Backend } from './store/db';
 import { Store } from './store/persist';
 import { prefs, setPrefs } from './store/prefs';
-import { App, seedWelcome } from './ui/app';
+import { SyncController } from './sync/controller';
+import { App, dropUntouchedWelcome, seedWelcome } from './ui/app';
 import { registerServiceWorker } from './ui/sw';
 
 async function boot(): Promise<void> {
@@ -37,17 +38,28 @@ async function boot(): Promise<void> {
     }
   }
 
+  // Sync (off unless you turned it on). Back from signing in to Microsoft? Finish that first,
+  // and if the sign-in is due for its daily renewal, go and renew it before anything shows.
+  const sync = await SyncController.create(ws, store, backend);
+  const returned = await sync.handleReturn().catch((error) => {
+    console.error('Sign-in failed', error);
+    return 'failed' as const;
+  });
+  if (sync.renewBeforeStart()) return;
+  sync.onJoin = () => dropUntouchedWelcome(ws);
+
   if (!prefs().seeded && ws.tasks.size === 0 && ws.sheets.size === 0) {
-    seedWelcome(ws);
-    setPrefs({ seeded: true });
+    setPrefs({ seeded: true, welcome: seedWelcome(ws) });
   } else {
     ws.ensureSheet();
   }
 
-  new App(ws, store);
+  const app = new App(ws, store, sync);
   document.documentElement.classList.add('ready');
   void store.startup();
   registerServiceWorker(store);
+  sync.start();
+  if (returned === 'signed-in') app.syncTurnedOn();
 }
 
 function showBootError(error: unknown): void {
