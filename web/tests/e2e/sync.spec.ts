@@ -218,6 +218,32 @@ test.describe('sync with OneDrive', () => {
     await syncNow(page);
   });
 
+  test('a copy of this device syncing elsewhere makes it take a new id, losing nothing', async ({ page, context }) => {
+    const ms = new FakeMicrosoft();
+    await useMicrosoft(context, ms);
+    await open(page);
+    await addTask(page, 'Mine');
+    await turnOn(page);
+    await syncNow(page);
+    const [[name, text]] = [...ms.deviceFiles()];
+    // Someone else now writes under this device's id (a copied browser profile, say).
+    const doc = JSON.parse(text!);
+    const later = (Number.parseInt(doc.written.slice(0, 9), 36) + 60_000).toString(36).padStart(9, '0');
+    ms.putDeviceFile(name!, JSON.stringify({ ...doc, written: `${later}.0000.${doc.device}`, tasks: [] }));
+    await syncNow(page);
+    const files = [...ms.deviceFiles().keys()];
+    expect(files.length).toBe(2);
+    const device = await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((r) => { const q = indexedDB.open('tack'); q.onsuccess = () => r(q.result); });
+      return new Promise<string>((r) => { const q = db.transaction('meta').objectStore('meta').get('device'); q.onsuccess = () => r(q.result); });
+    });
+    expect(`${device}.json`).not.toBe(name);
+    expect(files).toContain(`${device}.json`);
+    expect(ms.deviceFiles().get(`${device}.json`)).toContain('Mine');
+    await closeSettings(page);
+    await expect(openTexts(page).filter({ hasText: 'Mine' })).toHaveCount(1);
+  });
+
   test('turning it off keeps your tasks and forgets the sign-in', async ({ page, context }) => {
     const ms = new FakeMicrosoft();
     await useMicrosoft(context, ms);
