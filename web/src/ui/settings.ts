@@ -22,6 +22,7 @@ const SOURCE_URL = 'https://github.com/Exo-dread/tack';
 export class Settings {
   private dialog: HTMLDialogElement | null = null;
   private cleanups: (() => void)[] = [];
+  private dataStatus: HTMLElement | null = null;
 
   constructor(
     private readonly ws: Workspace,
@@ -122,6 +123,8 @@ export class Settings {
       fileInput.value = '';
     });
     const snapList = h('div.snapshots', { hidden: true });
+    // Messages about export and import appear here: toasts would sit behind this sheet.
+    this.dataStatus = h('p.note.small.data-status', { role: 'status', hidden: true });
     const data = group(
       'Your data',
       h('p.note', { text: 'Your tasks and notes are kept on this device only. Tack Focus has no servers and sends nothing anywhere.' }),
@@ -133,6 +136,7 @@ export class Settings {
         h('button.button', { type: 'button', onclick: () => fileInput.click() }, svg(icons.upload), 'Import'),
         h('button.button', { type: 'button', 'aria-expanded': 'false', onclick: (e: Event) => void this.toggleSnapshots(snapList, e.currentTarget as HTMLElement) }, svg(icons.restore), 'Restore'),
       ),
+      this.dataStatus,
       h('p.note.small', { text: 'Export saves a tack.json file that Tack for Windows can read. Import adds what’s new from either app’s file. Where both changed, the newer edit wins, and a note written in both places is kept twice.' }),
       snapList,
       fileInput,
@@ -251,12 +255,21 @@ export class Settings {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    this.toasts.show(`Exported ${name}`);
+    this.say(`Saved ${name} to your downloads.`);
+  }
+
+  /** A message in the data section of the sheet (export and import results, errors). */
+  private say(text: string, warn = false): void {
+    const el = this.dataStatus;
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('warn', warn);
+    el.hidden = false;
   }
 
   private async importFile(file: File): Promise<void> {
     if (file.size > 20 * 1024 * 1024) {
-      this.toasts.show('That file is too large to be a Tack file');
+      this.say('That file is too large to be a Tack file.', true);
       return;
     }
     try {
@@ -274,10 +287,16 @@ export class Settings {
       const sheets = b.sheets - a.sheets;
       const parts = [added ? `${added} task${added === 1 ? '' : 's'}` : '', sheets ? `${sheets} sheet${sheets === 1 ? '' : 's'}` : ''].filter(Boolean);
       const changed = JSON.stringify(after) !== JSON.stringify(before);
-      const message = parts.length ? `Imported ${parts.join(' and ')}` : changed ? 'Imported the latest changes' : 'Nothing new in that file';
-      this.toasts.show(message, changed ? () => this.ws.restore(before) : undefined);
+      if (!changed) {
+        this.say('Nothing new in that file: everything in it is already here.');
+        return;
+      }
+      // Close the sheet so you can watch the tasks arrive, with Undo in reach (as Restore does).
+      const message = parts.length ? `Imported ${parts.join(' and ')}` : 'Imported the latest changes';
+      this.close();
+      this.toasts.show(message, () => this.ws.restore(before), { duration: 8000 });
     } catch (error) {
-      this.toasts.show(error instanceof FileError ? error.message : 'Couldn’t read that file');
+      this.say(error instanceof FileError ? error.message : 'Couldn’t read that file.', true);
     }
   }
 
