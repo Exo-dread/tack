@@ -130,7 +130,7 @@ internal static class TackFile
         string? order = Str(r, "order");
         return new SheetData(
             id,
-            Str(r, "text") ?? "",
+            JsText.NoteText(Str(r, "text") ?? ""),
             Str(r, "updated") ?? EpochText(),
             OrderKey.IsOrderKey(order) ? order! : OrderKey.Mid,
             IsTrue(r, "deleted"),
@@ -279,7 +279,7 @@ internal static class TackFile
         var sheets = new List<SheetData>();
         foreach (var (_, r) in rawSheets)
         {
-            string text = JsString(r, "text");
+            string text = JsText.NoteText(JsString(r, "text"));
             string id = Ids.ForImport(Str(r, "id"), usedIds, text);
             long updatedAt = IsoTime.ParseMs(JsString(r, "updated")) ?? 0;
             string? rawUpdated = Str(r, "updated");

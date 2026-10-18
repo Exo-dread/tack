@@ -119,6 +119,31 @@ describe('tack.json', () => {
     expect(b.sheetList).toHaveLength(2);
   });
 
+  it('takes a note written on Windows ("\\r\\n") there and back without a second copy', () => {
+    let wall = now;
+    // What Tack for Windows saved before notes were kept with "\n": the TextBox's "\r\n" everywhere.
+    const desk = new Workspace(new Hlc('desk', () => wall), () => new Date(wall));
+    const s = desk.addSheet('Site visit\r\n- rebar\r\n- formwork');
+    expect(s.text).toBe('Site visit\n- rebar\n- formwork');
+    const saved = JSON.stringify(exportFile(desk)).replaceAll('\\n', '\\r\\n');
+    expect(saved).toContain('Site visit\\r\\n- rebar');
+
+    const phone = new Workspace(new Hlc('phone', () => wall), () => new Date(wall));
+    importFile(phone, saved);
+    expect(phone.sheets.get(s.id)?.text).toBe('Site visit\n- rebar\n- formwork');
+    wall += 1000;
+    let changes = 0;
+    phone.subscribe(() => changes++);
+    phone.editSheet(s.id, 'Site visit\n- rebar\n- formwork'); // what the textarea hands over
+    importFile(phone, saved);
+    expect(changes).toBe(0);
+
+    const before = JSON.stringify(desk.toData());
+    importFile(desk, JSON.stringify(exportFile(phone)));
+    expect(JSON.stringify(desk.toData())).toBe(before);
+    expect(desk.sheetList).toHaveLength(1);
+  });
+
   it('ignores records with odd ids or empty text', () => {
     const ws = makeWs();
     const t = ws.addTask('real')!;

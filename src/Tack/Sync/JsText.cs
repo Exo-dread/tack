@@ -48,6 +48,12 @@ internal static class JsText
         return Trim(sb.ToString());
     }
 
+    /// <summary>
+    /// Note text in records breaks lines with "\n", as a browser's textarea does (noteText in text.ts).
+    /// The TextBox writes "\r\n"; stored either way, the same note would look edited on one side.
+    /// </summary>
+    public static string NoteText(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n');
+
     /// <summary>JSON.stringify(value) for a string or null.</summary>
     public static string Stringify(string? value)
     {
