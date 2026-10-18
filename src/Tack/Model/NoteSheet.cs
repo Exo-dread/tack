@@ -10,7 +10,7 @@ public sealed class NoteSheet : Observable
     internal NoteSheet(SheetData data)
     {
         Id = data.Id;
-        _text = data.Text;
+        _text = ForTextBox(data.Text);
         UpdatedIso = data.Updated;
         Order = data.Order;
         Clk = data.Clk;
@@ -19,7 +19,10 @@ public sealed class NoteSheet : Observable
 
     public string Id { get; }
 
-    /// <summary>The text. Edits are stamped (and <see cref="UpdatedAt"/> moved) by <see cref="Workspace"/>.</summary>
+    /// <summary>
+    /// The text as the TextBox has it, with "\r\n" line breaks; records keep "\n" (<see cref="JsText.NoteText"/>).
+    /// Edits are stamped (and <see cref="UpdatedAt"/> moved) by <see cref="Workspace"/>.
+    /// </summary>
     public string Text
     {
         get => _text;
@@ -66,17 +69,21 @@ public sealed class NoteSheet : Observable
         UpdatedAt = IsoTime.Parse(iso) ?? DateTimeOffset.UnixEpoch;
     }
 
-    internal SheetData ToData() => new(Id, _text, UpdatedIso, Order, IsDeleted, Clk);
+    internal SheetData ToData() => new(Id, JsText.NoteText(_text), UpdatedIso, Order, IsDeleted, Clk);
 
     /// <summary>Takes every field from a record (loading or merging; not a new edit).</summary>
     internal void Apply(SheetData data)
     {
-        Text = data.Text;
+        // The same note with other line breaks stays as the TextBox has it.
+        if (JsText.NoteText(_text) != JsText.NoteText(data.Text)) Text = ForTextBox(data.Text);
         if (data.Updated != UpdatedIso || UpdatedAt == default) SetUpdated(data.Updated);
         Order = data.Order;
         IsDeleted = data.Deleted;
         Clk = data.Clk;
     }
+
+    /// <summary>A record's text with the line breaks a TextBox writes.</summary>
+    internal static string ForTextBox(string text) => JsText.NoteText(text).Replace("\n", "\r\n");
 
     public override string ToString() => Title;
 }

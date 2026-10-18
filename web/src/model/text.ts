@@ -9,6 +9,14 @@ export function cleanTaskText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * Note text breaks lines with "\n", as a browser's textarea does. Tack for Windows' TextBox
+ * writes "\r\n"; stored either way, the same note would look edited on one side.
+ */
+export function noteText(text: string): string {
+  return text.replace(/\r\n?/g, '\n');
+}
+
 /** Splits pasted text into task lines, stripping bullets and numbering (twice, for "1. [ ] x"). */
 export function pastedLines(text: string): string[] {
   return text

@@ -28,6 +28,7 @@ internal static class StateFileTests
         yield return ("hand edits to the top level win, as fresh edits", HandEdits);
         yield return ("a damaged tackFocus section never stops tack.json from loading", DamagedSection);
         yield return ("a file saved by an older Tack (section dropped) loads as before", SectionDropped);
+        yield return ("notes keep \"\\n\" in the records and the TextBox's \"\\r\\n\" on screen and in the top level", LineBreaks);
         yield return ("Import merges a Tack Focus export, and Undo puts things back", ImportAndUndo);
         yield return ("deletions are forgotten after 90 days", PurgesOldTombstones);
         yield return ("dates are written the way System.Text.Json writes them", DateFormat);
@@ -244,6 +245,38 @@ internal static class StateFileTests
         File.WriteAllText(dir.File, root.ToJsonString());
         var (_, ws2) = dir.Open();
         Check.Equal(views, Json.Views(ws2), "lists");
+    }
+
+    private static void LineBreaks()
+    {
+        // Tack 1.1 saved the note as its TextBox has it, with "\r\n".
+        using var dir = new TempFolder(File.ReadAllText(Path.Combine(VectorsDir, "legacy-1.1.json")));
+        var (store, ws) = dir.Open();
+        var site = ws.Sheets[0];
+        Check.Equal("Site visit\r\n- rebar\r\n- formwork", site.Text, "the TextBox gets the note as it was");
+        var record = ws.ToData().Sheets.First(s => s.Id == site.Id);
+        Check.Equal("Site visit\n- rebar\n- formwork", record.Text, "the record has \"\\n\", as Tack Focus has it");
+
+        store.Flush();
+        using (var saved = JsonDocument.Parse(dir.Bytes()))
+        {
+            var root = saved.RootElement;
+            Check.Equal(site.Text, root.GetProperty("sheets")[0].Str("text"), "the top level keeps \"\\r\\n\", for Tack 1.1");
+            var section = root.GetProperty("tackFocus").GetProperty("sheets").EnumerateArray().First(s => s.Str("id") == site.Id);
+            Check.Equal(record.Text, section.Str("text"), "the section has \"\\n\"");
+        }
+        var (_, ws2) = dir.Open();
+        Check.Data(ws.ToData(), ws2.ToData(), "opening it again: line breaks that differ are no hand edit");
+
+        // The same note from Tack Focus changes nothing; an edit there reaches the TextBox with "\r\n" and no copy.
+        Check.True(!ws2.MergeFrom(new WorkspaceData([], [record], FocusData.None), record.Clk.Text), "the same note: nothing new");
+        string phone = Stamp.Encode(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 60_000, 0, "phone");
+        var edited = record with { Text = record.Text + "\n- ties", Clk = record.Clk with { Text = phone } };
+        int sheets = ws2.Sheets.Count;
+        Check.True(ws2.MergeFrom(new WorkspaceData([], [edited], FocusData.None), record.Clk.Text), "an edit from Tack Focus");
+        Check.Equal("Site visit\r\n- rebar\r\n- formwork\r\n- ties", ws2.SheetById(site.Id)!.Text, "reaches the TextBox with \"\\r\\n\"");
+        Check.Equal(edited, ws2.ToData().Sheets.First(s => s.Id == site.Id), "and the record is Tack Focus's");
+        Check.Equal(sheets, ws2.Sheets.Count, "no copy");
     }
 
     // ------------------------------------------------------------------ import

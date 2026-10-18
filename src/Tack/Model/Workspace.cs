@@ -441,7 +441,7 @@ public sealed class Workspace : Observable, IImportTarget
             var current = item.ToData();
             var want = target ?? current with { Deleted = true };
             if (current.Deleted && !want.Deleted) SetSheetDeleted(item, false);
-            if (current.Text != want.Text && !want.Deleted && !item.IsDeleted) item.Text = want.Text;
+            if (current.Text != want.Text && !want.Deleted && !item.IsDeleted) item.Text = NoteSheet.ForTextBox(want.Text);
             if (!current.Deleted && want.Deleted) SetSheetDeleted(item, true);
         }
 

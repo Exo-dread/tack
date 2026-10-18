@@ -177,7 +177,8 @@ internal static class StateFile
         var sheetChain = new List<int>();
         foreach (var r in doc.Sheets)
         {
-            string text = r.Text ?? "";
+            // The top level has the TextBox's "\r\n"; a note that differs only in line breaks isn't a hand edit.
+            string text = JsText.NoteText(r.Text ?? "");
             string id = Ids.IsValid(r.Id) && !seenSheets.Contains(r.Id) ? r.Id : Ids.NewId();
             seenSheets.Add(id);
             if (sheetAt.TryGetValue(id, out int at) && at < knownSheets)

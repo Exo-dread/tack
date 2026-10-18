@@ -2,7 +2,7 @@ import { Hlc, ZERO, type Stamp } from './hlc';
 import { newId } from './ids';
 import { cloneSheet, cloneTask, mergeFocus, mergeSheet, mergeTask } from './merge';
 import { keyAfter, keyBefore, keysAt } from './order';
-import { cleanTaskText } from './text';
+import { cleanTaskText, noteText } from './text';
 import { isoLocal, parseDate, sameLocalDay } from './time';
 import type { Focus, Sheet, Task, WorkspaceData } from './types';
 
@@ -257,7 +257,7 @@ export class Workspace {
       const c = this.hlc.now();
       const sheet: Sheet = {
         id: newId(),
-        text,
+        text: noteText(text),
         updated: isoLocal(this.clock()),
         order: last ? keyAfter(last) : 'V',
         deleted: false,
@@ -268,8 +268,9 @@ export class Workspace {
     });
   }
 
-  editSheet(id: string, text: string): void {
+  editSheet(id: string, rawText: string): void {
     const s = this.sheets.get(id);
+    const text = noteText(rawText);
     if (!s || s.deleted || s.text === text) return;
     this.batch(() => {
       const next = cloneSheet(s);

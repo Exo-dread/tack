@@ -1,7 +1,7 @@
 import { decode, encode, isPlausibleStamp, ZERO, type Stamp } from './hlc';
 import { derivedId } from './ids';
 import { isOrderKey, keyAfter, keyBefore } from './order';
-import { cleanTaskText } from './text';
+import { cleanTaskText, noteText } from './text';
 import { isoLocal, parseDate } from './time';
 import type { Focus, Sheet, Task, WorkspaceData } from './types';
 import type { Workspace } from './workspace';
@@ -191,7 +191,7 @@ function readDesktop(doc: Record<string, unknown>, ws: Workspace, options: ReadO
   const nextKey = () => (sheetKey = sheetKey ? keyAfter(sheetKey) : 'V');
   const sheets: Sheet[] = [];
   for (const r of rawSheets) {
-    const text = String(r.text ?? '');
+    const text = noteText(String(r.text ?? ''));
     let id = validId(r.id, usedIds, text);
     const updatedAt = parseDate(String(r.updated ?? '')) ?? new Date(0);
     const updated = typeof r.updated === 'string' && parseDate(r.updated) ? r.updated : isoLocal(updatedAt);
@@ -264,7 +264,7 @@ function readSheetRecord(r: unknown): Sheet | null {
   if (![clk.text, clk.order, clk.deleted].every((c) => isPlausibleStamp(c))) return null;
   return {
     id: r.id,
-    text: typeof r.text === 'string' ? r.text : '',
+    text: noteText(typeof r.text === 'string' ? r.text : ''),
     updated: typeof r.updated === 'string' ? r.updated : isoLocal(new Date(0)),
     order: isOrderKey(r.order) ? r.order : 'V',
     deleted: r.deleted === true,

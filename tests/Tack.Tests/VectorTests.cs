@@ -166,6 +166,8 @@ internal static class VectorTests
         }
         foreach (var c in text.GetProperty("stringify").EnumerateArray())
             Check.Equal(c.Str("json"), JsText.Stringify(Json.FromUnits(c.GetProperty("units"))), "JSON.stringify");
+        foreach (var c in text.GetProperty("notes").EnumerateArray())
+            Check.Equal(c.Str("note"), JsText.NoteText(c.Str("text")!), $"noteText {JsonSerializer.Serialize(c.Str("text"))}");
     }
 
     private static void Dates()

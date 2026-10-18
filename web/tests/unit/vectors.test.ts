@@ -15,7 +15,7 @@ import { decode, encode, Hlc, isPlausibleStamp, isStamp, stampTime, ZERO, type S
 import { derivedId } from '../../src/model/ids';
 import { mergeFocus, mergeSheet, mergeTask } from '../../src/model/merge';
 import { isOrderKey, keyAfter, keyBefore, keyBetween, keysAt } from '../../src/model/order';
-import { cleanTaskText } from '../../src/model/text';
+import { cleanTaskText, noteText } from '../../src/model/text';
 import { parseDate } from '../../src/model/time';
 import type { Focus, Sheet, Task, WorkspaceData } from '../../src/model/types';
 import { Workspace, type Undo } from '../../src/model/workspace';
@@ -268,6 +268,7 @@ function textVectors() {
     whitespace: ws.map((code) => ({ code, white: U(code).trim() === '' && /\s/.test(U(code)) })),
     clean: texts.map((t) => ({ text: t, clean: cleanTaskText(t), trim: t.trim() })),
     stringify: strings.map((s) => ({ units: units(s), json: JSON.stringify(s) })),
+    notes: ['a\r\nb', 'a\rb', 'a\nb', '\r\r\n\n\r', 'a\n\rb', 'x\r\n', '\r', ''].map((t) => ({ text: t, note: noteText(t) })),
   };
 }
 
@@ -669,14 +670,17 @@ const quirkyFile = `{
   ],
 }`;
 
-function fileVectors() {
+/** A device with its own wall clock, for the import cases. */
+function device(node: string, start = T0) {
+  let wall = start;
+  const ws = new Workspace(new Hlc(node, () => wall), () => new Date(wall));
+  return { ws, at: (ms: number) => (wall = ms), wall: () => wall };
+}
+
+/** Imports a file into a device and records the case: the workspace before, the file, the workspace after. */
+function importCases() {
   const cases: unknown[] = [];
-  const make = (node: string, start = T0) => {
-    let wall = start;
-    const ws = new Workspace(new Hlc(node, () => wall), () => new Date(wall));
-    return { ws, at: (ms: number) => (wall = ms), wall: () => wall };
-  };
-  const add = (name: string, d: ReturnType<typeof make>, file: string, lastModified?: number) => {
+  const add = (name: string, d: ReturnType<typeof device>, file: string, lastModified?: number) => {
     const local = d.ws.toData();
     const clock = hlcState(d.ws.hlc);
     let error: string | null = null;
@@ -687,6 +691,12 @@ function fileVectors() {
     }
     cases.push({ name, node: d.ws.hlc.node, wall: d.wall(), clock, local, file, lastModified: lastModified ?? null, error, result: d.ws.toData(), views: views(d.ws) });
   };
+  return { cases, add };
+}
+
+function fileVectors() {
+  const { cases, add } = importCases();
+  const make = device;
 
   {
     const d = make('web');
@@ -790,6 +800,40 @@ function fileVectors() {
   return cases;
 }
 
+/**
+ * Notes as Tack for Windows' TextBox writes them, with "\r\n", against a browser's "\n". It's the
+ * same note either way: importing it again, typing in it or sending it back keeps no second copy.
+ */
+function lineBreakFiles() {
+  const { cases, add } = importCases();
+  const windows = desktopFile.replace('"Site visit\\n- rebar"', '"Site visit\\r\\n- rebar\\r\\n- formwork"');
+  {
+    const d = device('web');
+    d.ws.ensureSheet();
+    add('a desktop note with Windows line breaks comes in with \\n', d, windows);
+    // A textarea hands the text over with "\n": the same text, so no edit.
+    d.ws.editSheet('s1s1s1s1s1s1', 'Site visit\n- rebar\n- formwork');
+    add('the same file again, after typing in the note here: no copy', d, windows);
+  }
+  {
+    // A tack.json saved by Tack for Windows before notes were kept with "\n" there: "\r\n" in its section too.
+    const desk = device('desk');
+    desk.ws.ensureSheet();
+    const note = desk.ws.addSheet('Site visit\n- rebar');
+    const saved = JSON.stringify(exportFile(desk.ws, new Date(T0)), null, 2).replaceAll('Site visit\\n- rebar', 'Site visit\\r\\n- rebar');
+    const phone = device('phone', T0 + 1000);
+    phone.ws.ensureSheet();
+    add('a desktop file with Windows line breaks in its section', phone, saved);
+    phone.at(T0 + 2000);
+    phone.ws.editSheet(note.id, 'Site visit\n- rebar');
+    add('imported again after typing in the note: no copy', phone, saved);
+    // Back on the desktop (whose records have "\n"; its TextBox has "\r\n").
+    const back = JSON.stringify(exportFile(phone.ws, new Date(phone.wall())), null, 2);
+    add("Tack Focus's export of it back on the desktop: no copy", desk, back);
+  }
+  return cases;
+}
+
 function buildVectors() {
   const spy = vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation(seededRandomValues(20261017));
   try {
@@ -810,6 +854,7 @@ function buildVectors() {
     };
     // Added later: made last, so the ids everything above was given stay the same.
     vectors.workspaces.push(tiedScript());
+    vectors.files.push(...lineBreakFiles());
     return vectors;
   } finally {
     spy.mockRestore();
@@ -856,7 +901,8 @@ describe('Tack for Windows', () => {
     // Its own top level shows the same lists.
     const top = (f: TackFile) => f.tasks.map((t) => [t.id, t.text, t.now, t.completed ? parseDate(t.completed)?.getTime() : null]);
     expect(top(saved)).toEqual(top(original));
-    expect(saved.sheets.map((s) => [s.id, s.text])).toEqual(original.sheets.map((s) => [s.id, s.text]));
+    // Notes as its TextBox has them, with "\r\n" (the section keeps "\n").
+    expect(saved.sheets.map((s) => [s.id, s.text])).toEqual(original.sheets.map((s) => [s.id, s.text.replaceAll('\n', '\r\n')]));
   });
 
   it.skipIf(desktop === null)('round-trips a Tack Focus workspace without loss', () => {
