@@ -37,6 +37,7 @@ public sealed class Workspace : Observable, IImportTarget
         Clock = clock;
         _wall = wall ?? (() => DateTimeOffset.Now);
         _newId = newId ?? Ids.NewId;
+        KeepDeletions = () => Settings.SyncFolder != null;
 
         Open.CollectionChanged += OnCollectionChanged;
         Done.CollectionChanged += OnCollectionChanged;
@@ -290,11 +291,40 @@ public sealed class Workspace : Observable, IImportTarget
 
     // ---- Housekeeping ----
 
-    /// <summary>Call at midnight (and when the panel opens): "done today" resets, and very old deletions are forgotten.</summary>
+    /// <summary>
+    /// Call at midnight (and when the panel opens): "done today" resets, and very old deletions are
+    /// forgotten, except while syncing: then they're kept for good, so an out-of-date copy on
+    /// another device can never bring a deleted task back (see docs/SYNC.md).
+    /// </summary>
     public void RefreshDay()
     {
-        if (PurgeTombstones() > 0) MarkChanged();
+        if (!KeepDeletions() && PurgeTombstones() > 0) MarkChanged();
         RaiseSummary();
+    }
+
+    /// <summary>While sync is on, deletions are never forgotten (tests can say otherwise).</summary>
+    internal Func<bool> KeepDeletions { get; set; }
+
+    /// <summary>
+    /// Joining a sync folder your other devices already use: a blank sheet that was never written on
+    /// (every PC starts with one) stays behind, instead of turning up on every device.
+    /// </summary>
+    internal void DropBlankSheet()
+    {
+        var blank = Sheets.Where(s => s.Text.Length == 0 && s.Clk.Text == s.Clk.Deleted).ToList();
+        if (blank.Count == 0 || blank.Count == Sheets.Count) return;
+        foreach (var s in blank) SetSheetDeleted(s, true);
+        Rebuild();
+    }
+
+    /// <summary>
+    /// The welcome tasks' focus yields to any real one: when a new PC first syncs, the focus you
+    /// set on another device wins over "Tick this circle...". (Same as Tack Focus's seedWelcome.)
+    /// </summary>
+    internal void YieldFocus()
+    {
+        _focus = _focus with { Clk = Stamp.Encode(1, 0, "") };
+        MarkChanged();
     }
 
     /// <summary>Removes tombstones older than <see cref="TombstoneAge"/> for good. Returns how many.</summary>
@@ -330,7 +360,8 @@ public sealed class Workspace : Observable, IImportTarget
     /// field by field; nothing newer is lost. Returns whether anything changed.
     /// </summary>
     /// <param name="base">The clock both sides last agreed on: notes rewritten on both sides since are kept twice.</param>
-    internal bool MergeFrom(WorkspaceData data, string? @base = null)
+    /// <param name="concurrent">Instead of a base (sync): were these two texts of a note written without seeing each other?</param>
+    internal bool MergeFrom(WorkspaceData data, string? @base = null, Func<SheetData, SheetData, bool>? concurrent = null)
     {
         bool changed = false;
         _applying = true;
@@ -350,7 +381,7 @@ public sealed class Workspace : Observable, IImportTarget
             {
                 Clock.Observe(remote.Clk.Max());
                 _sheets.TryGetValue(remote.Id, out var local);
-                var (value, c, conflict) = Merge.Sheet(local?.ToData(), remote, @base);
+                var (value, c, conflict) = Merge.Sheet(local?.ToData(), remote, @base, concurrent);
                 if (c)
                 {
                     changed = true;
@@ -475,7 +506,7 @@ public sealed class Workspace : Observable, IImportTarget
         {
             _applying = false;
         }
-        PurgeTombstones();
+        if (!KeepDeletions()) PurgeTombstones();
         Rebuild();
         ActiveSheet = Sheets.FirstOrDefault(s => s.Id == remembered) ?? Sheets[0];
     }

@@ -11,6 +11,7 @@ public partial class App : Application
     private SingleInstance? _instance;
     private StateStore? _store;
     private AppShell? _shell;
+    private FolderSync? _sync;
     private readonly Queue<DateTime> _recentErrors = new();
 
     protected override void OnStartup(StartupEventArgs e)
@@ -45,7 +46,8 @@ public partial class App : Application
 
         bool firstRun = !File.Exists(_store.FilePath) && !File.Exists(_store.FilePath + ".bak");
         var workspace = _store.Attach(_store.Load());
-        _shell = new AppShell(workspace, _store);
+        _sync = new FolderSync(workspace, _store);
+        _shell = new AppShell(workspace, _store, _sync);
         if (firstRun)
         {
             _shell.ChooseFreeHotkey();
@@ -61,6 +63,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _store?.Flush();
+        _sync?.Dispose();
         _shell?.Dispose();
         _instance?.Dispose();
         base.OnExit(e);
@@ -79,6 +82,7 @@ public partial class App : Application
             tips.Insert(1, $"Press {ws.Settings.Hotkey} in any app to open or hide Tack");
         foreach (var tip in tips) ws.AddTask(tip);
         ws.AddTask("Tick this circle to finish your first task", asNow: true);
+        ws.YieldFocus();
     }
 
     /// <summary>

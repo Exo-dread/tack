@@ -24,6 +24,7 @@ public sealed class Settings : Observable
     private double _notesWidth = DefaultWidth;
     private double _notesHeight = DefaultNotesHeight;
     private string? _activeSheet;
+    private string? _syncFolder;
 
     // ---- Preferences ----
     public bool LaunchAtStartup { get => _launchAtStartup; set => Set(ref _launchAtStartup, value); }
@@ -38,6 +39,9 @@ public sealed class Settings : Observable
     public string Theme { get => _theme; set => Set(ref _theme, value is "light" or "dark" ? value : "system"); }
 
     public string Hotkey { get => _hotkey; set => Set(ref _hotkey, value ?? ""); }
+
+    /// <summary>The folder Tack syncs through (normally OneDrive's "Apps\Tack Focus"); null: sync is off.</summary>
+    public string? SyncFolder { get => _syncFolder; set => Set(ref _syncFolder, string.IsNullOrWhiteSpace(value) ? null : value); }
 
     /// <summary>"system" follows the Windows accent colour; otherwise a #RRGGBB colour.</summary>
     public string Accent { get => _accent; set => Set(ref _accent, string.IsNullOrWhiteSpace(value) ? "system" : value); }

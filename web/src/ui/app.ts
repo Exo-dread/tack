@@ -482,14 +482,17 @@ export function seedWelcome(ws: Workspace): { tasks: Record<string, string>; she
 
 /**
  * Joining a sync folder your other devices already use: the welcome tasks and sheet you never
- * touched stay behind (deleted here), instead of turning up on every device.
+ * touched, and a blank sheet never written on, stay behind (deleted here) instead of turning up
+ * on every device. A sheet stays if it would be the last one.
  */
 export function dropUntouchedWelcome(ws: Workspace): void {
-  const welcome = prefs().welcome;
-  if (!welcome) return;
+  const welcome = prefs().welcome ?? { tasks: {}, sheets: {} };
   const tasks = Object.entries(welcome.tasks).filter(([id, text]) => ws.tasks.get(id)?.text === text).map(([id]) => id);
-  const sheets = Object.entries(welcome.sheets).filter(([id, text]) => ws.sheets.get(id)?.text === text).map(([id]) => id);
-  if (tasks.length || sheets.length) ws.discard({ tasks, sheets }, 'local');
+  const sheets = ws.sheetList
+    .filter((s) => welcome.sheets[s.id] === s.text || (s.text === '' && s.clk.text === s.clk.deleted))
+    .map((s) => s.id);
+  const keepOne = sheets.length === ws.sheetList.length ? sheets.slice(1) : sheets;
+  if (tasks.length || keepOne.length) ws.discard({ tasks, sheets: keepOne }, 'local');
   setPrefs({ welcome: null });
 }
 
