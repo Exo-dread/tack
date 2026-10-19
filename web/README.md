@@ -115,3 +115,7 @@ and [DEPLOY.md](DEPLOY.md) for Cloudflare Pages.
 No accounts, no analytics, no ads, no third-party scripts, fonts or requests. The Content Security
 Policy only allows the app's own origin. Your tasks and notes never leave the device unless you
 export them (and, later, if you turn on sync to your own cloud storage).
+
+The privacy page users see is [`public/privacy/`](public/privacy/index.html), served at
+[tackfocus.app/privacy/](https://tackfocus.app/privacy/) and linked from Settings → About. It's also the
+privacy statement URL in the Microsoft app registration, so keep it in step with what the apps do.

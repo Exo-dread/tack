@@ -161,27 +161,84 @@ test.describe('your data', () => {
   });
 });
 
+test.describe('privacy page', () => {
+  test('is linked from Settings and opens as its own page', async ({ page }) => {
+    await open(page);
+    await button(page, 'Settings').click();
+    const link = page.getByRole('link', { name: 'Privacy', exact: true });
+    await expect(link).toHaveAttribute('href', '/privacy/');
+    await page.goto('/privacy/');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy');
+    for (const name of ['On your devices', 'Sync with OneDrive (optional)', 'Microsoft permissions', 'Deleting your data']) {
+      await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
+    }
+    await page.getByRole('link', { name: '← Tack Focus' }).click();
+    await expect(page.locator('html.ready')).toHaveCount(1);
+  });
+
+  test('opens as itself from an installed app, offline too', async ({ page, context }) => {
+    test.skip(test.info().project.name === 'iphone-webkit', 'Playwright WebKit on Windows has no service workers');
+    await open(page);
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    // The app's service worker answers page loads with the app itself: not this one.
+    await page.goto('/privacy/');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy');
+    expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+    await context.setOffline(true);
+    for (const path of ['/privacy/', '/privacy']) {
+      await page.goto(path);
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy');
+      await expect(page.locator('main')).toHaveCSS('max-width', '680px');
+    }
+    await page.goto('/');
+    await expect(page.locator('html.ready')).toHaveCount(1);
+    await context.setOffline(false);
+  });
+});
+
+/**
+ * Serves every page with the production Content Security Policy (from dist/_headers) and collects
+ * what it refuses. Pages the service worker answers skip the route, so `documents` lists the ones
+ * that really got the policy.
+ */
+async function underCsp(page: Page): Promise<{ violations: string[]; documents: string[] }> {
+  const headers = readFileSync(join(import.meta.dirname, '../../dist/_headers'), 'utf8');
+  const csp = /Content-Security-Policy: (.+)/.exec(headers)![1].replace('; upgrade-insecure-requests', '');
+  const violations: string[] = [];
+  const documents: string[] = [];
+  await page.route('**/*', async (route) => {
+    const response = await route.fetch();
+    const isDoc = route.request().resourceType() === 'document';
+    if (isDoc) documents.push(new URL(route.request().url()).pathname);
+    await route.fulfill({ response, headers: isDoc ? { ...response.headers(), 'content-security-policy': csp } : response.headers() });
+  });
+  page.on('console', (m) => {
+    if (/Content Security Policy|Refused to/i.test(m.text())) violations.push(m.text());
+  });
+  await page.addInitScript(() => {
+    document.addEventListener('securitypolicyviolation', (e) => console.error(`Refused to: ${e.violatedDirective} ${e.blockedURI}`));
+  });
+  return { violations, documents };
+}
+
 test.describe('security and accessibility', () => {
   test('runs cleanly under the production Content Security Policy', async ({ page }) => {
-    const headers = readFileSync(join(import.meta.dirname, '../../dist/_headers'), 'utf8');
-    const csp = /Content-Security-Policy: (.+)/.exec(headers)![1].replace('; upgrade-insecure-requests', '');
-    await page.route('**/*', async (route) => {
-      const response = await route.fetch();
-      const isDoc = route.request().resourceType() === 'document';
-      await route.fulfill({ response, headers: isDoc ? { ...response.headers(), 'content-security-policy': csp } : response.headers() });
-    });
-    const violations: string[] = [];
-    page.on('console', (m) => {
-      if (/Content Security Policy|Refused to/i.test(m.text())) violations.push(m.text());
-    });
-    await page.addInitScript(() => {
-      document.addEventListener('securitypolicyviolation', (e) => console.error(`Refused to: ${e.violatedDirective} ${e.blockedURI}`));
-    });
+    const { violations } = await underCsp(page);
     await open(page);
     await addTask(page, 'Under CSP');
     await page.locator('.now-card').getByRole('checkbox').click();
     await button(page, 'Settings').click();
     await page.waitForTimeout(700);
+    expect(violations).toEqual([]);
+  });
+
+  test('the privacy page runs cleanly under the production Content Security Policy', async ({ page }) => {
+    const { violations, documents } = await underCsp(page);
+    await page.goto('/privacy/');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy');
+    // Its stylesheet loads (style-src 'self').
+    await expect(page.locator('main')).toHaveCSS('max-width', '680px');
+    expect(documents).toEqual(['/privacy/']);
     expect(violations).toEqual([]);
   });
 
@@ -198,6 +255,10 @@ test.describe('security and accessibility', () => {
       expect(result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(', ')}`)).toEqual([]);
       await button(page, 'Settings').click();
       await page.waitForTimeout(400);
+      result = await scan();
+      expect(result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(', ')}`)).toEqual([]);
+      await page.goto('/privacy/');
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy');
       result = await scan();
       expect(result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(', ')}`)).toEqual([]);
     });
