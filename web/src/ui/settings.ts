@@ -14,6 +14,7 @@ import type { Toasts } from './toast';
 
 const VERSION = __APP_VERSION__;
 const SOURCE_URL = 'https://github.com/Exo-dread/tack';
+const PRIVACY_URL = '/privacy/';
 
 /**
  * Settings, as a sheet that slides up from the bottom (within thumb reach) and can be swiped
@@ -153,7 +154,7 @@ export class Settings {
       'About',
       h('p.note', {}, h('strong', { text: `Tack Focus ${VERSION}` }), ' · the pocket companion to Tack for Windows.'),
       h('p.note', { text: 'Free and open source under the MIT licence. No accounts, no ads, no tracking, no paid tier.' }),
-      h('p.note', {}, h('a', { href: SOURCE_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Source code' })),
+      h('p.note', {}, h('a', { href: SOURCE_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Source code' }), ' · ', privacyLink()),
       h(
         'details.shortcuts',
         {},
@@ -406,4 +407,8 @@ function toggle(label: string, on: boolean, onChange: (on: boolean) => void): HT
     onChange(next);
   });
   return b;
+}
+
+function privacyLink(): HTMLElement {
+  return h('a', { href: PRIVACY_URL, target: '_blank', rel: 'noopener', text: 'Privacy' });
 }

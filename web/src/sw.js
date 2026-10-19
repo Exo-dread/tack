@@ -48,7 +48,14 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
-    // Every page load gets the cached app shell: instant, and identical offline.
+    // A few plain pages live beside the app (privacy): those load as themselves, offline too.
+    // ("/" maps to "/index.html", which isn't in the list: the shell is cached as "/".)
+    const page = `${url.pathname.replace(/\/?$/, '/')}index.html`;
+    if (PRECACHE.includes(page)) {
+      event.respondWith(caches.open(CACHE).then((cache) => cache.match(page, { ignoreVary: true }).then((cached) => cached || fetch(request))));
+      return;
+    }
+    // Every other page load gets the cached app shell: instant, and identical offline.
     event.respondWith(
       caches.open(CACHE).then((cache) =>
         cache.match(SHELL, { ignoreSearch: true, ignoreVary: true }).then((cached) => cached || fetch(request)),

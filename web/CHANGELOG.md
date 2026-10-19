@@ -17,3 +17,6 @@ First version, for review before tackfocus.app goes live.
   `tack.json` compatible with Tack for Windows.
 - A sync-ready data model (per-field clocks, tombstones, sort keys) and merge engine; see
   `docs/SYNC.md` for the bring-your-own-storage sync design.
+- A privacy page at `/privacy/`, linked from Settings → About: what stays on your devices, how
+  the optional OneDrive sync works, the Microsoft permissions it asks for, and how to delete your
+  data. It opens as itself (offline too) rather than as the app.

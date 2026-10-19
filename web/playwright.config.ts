@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+/** E2E_PORT picks another port when 4173 is taken (e.g. by another project's preview server). */
+const port = Number(process.env.E2E_PORT ?? 4173);
+
 /**
  * End-to-end tests run against the production build (service worker, CSP and all), on an
  * emulated iPhone in WebKit (Safari's engine), an emulated Android phone in Chromium, and a
@@ -16,12 +19,12 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: [['list']],
   use: {
-    baseURL: 'http://localhost:4173',
+    baseURL: `http://localhost:${port}`,
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'npx vite build && npx vite preview --port 4173 --strictPort',
-    url: 'http://localhost:4173',
+    command: `npx vite build && npx vite preview --port ${port} --strictPort`,
+    url: `http://localhost:${port}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
