@@ -1,13 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Tack's logo at tab size: the bold version of tools/make_icon.py's mark. -->
   <defs>
-    <linearGradient id="b" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3c3e47"/>
-      <stop offset="1" stop-color="#15161b"/>
-    </linearGradient>
+    <radialGradient id="b" cx=".5" cy=".42" r=".6">
+      <stop offset="0" stop-color="#2c3038"/>
+      <stop offset="1" stop-color="#121419"/>
+    </radialGradient>
   </defs>
-  <circle cx="24" cy="24" r="22.5" fill="url(#b)"/>
-  <circle cx="24" cy="24" r="22" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="1"/>
-  <circle cx="24" cy="24" r="15" fill="none" stroke="#fff" stroke-opacity=".13" stroke-width="4"/>
-  <circle cx="24" cy="24" r="15" fill="none" stroke="#58DCE6" stroke-width="4" stroke-linecap="round" pathLength="360" stroke-dasharray="250 360" transform="rotate(-90 24 24)"/>
-  <circle cx="24" cy="24" r="5.5" fill="#58DCE6"/>
+  <circle cx="24" cy="24" r="22.1" fill="url(#b)"/>
+  <circle cx="24" cy="24" r="21.75" fill="none" stroke="#96a0ac" stroke-opacity=".35" stroke-width=".7"/>
+  <circle cx="24" cy="24" r="17.7" fill="none" stroke="#6e96a0" stroke-opacity=".28" stroke-width="4.4"/>
+  <circle cx="24" cy="24" r="17.7" fill="none" stroke="#58DCE6" stroke-width="4.4" stroke-linecap="round" pathLength="360" stroke-dasharray="270 360" transform="rotate(-90 24 24)"/>
+  <circle cx="24" cy="24" r="4.4" fill="#58DCE6"/>
 </svg>
