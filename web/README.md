@@ -127,3 +127,7 @@ No accounts, no analytics, no ads, no third-party scripts or fonts. The Content 
 allows the app's own origin, plus Microsoft's sign-in, Graph and OneDrive hosts for sync. Your tasks
 and notes never leave the device unless you export them, or turn on sync, which sends them only to
 your own OneDrive (plain files, not end-to-end encrypted yet). See https://tackfocus.app/privacy/.
+
+The privacy page users see is [`public/privacy/`](public/privacy/index.html), served at
+[tackfocus.app/privacy/](https://tackfocus.app/privacy/) and linked from Settings → About. It's also the
+privacy statement URL in the Microsoft app registration, so keep it in step with what the apps do.

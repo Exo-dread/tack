@@ -157,7 +157,7 @@ export class Settings {
       'About',
       h('p.note', {}, h('strong', { text: `Tack Focus ${VERSION}` }), ' · the pocket companion to Tack for Windows.'),
       h('p.note', { text: 'Free and open source under the MIT licence. No Tack accounts, no ads, no tracking, no paid tier.' }),
-      h('p.note', {}, h('a', { href: SOURCE_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Source code' })),
+      h('p.note', {}, h('a', { href: SOURCE_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Source code' }), ' · ', privacyLink()),
       h(
         'details.shortcuts',
         {},
@@ -283,6 +283,7 @@ export class Settings {
       ),
     );
     let actionFor = '';
+    let lastEnded = ''; // the phase the last sync ended in, while this section is open
     const texts: Record<string, string> = {
       syncing: 'Syncing\u2026',
       synced: 'Up to date',
@@ -300,9 +301,14 @@ export class Settings {
       update: (st: SyncStatus) => {
         account.textContent = st.account?.username || st.account?.name || 'Signed in';
         status.dataset.synced = String(st.lastSync);
-        // Background syncs every minute aren't news: "Syncing" shows only when you asked, or the first time.
-        const busy = st.phase === 'syncing' && (ui.userAsked || !st.lastSync);
-        if (st.phase !== 'syncing') ui.userAsked = false;
+        // Background syncs every minute aren't news: "Syncing" shows only when you asked, the first
+        // time, or when catching up (back online, or after a problem): it isn't up to date yet.
+        const catchingUp = lastEnded !== '' && lastEnded !== 'synced';
+        const busy = st.phase === 'syncing' && (ui.userAsked || !st.lastSync || catchingUp);
+        if (st.phase !== 'syncing') {
+          ui.userAsked = false;
+          lastEnded = st.phase;
+        }
         const shown = st.phase === 'syncing' && !busy ? 'synced' : st.phase;
         const text = shown === 'error' ? (st.message ?? 'Sync stopped.') : (texts[shown] ?? 'Up to date');
         if (phase.textContent !== text) phase.textContent = text;

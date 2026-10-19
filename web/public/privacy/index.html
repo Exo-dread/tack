@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Privacy · Tack</title>
-    <meta name="description" content="What Tack Focus and Tack for Windows do with your data: keep it on your devices, and in your own OneDrive only if you turn on sync." />
+    <meta name="description" content="How Tack Focus and Tack for Windows handle your data: kept on your devices, and in your own OneDrive only if you turn on sync. What Tack asks Microsoft for, and how to delete everything." />
+    <link rel="canonical" href="https://tackfocus.app/privacy/" />
     <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/privacy/privacy.css" />
   </head>
@@ -13,35 +14,50 @@
     <main>
       <p class="back"><a href="/">← Tack Focus</a></p>
       <h1>Privacy</h1>
-      <p class="lead">Tack keeps your tasks and notes on your devices. There are no Tack accounts, no ads, no tracking and no analytics, and Tack has no server that stores your data.</p>
+      <p class="lead">Tack keeps your tasks and notes on your own devices. There are no Tack accounts, no ads, no tracking and no analytics, and Tack has no server that receives or stores your data.</p>
+      <p>This page covers Tack for Windows and Tack Focus, its companion app at tackfocus.app.</p>
 
-      <h2>On your devices</h2>
-      <p>Tack Focus keeps everything in your browser’s storage on that device. Tack for Windows keeps everything in one file, <code>%LOCALAPPDATA%\Tack\tack.json</code>. Nothing is sent anywhere unless you turn on sync.</p>
-      <p>The tackfocus.app website is a set of static files hosted by Cloudflare. Loading it is an ordinary web request, which Cloudflare handles as a hosting provider; Tack adds no cookies, trackers or analytics of its own.</p>
-
-      <h2>Sync, if you turn it on</h2>
-      <p>Sync is off until you turn it on in Settings. Then:</p>
+      <h2 id="devices">On your devices</h2>
       <ul>
-        <li><strong>Where your data goes.</strong> Each device saves a copy of your tasks and notes as a file in a folder in <em>your own</em> OneDrive (“Apps › Tack Focus”). Your devices read each other’s files from there. No Tack server is involved.</li>
-        <li><strong>What Tack can see.</strong> You sign in with Microsoft and allow Tack Focus to read and write <em>only its own folder</em> in your OneDrive, nothing else; to stay signed in; and to see your basic profile (your name and sign-in address), which Settings shows so you know which account is in use.</li>
-        <li><strong>Sign-in tokens</strong> stay on the device that signed in. They go only to Microsoft, never to Tack or anyone else.</li>
-        <li><strong>Tack for Windows</strong> syncs through that same folder on your PC, which the OneDrive app keeps up to date. Tack for Windows itself never connects to the internet.</li>
-        <li><strong>Who can read the files.</strong> They’re ordinary files in your OneDrive. You can open them. Microsoft can read them as your storage provider, under its own terms and privacy statement, and so can any app you’ve allowed into your whole OneDrive, and anyone who gets into your Microsoft account. They are <strong>not end-to-end encrypted</strong> yet. Optional encryption with a passphrase only you know is planned for a later release.</li>
-        <li><strong>What’s in them.</strong> Your tasks and notes, and each device’s name and Tack version (for a PC, its name includes the computer’s name, e.g. “Tack for Windows on DESKTOP-1”).</li>
-        <li><strong>Deleted tasks.</strong> While sync is on, Tack keeps a short record of each deletion (an id and a time, never the text), so a deleted task can’t come back from a device that was offline. OneDrive’s own version history and recycle bin may still hold earlier copies of the files, with the text of tasks deleted since.</li>
+        <li><strong>Tack Focus</strong> keeps your tasks, notes, restore points and settings in your browser’s storage on that device.</li>
+        <li><strong>Tack for Windows</strong> keeps them in one file, <code>%LOCALAPPDATA%\Tack\tack.json</code>, with a backup copy beside it (or in a <code>TackData</code> folder next to <code>Tack.exe</code> in portable mode). It never connects to the internet.</li>
+        <li><strong>Nothing leaves your device</strong> unless you turn on sync, or export a file yourself.</li>
+        <li><strong>The website.</strong> tackfocus.app is a set of static files hosted by Cloudflare. Loading it is an ordinary web request, which Cloudflare handles as any web host does (see <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare’s privacy policy</a>). Tack sets no cookies and loads no analytics or third-party scripts. Once loaded, Tack Focus works offline.</li>
       </ul>
 
-      <h2>Stopping sync and removing data</h2>
+      <h2 id="sync">Sync with OneDrive (optional)</h2>
+      <p>Sync keeps Tack Focus and Tack for Windows up to date with each other through your own OneDrive. It stays off unless you turn it on (Settings › Sync, in each app), and both apps work fully without it.</p>
       <ul>
-        <li><strong>Turn off sync</strong> in Settings on each device. Your tasks and notes stay on the device, and Tack forgets the sign-in there.</li>
-        <li><strong>Remove the files</strong> by then deleting the “Apps › Tack Focus” folder in OneDrive (a device still syncing would write it again) and emptying OneDrive’s recycle bin.</li>
-        <li><strong>Remove Tack’s access</strong> to your Microsoft account at <a href="https://account.live.com/consent/Manage">account.live.com/consent/Manage</a> (personal accounts) or <a href="https://myapps.microsoft.com">myapps.microsoft.com</a> (work or school accounts).</li>
+        <li><strong>Your data goes to your OneDrive, not to Tack.</strong> Each device saves your tasks and notes as a file in one folder of your OneDrive, <em>Apps › Tack Focus</em>, and reads the other devices’ files from there. Tack Focus talks to Microsoft directly; there’s no Tack server in between.</li>
+        <li><strong>Tack for Windows doesn’t sign in.</strong> It reads and writes that same folder on your PC, which the OneDrive app keeps up to date. It still never connects to the internet itself.</li>
+        <li><strong>What’s in the files.</strong> Your tasks and notes; each device’s name and Tack version (a PC’s name includes the computer’s name, such as “Tack for Windows on DESKTOP-1”); and a short record of each deleted task (an id and a time, never the text), so it can’t come back from a device that was offline.</li>
+        <li><strong>Who can read them.</strong> They’re ordinary files in your OneDrive, so you can open them yourself. Microsoft stores them under <a href="https://privacy.microsoft.com/privacystatement">its own privacy statement</a>. Any app you’ve allowed into your whole OneDrive, and anyone who gets into your Microsoft account, could read them too. They <strong>aren’t end-to-end encrypted</strong> yet; optional encryption with a passphrase only you know is planned for a later version.</li>
+        <li><strong>Sign-in tokens</strong> stay in the browser’s storage on the device that signed in, and are sent only to Microsoft.</li>
       </ul>
 
-      <h2>Open source</h2>
-      <p>Tack is free and open source under the MIT licence. You can read exactly what it does in <a href="https://github.com/Exo-dread/tack">its source code</a>, and ask questions or report problems there.</p>
+      <h2 id="microsoft">Microsoft permissions</h2>
+      <p>When you turn on sync in Tack Focus, you sign in on Microsoft’s own page (Tack never sees your password), and Microsoft asks you to allow these permissions. They’re the narrowest that make sync work:</p>
+      <ul>
+        <li><strong>Its own folder in your OneDrive</strong> (<code>Files.ReadWrite.AppFolder</code>): read and write files in <em>Apps › Tack Focus</em>, a folder OneDrive sets aside for Tack. Tack can’t see, open or change anything else in your OneDrive.</li>
+        <li><strong>Stay signed in</strong> (<code>offline_access</code>): so sync keeps working without you signing in again every day.</li>
+        <li><strong>Sign you in and see your basic profile</strong> (<code>openid</code>, <code>profile</code>): your name and the address you sign in with. Settings shows them so you know which account is syncing; they stay on the device.</li>
+      </ul>
+      <p>Tack doesn’t ask for your mail, contacts, calendar, other files, or anything else in your Microsoft account.</p>
 
-      <p class="updated">Last updated 18 October 2026.</p>
+      <h2 id="delete">Deleting your data</h2>
+      <p>Tack holds no copy of your data, so there’s nothing to ask Tack to delete. It’s all on your devices and, with sync, in your OneDrive, where you can delete it yourself:</p>
+      <ul>
+        <li><strong>A task or note:</strong> delete it in the app. With sync on, the deletion reaches your other devices.</li>
+        <li><strong>Everything in Tack Focus on a device:</strong> clear the site data for tackfocus.app in your browser’s settings (in Chrome on Android: Settings › Site settings › All sites › tackfocus.app). Removing the installed app alone may leave the data in the browser. Export first if you want to keep a copy.</li>
+        <li><strong>Everything in Tack for Windows:</strong> close Tack and delete the folder <code>%LOCALAPPDATA%\Tack</code> (or the <code>TackData</code> folder in portable mode). Deleting <code>Tack.exe</code> alone leaves your data in place.</li>
+        <li><strong>Sync data in OneDrive:</strong> turn off sync on every device first (each keeps its own tasks and notes, and Tack Focus forgets the sign-in). Then delete the <em>Apps › Tack Focus</em> folder in OneDrive and empty OneDrive’s recycle bin, which removes the files and their earlier versions for good. A device that’s still syncing would write its file again.</li>
+        <li><strong>Tack’s access to your Microsoft account:</strong> remove it at <a href="https://account.live.com/consent/Manage">account.live.com/consent/Manage</a> (personal accounts) or <a href="https://myapps.microsoft.com">myapps.microsoft.com</a> (work or school accounts).</li>
+      </ul>
+
+      <h2 id="questions">Changes and questions</h2>
+      <p>Tack is free and open source under the MIT licence, so you can read exactly what it does in <a href="https://github.com/Exo-dread/tack">its source code</a>. When this page changes, the date below changes too, and every change is public in the source history. For questions or concerns, <a href="https://github.com/Exo-dread/tack/issues">open an issue on GitHub</a>.</p>
+
+      <p class="updated">Last updated 19 October 2026.</p>
     </main>
   </body>
 </html>

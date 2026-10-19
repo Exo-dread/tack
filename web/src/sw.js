@@ -49,9 +49,10 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
-    // A few plain pages live beside the app (the sign-in landing page, privacy): those load as themselves.
-    const page = url.pathname !== '/' && url.pathname.endsWith('/') ? `${url.pathname}index.html` : null;
-    if (page && PRECACHE.includes(page)) {
+    // A few plain pages live beside the app (the sign-in landing page, privacy): those load as themselves, offline too.
+    // ("/" maps to "/index.html", which isn't in the list: the shell is cached as "/".)
+    const page = `${url.pathname.replace(/\/?$/, '/')}index.html`;
+    if (PRECACHE.includes(page)) {
       event.respondWith(caches.open(CACHE).then((cache) => cache.match(page, { ignoreVary: true }).then((cached) => cached || fetch(request))));
       return;
     }

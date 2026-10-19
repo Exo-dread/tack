@@ -9,7 +9,6 @@
 - Staying signed in: Microsoft limits browser apps to 24 hours per sign-in, so Tack renews quietly,
   in the background where the browser allows it, or with a moment's visit to Microsoft when you
   open the app (iPhone, Firefox). It asks only if Microsoft wants you to sign in again.
-- A privacy page (tackfocus.app/privacy/).
 - Offered only in builds with a Microsoft app ID (`VITE_MS_CLIENT_ID`); see docs/ONEDRIVE-SETUP.md.
 
 ## 0.1.0 (unreleased)
@@ -29,3 +28,6 @@ First version, for review before tackfocus.app goes live.
   `tack.json` compatible with Tack for Windows.
 - A sync-ready data model (per-field clocks, tombstones, sort keys) and merge engine; see
   `docs/SYNC.md` for the bring-your-own-storage sync design.
+- A privacy page at `/privacy/`, linked from Settings → About: what stays on your devices, how
+  the optional OneDrive sync works, the Microsoft permissions it asks for, and how to delete your
+  data. It opens as itself (offline too) rather than as the app.
