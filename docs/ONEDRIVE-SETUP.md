@@ -60,6 +60,17 @@ Secrets** → add, for **Production** (and Preview, if you want sync on preview 
 |---|---|
 | `VITE_MS_CLIENT_ID` | the Application (client) ID |
 
+Add it as type **Text**. Production and Preview have separate variables: the box at the top of
+Settings' right-hand column (it reads **Production ⇕**) switches between them, and Settings shows
+the variables of the environment chosen there. That column is hidden when the window is narrow;
+widen the window if it's missing.
+
+To check what the builds will get: `npx wrangler pages download config <project>`, run in an
+empty folder outside the repo, writes the project's settings to `wrangler.toml`, with Preview's
+text variables under `[vars]` and Production's under `[env.production.vars]`. (Never commit that
+file: a `wrangler.toml` in the repo takes over the project's settings from the dashboard.) `npx wrangler pages secret list --project-name
+<project> --env preview` lists Preview's secrets.
+
 Optional: `VITE_MS_AUTHORITY` (default `https://login.microsoftonline.com/common`). Use
 `…/consumers` to allow personal accounts only.
 
