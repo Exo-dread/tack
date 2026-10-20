@@ -65,11 +65,11 @@ Settings' right-hand column (it reads **Production ⇕**) switches between them,
 the variables of the environment chosen there. That column is hidden when the window is narrow;
 widen the window if it's missing.
 
-To check what the builds will get: `npx wrangler pages download config <project>`, run in an
-empty folder outside the repo, writes the project's settings to `wrangler.toml`, with Preview's
-text variables under `[vars]` and Production's under `[env.production.vars]`. (Never commit that
-file: a `wrangler.toml` in the repo takes over the project's settings from the dashboard.) `npx wrangler pages secret list --project-name
-<project> --env preview` lists Preview's secrets.
+To check that a build got it, open `/.well-known/microsoft-identity-association.json` on that
+build's address (for example `https://<branch>.<project>.pages.dev/`): the build writes it only
+when `VITE_MS_CLIENT_ID` is set, with the app ID inside. Don't rely on
+`wrangler pages download config` or `wrangler pages secret list` for this: in October 2026 a
+Preview variable added in the dashboard reached the build but showed in neither.
 
 Optional: `VITE_MS_AUTHORITY` (default `https://login.microsoftonline.com/common`). Use
 `…/consumers` to allow personal accounts only.
