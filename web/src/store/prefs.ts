@@ -18,6 +18,11 @@ export interface Prefs {
   installHintDismissed: boolean;
   /** The local day Tack was first opened on this device (for the install suggestion). */
   firstDay: string | null;
+  /**
+   * The welcome tasks and sheet as first written here (id → text), so joining a sync folder
+   * that's already in use doesn't hand them to your other devices if you never touched them.
+   */
+  welcome: { tasks: Record<string, string>; sheets: Record<string, string> } | null;
 }
 
 const KEY = 'tack.prefs';
@@ -33,6 +38,7 @@ const DEFAULTS: Prefs = {
   seeded: false,
   installHintDismissed: false,
   firstDay: null,
+  welcome: null,
 };
 
 let current: Prefs = load();

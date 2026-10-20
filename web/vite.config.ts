@@ -29,11 +29,21 @@ function tackPwa(): Plugin {
     apply: 'build',
     enforce: 'post',
     generateBundle(_, bundle) {
+      // With a Microsoft app id (sync), prove tackfocus.app is the app's publisher domain.
+      const clientId = process.env.VITE_MS_CLIENT_ID?.trim();
+      if (clientId) {
+        this.emitFile({
+          type: 'asset',
+          fileName: '.well-known/microsoft-identity-association.json',
+          source: `${JSON.stringify({ associatedApplications: [{ applicationId: clientId }] }, null, 2)}
+`,
+        });
+      }
       const hash = createHash('sha256');
       // The shell is cached as "/" (hosts like Cloudflare Pages redirect /index.html to /).
       const urls = new Set<string>(['/']);
       for (const [fileName, item] of Object.entries(bundle).sort(([a], [b]) => a.localeCompare(b))) {
-        if (fileName.endsWith('.map')) continue;
+        if (fileName.endsWith('.map') || fileName.startsWith('.well-known/')) continue;
         if (fileName !== 'index.html') urls.add(`/${fileName}`);
         hash.update(fileName);
         hash.update(item.type === 'chunk' ? item.code : item.source);

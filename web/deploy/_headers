@@ -1,13 +1,17 @@
 # Cloudflare Pages response headers. Built into dist/_headers by vite.config.ts, which fills in
 # the hash of the one inline script (the theme boot script in index.html).
 #
-# Tack Focus makes no network requests of its own: everything is same-origin, and the CSP says so.
+# Tack Focus loads nothing from elsewhere. The only other hosts it may talk to are Microsoft's,
+# and only if you turn on sync: sign-in (login.microsoftonline.com, and login.live.com for
+# personal accounts, also in a hidden frame for quiet renewal), Microsoft Graph, and OneDrive's
+# download hosts for file contents. The hidden frame lands on /auth/, so pages may be framed by
+# this site itself, and by nothing else.
 
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' '__BOOT_SCRIPT_HASH__'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; media-src 'none'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' '__BOOT_SCRIPT_HASH__'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://login.microsoftonline.com https://graph.microsoft.com https://*.microsoftpersonalcontent.com https://*.1drv.com https://*.livefilestore.com https://*.sharepoint.com; manifest-src 'self'; worker-src 'self'; media-src 'none'; object-src 'none'; frame-src 'self' https://login.microsoftonline.com https://login.live.com; frame-ancestors 'self'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
-  X-Frame-Options: DENY
+  X-Frame-Options: SAMEORIGIN
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Resource-Policy: same-origin
   Permissions-Policy: accelerometer=(), autoplay=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=(), browsing-topics=()

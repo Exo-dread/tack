@@ -1,6 +1,6 @@
 import { Hlc, ZERO, type Stamp } from './hlc';
 import { newId } from './ids';
-import { cloneSheet, cloneTask, mergeFocus, mergeSheet, mergeTask } from './merge';
+import { cloneSheet, cloneTask, mergeFocus, mergeSheet, mergeTask, type ConcurrentText } from './merge';
 import { keyAfter, keyBefore, keysAt } from './order';
 import { cleanTaskText, noteText } from './text';
 import { isoLocal, parseDate, sameLocalDay } from './time';
@@ -309,7 +309,7 @@ export class Workspace {
    * Merges records from elsewhere (this device's storage, another tab, a file or another
    * device) into the workspace. Newer edits win field by field; nothing newer is lost.
    */
-  merge(data: Partial<WorkspaceData>, origin: Origin, base?: Stamp): void {
+  merge(data: Partial<WorkspaceData>, origin: Origin, base?: Stamp | ConcurrentText): void {
     this.batch(() => {
       if (this.depth === 1) this.current().origin = origin;
       for (const remote of data.tasks ?? []) {
@@ -403,6 +403,21 @@ export class Workspace {
     sheets.forEach((id) => this.sheets.delete(id));
     if (tasks.length || sheets.length) this.views = {};
     return { tasks, sheets };
+  }
+
+  /**
+   * Deletes records on sync's behalf (a new device's untouched welcome, when it joins), as fresh
+   * deletions so they win over the copies they replace.
+   */
+  discard(ids: { tasks: string[]; sheets: string[] }, origin: Origin = 'remote'): void {
+    this.batch(() => {
+      if (this.depth === 1) this.current().origin = origin;
+      for (const id of ids.tasks) this.removeTask(id);
+      for (const id of ids.sheets) {
+        const s = this.sheets.get(id);
+        if (s && !s.deleted) this.setSheetDeleted(s, true);
+      }
+    });
   }
 
   // ---------------------------------------------------------------- internals

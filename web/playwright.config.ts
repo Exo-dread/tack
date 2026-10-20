@@ -27,6 +27,8 @@ export default defineConfig({
     url: `http://localhost:${port}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    // Sync is offered only in builds with a Microsoft app id; the tests use the fake's (tests/fakes).
+    env: { VITE_MS_CLIENT_ID: '11111111-2222-3333-4444-555555555555' },
   },
   projects: [
     { name: 'iphone-webkit', use: { ...devices['iPhone 15'] } },

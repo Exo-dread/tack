@@ -29,6 +29,8 @@ export class Store {
   private _status: SaveStatus = 'saved';
   private persistAsked = false;
   private readonly beforeFlush = new Set<() => void>();
+  /** While syncing, deletions are kept for good (sync/devicefile.ts), so housekeeping leaves them. */
+  keepDeletions: () => boolean = () => false;
 
   constructor(
     private readonly ws: Workspace,
@@ -152,6 +154,7 @@ export class Store {
       if (!snaps.some((s) => s.day === today) && this.ws.tasks.size + this.ws.sheets.size > 0) {
         await this.backend.putSnapshot({ day: today, savedAt: isoLocal(), data: this.ws.toData() }, SNAPSHOT_DAYS);
       }
+      if (this.keepDeletions()) return;
       const purged = this.ws.purgeTombstones(TOMBSTONE_DAYS * 86400000, stampTime);
       if (purged.tasks.length || purged.sheets.length) {
         await this.backend.write({ tasks: [], sheets: [], deleteTasks: purged.tasks, deleteSheets: purged.sheets });

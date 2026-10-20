@@ -7,6 +7,8 @@
     <SolidColorBrush x:Key="TextSecondaryBrush" Color="#9E000000" />
     <SolidColorBrush x:Key="TextTertiaryBrush" Color="#78000000" />
     <SolidColorBrush x:Key="TextDisabledBrush" Color="#5C000000" />
+    <!-- Sync problems and other things that need you. -->
+    <SolidColorBrush x:Key="DangerBrush" Color="#C0392B" />
 
     <SolidColorBrush x:Key="SubtleFillBrush" Color="#0B000000" />
     <SolidColorBrush x:Key="SubtlePressedBrush" Color="#06000000" />

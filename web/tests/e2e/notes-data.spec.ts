@@ -165,8 +165,10 @@ test.describe('privacy page', () => {
   test('is linked from Settings and opens as its own page', async ({ page }) => {
     await open(page);
     await button(page, 'Settings').click();
-    const link = page.getByRole('link', { name: 'Privacy', exact: true });
-    await expect(link).toHaveAttribute('href', '/privacy/');
+    // About has one; with sync offered, the Sync section has another.
+    const about = page.locator('section.group').filter({ has: page.getByRole('heading', { name: 'About' }) });
+    await expect(about.getByRole('link', { name: 'Privacy', exact: true })).toHaveAttribute('href', '/privacy/');
+    for (const link of await page.getByRole('link', { name: 'Privacy', exact: true }).all()) await expect(link).toHaveAttribute('href', '/privacy/');
     await page.goto('/privacy/');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy');
     for (const name of ['On your devices', 'Sync with OneDrive (optional)', 'Microsoft permissions', 'Deleting your data']) {

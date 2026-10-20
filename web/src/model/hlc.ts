@@ -53,9 +53,22 @@ export class Hlc {
   private counter = 0;
 
   constructor(
-    readonly node: string,
+    private _node: string,
     private readonly wallClock: () => number = Date.now,
   ) {}
+
+  /** This device's id, the last part of every stamp it issues. */
+  get node(): string {
+    return this._node;
+  }
+
+  /**
+   * Starts stamping as a different device (sync found another device using this id, e.g. a
+   * copied data folder). The clock itself carries on, so new stamps still sort after old ones.
+   */
+  renew(node: string): void {
+    this._node = node;
+  }
 
   /** A new stamp, later than every stamp issued or observed before. */
   now(): Stamp {

@@ -11,6 +11,7 @@ public partial class App : Application
     private SingleInstance? _instance;
     private StateStore? _store;
     private AppShell? _shell;
+    private FolderSync? _sync;
     private readonly Queue<DateTime> _recentErrors = new();
 
     protected override void OnStartup(StartupEventArgs e)
@@ -45,7 +46,8 @@ public partial class App : Application
 
         bool firstRun = !File.Exists(_store.FilePath) && !File.Exists(_store.FilePath + ".bak");
         var workspace = _store.Attach(_store.Load());
-        _shell = new AppShell(workspace, _store);
+        _sync = new FolderSync(workspace, _store);
+        _shell = new AppShell(workspace, _store, _sync);
         if (firstRun)
         {
             _shell.ChooseFreeHotkey();
@@ -61,25 +63,36 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _store?.Flush();
+        _sync?.Dispose();
         _shell?.Dispose();
         _instance?.Dispose();
         base.OnExit(e);
     }
 
+    private static readonly string[] WelcomeTips =
+    [
+        "Fold Tack into its orb with Esc — then drag the orb anywhere",
+        "Drag the dots on the left to reorder",
+        "Hover a task and click ◎ to make it your focus",
+    ];
+
+    private const string FirstTask = "Tick this circle to finish your first task";
+
     /// <summary>A first-run list that teaches Tack by using it. Delete or tick them off.</summary>
     private static void SeedWelcome(Workspace ws)
     {
-        var tips = new List<string>
-        {
-            "Fold Tack into its orb with Esc — then drag the orb anywhere",
-            "Drag the dots on the left to reorder",
-            "Hover a task and click ◎ to make it your focus",
-        };
+        var tips = new List<string>(WelcomeTips);
         if (!string.IsNullOrEmpty(ws.Settings.Hotkey))
             tips.Insert(1, $"Press {ws.Settings.Hotkey} in any app to open or hide Tack");
         foreach (var tip in tips) ws.AddTask(tip);
-        ws.AddTask("Tick this circle to finish your first task", asNow: true);
+        ws.AddTask(FirstTask, asNow: true);
+        ws.YieldFocus();
     }
+
+    /// <summary>One of the welcome tasks (whatever the shortcut was then).</summary>
+    internal static bool IsWelcomeTip(string text) =>
+        text == FirstTask || WelcomeTips.Contains(text)
+        || (text.StartsWith("Press ", StringComparison.Ordinal) && text.EndsWith(" in any app to open or hide Tack", StringComparison.Ordinal));
 
     /// <summary>
     /// A small utility shouldn't vanish because of one unexpected UI error: log it, save, carry on.

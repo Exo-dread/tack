@@ -31,9 +31,14 @@ export interface Backend {
   load(): Promise<{ data: WorkspaceData; device: string | null }>;
   write(batch: Batch): Promise<void>;
   setDevice(id: string): Promise<void>;
+  /** Small records kept beside the data (sync state, sign-in). Never synced. */
+  getMeta<T>(key: MetaKey): Promise<T | undefined>;
+  putMeta(key: MetaKey, value: unknown): Promise<void>;
   putSnapshot(s: Snapshot, keep: number): Promise<void>;
   snapshots(): Promise<Snapshot[]>;
 }
+
+export type MetaKey = 'sync' | 'auth';
 
 /** IndexedDB exists but won't open (yet). Boot shows a message with Try again, never an empty list. */
 export class StorageUnavailable extends Error {}
@@ -218,6 +223,21 @@ export class IdbBackend implements Backend {
     });
   }
 
+  getMeta<T>(key: MetaKey) {
+    return this.run(async (db) => {
+      const tx = db.transaction('meta', 'readonly');
+      return (await request(tx.objectStore('meta').get(`x:${key}`))) as T | undefined;
+    });
+  }
+
+  putMeta(key: MetaKey, value: unknown) {
+    return this.run(async (db) => {
+      const tx = db.transaction('meta', 'readwrite', { durability: 'strict' });
+      tx.objectStore('meta').put(value, `x:${key}`);
+      await done(tx);
+    });
+  }
+
   putSnapshot(s: Snapshot, keep: number) {
     return this.run(async (db) => {
       const tx = db.transaction('snapshots', 'readwrite');
@@ -296,6 +316,14 @@ export class LocalBackend implements Backend {
     this.set(KEYS.device, id);
   }
 
+  async getMeta<T>(key: MetaKey) {
+    return this.read<T | undefined>(`tack.meta.${key}`, undefined);
+  }
+
+  async putMeta(key: MetaKey, value: unknown) {
+    this.set(`tack.meta.${key}`, JSON.stringify(value));
+  }
+
   async putSnapshot(s: Snapshot, keep: number) {
     // localStorage is small (about 5 MB); a couple of snapshots, and never at the data's expense.
     const all = this.read<Snapshot[]>(KEYS.snapshots, []).filter((x) => x.day !== s.day);
@@ -344,7 +372,8 @@ export const stranded = {
   },
   clear(): void {
     try {
-      for (const k of [KEYS.tasks, KEYS.sheets, KEYS.focus, KEYS.snapshots]) localStorage.removeItem(k);
+      // Sync state from that session goes too (its sign-in, if any, is asked for again).
+      for (const k of [KEYS.tasks, KEYS.sheets, KEYS.focus, KEYS.snapshots, 'tack.meta.sync', 'tack.meta.auth']) localStorage.removeItem(k);
     } catch {
       /* ignore */
     }

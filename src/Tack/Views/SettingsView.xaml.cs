@@ -44,6 +44,9 @@ public partial class SettingsView : UserControl
             Refresh();
         };
 
+        shell.Sync.StatusChanged += ShowSync;
+        ShowSync();
+
         BuildSwatches();
         Refresh();
     }
@@ -52,6 +55,7 @@ public partial class SettingsView : UserControl
     {
         if (_ws == null) return;
         ShowHotkey();
+        ShowSync();
         foreach (RadioButton choice in ThemeChoices.Children)
             choice.IsChecked = (string)choice.Tag == _ws.Settings.Theme;
         foreach (RadioButton swatch in Swatches.Children)
@@ -187,6 +191,89 @@ public partial class SettingsView : UserControl
         if (mods.HasFlag(ModifierKeys.Shift)) yield return "Shift";
         if (mods.HasFlag(ModifierKeys.Windows)) yield return "Win";
     }
+
+    // ---- Sync ----
+
+    private void ShowSync()
+    {
+        var sync = _shell.Sync;
+        var st = sync.Status;
+        bool on = sync.Enabled;
+        SyncOnButton.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
+        SyncChooseButton.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
+        SyncNowButton.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        SyncOffButton.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        DataIntro.Text = on
+            ? "Everything is on this PC, and in your OneDrive while sync is on. No Tack account, no tracking."
+            : "Everything stays on this PC. No account, no cloud, no tracking.";
+
+        // Tack sees the folder, not the cloud: "in step with the folder" is what it can vouch for.
+        string? line = on ? st.Phase switch
+        {
+            SyncPhase.Syncing => "Syncing…",
+            SyncPhase.Synced => st.LastSync > 0 ? $"In step with the sync folder, {At(st.LastSync)}." : "In step with the sync folder.",
+            SyncPhase.Waiting => st.Message ?? "Waiting for the sync folder.",
+            SyncPhase.Error => st.Message ?? "Sync stopped.",
+            _ => null,
+        } : st.Message;
+        if (on && st.Phase is SyncPhase.Synced or SyncPhase.Syncing)
+        {
+            if (st.Peers.Count > 0)
+                line += $"\nOther devices: {string.Join(", ", st.Peers.Select(p => $"{(p.Name.Length > 0 ? p.Name : "another device")} (last change {At(p.WrittenMs)})"))}.";
+            line += "\nThe OneDrive app carries the files: if changes don't arrive, check it's running.";
+        }
+        foreach (var (device, problem) in on ? st.Problems : [])
+        {
+            string who = st.Peers.FirstOrDefault(p => p.Device == device)?.Name is { Length: > 0 } n ? n : "another device";
+            line += problem == Tack.Sync.DeviceFileProblem.Newer
+                ? $"\n{who} has a newer Tack. Update Tack here to keep syncing with it."
+                : $"\nThe sync file from {who} couldn't be read. It'll be written again the next time that device syncs.";
+        }
+        if (SyncStatusText.Text != (line ?? ""))
+        {
+            SyncStatusText.Text = line ?? "";
+            // Screen readers hear the new status (WPF announces a live region only when told).
+            if (System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(SyncStatusText) is { } peer)
+                peer.RaiseAutomationEvent(System.Windows.Automation.Peers.AutomationEvents.LiveRegionChanged);
+        }
+        SyncStatusText.Visibility = string.IsNullOrEmpty(line) ? Visibility.Collapsed : Visibility.Visible;
+        SyncStatusText.SetResourceReference(TextBlock.ForegroundProperty, on && st.Phase == SyncPhase.Error ? "DangerBrush" : "TextPrimaryBrush");
+        SyncFolderText.Text = on ? _ws.Settings.SyncFolder : "";
+        SyncFolderText.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>"at 14:05", "yesterday at 14:05", "on 12 Oct at 14:05": a time, which (unlike "3 min ago") never goes stale.</summary>
+    private static string At(long ms)
+    {
+        var t = DateTimeOffset.FromUnixTimeMilliseconds(ms).ToLocalTime();
+        var today = DateTime.Today;
+        string clock = t.ToString("t", System.Globalization.CultureInfo.CurrentCulture);
+        if (t.Date == today) return $"at {clock}";
+        if (t.Date == today.AddDays(-1)) return $"yesterday at {clock}";
+        return $"on {t.ToString("d MMM", System.Globalization.CultureInfo.CurrentCulture)} at {clock}";
+    }
+
+    private async void SyncOn_Click(object sender, RoutedEventArgs e)
+    {
+        SyncOnButton.IsEnabled = false;
+        try { await _shell.Sync.TurnOnAsync(); }
+        finally { SyncOnButton.IsEnabled = true; }
+    }
+
+    private async void SyncChoose_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Choose the folder to sync through",
+            InitialDirectory = Environment.GetEnvironmentVariable("OneDrive") ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        };
+        if (_shell.ShowDialog(dialog) != true) return;
+        await _shell.Sync.TurnOnAsync(dialog.FolderName);
+    }
+
+    private void SyncNow_Click(object sender, RoutedEventArgs e) => _shell.Sync.SyncNow();
+
+    private void SyncOff_Click(object sender, RoutedEventArgs e) => _shell.Sync.TurnOff();
 
     // ---- Data and quit ----
 

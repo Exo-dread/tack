@@ -24,7 +24,14 @@ internal sealed class Hlc
         _wallClock = wallClock ?? (() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
     }
 
-    public string Node { get; }
+    /// <summary>This device's id, the last part of every stamp it issues.</summary>
+    public string Node { get; private set; }
+
+    /// <summary>
+    /// Starts stamping as a different device (sync found another device using this id, e.g. a
+    /// copied data folder). The clock itself carries on, so new stamps still sort after old ones.
+    /// </summary>
+    public void Renew(string node) => Node = node;
 
     /// <summary>A new stamp, later than every stamp issued or observed before.</summary>
     public string Now()

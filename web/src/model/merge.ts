@@ -21,13 +21,20 @@ export function mergeTask(local: Task | undefined, remote: Task): { value: Task;
       value.clk[field] = remote.clk[field];
     }
   }
-  // Creation time never changes; if copies disagree (hand edits), keep the earlier one.
-  if (remote.created && remote.created < value.created) {
+  // Creation time never changes; if copies disagree (hand edits), keep the earlier one. A
+  // deletion that arrived before the task did (device files carry deletions bare) has none.
+  if (remote.created && (!value.created || remote.created < value.created)) {
     if (value === local) value = cloneTask(local);
     value.created = remote.created;
   }
   return { value, changed: value !== local };
 }
+
+/**
+ * Were these two versions of a sheet's text written without either device having seen the other?
+ * Sync answers it from what each device has seen of the others (see sync/engine.ts).
+ */
+export type ConcurrentText = (local: Sheet, remote: Sheet) => boolean;
 
 export interface SheetMerge {
   value: Sheet;
@@ -38,17 +45,22 @@ export interface SheetMerge {
 
 /**
  * Merges a sheet. Notes are prose, so a plain last-writer-wins would silently drop one
- * device's paragraph. Given the clock both devices last agreed on (`base`), concurrent edits
- * keep the later text in place and the other as a copy. The copy's id is derived from the
- * losing edit, so every device creates the same copy and they still converge.
+ * device's paragraph. Given the clock both devices last agreed on (`base`), or a test that knows
+ * what each side had seen, concurrent edits keep the later text in place and the other as a
+ * copy. The copy's id is derived from the losing edit, so every device creates the same copy
+ * and they still converge.
  */
-export function mergeSheet(local: Sheet | undefined, remote: Sheet, base?: Stamp): SheetMerge {
+export function mergeSheet(local: Sheet | undefined, remote: Sheet, base?: Stamp | ConcurrentText): SheetMerge {
   if (!local) return { value: cloneSheet(remote), changed: true };
   let value = local;
   let conflict: Sheet | undefined;
 
   const textConcurrent =
-    base !== undefined && local.clk.text > base && remote.clk.text > base && local.text !== remote.text;
+    base !== undefined &&
+    local.text !== remote.text &&
+    (typeof base === 'function'
+      ? local.clk.text !== remote.clk.text && base(local, remote)
+      : local.clk.text > base && remote.clk.text > base);
 
   for (const field of SHEET_FIELDS) {
     if (wins(remote.clk[field], remote[field], local.clk[field], local[field])) {

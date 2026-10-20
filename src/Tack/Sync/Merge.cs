@@ -19,8 +19,9 @@ internal static class Merge
             value = value with { Order = remote.Order, Clk = value.Clk with { Order = remote.Clk.Order } };
         if (Wins(remote.Clk.Deleted, remote.Deleted, local.Clk.Deleted, local.Deleted))
             value = value with { Deleted = remote.Deleted, Clk = value.Clk with { Deleted = remote.Clk.Deleted } };
-        // Creation time never changes; if copies disagree (hand edits), keep the earlier one.
-        if (remote.Created.Length > 0 && string.CompareOrdinal(remote.Created, value.Created) < 0)
+        // Creation time never changes; if copies disagree (hand edits), keep the earlier one. A
+        // deletion that arrived before the task did (device files carry deletions bare) has none.
+        if (remote.Created.Length > 0 && (value.Created.Length == 0 || string.CompareOrdinal(remote.Created, value.Created) < 0))
             value = value with { Created = remote.Created };
         return (value, !ReferenceEquals(value, local));
     }
@@ -28,17 +29,20 @@ internal static class Merge
     /// <summary>
     /// Merges a sheet. Notes are prose, so a plain last-writer-wins would silently drop one
     /// device's paragraph. Given the clock both devices last agreed on (<paramref name="base"/>),
+    /// or a test that knows what each side had seen (<paramref name="concurrent"/>, from sync),
     /// concurrent edits keep the later text in place and the other as a copy (<c>Conflict</c>).
     /// The copy's id is derived from the losing edit, so every device creates the same copy.
     /// </summary>
-    public static (SheetData Value, bool Changed, SheetData? Conflict) Sheet(SheetData? local, SheetData remote, string? @base = null)
+    public static (SheetData Value, bool Changed, SheetData? Conflict) Sheet(SheetData? local, SheetData remote, string? @base = null,
+        Func<SheetData, SheetData, bool>? concurrent = null)
     {
         if (local == null) return (remote, true, null);
         var value = local;
         SheetData? conflict = null;
 
-        bool textConcurrent = @base != null && Stamp.IsLater(local.Clk.Text, @base) && Stamp.IsLater(remote.Clk.Text, @base)
-            && local.Text != remote.Text;
+        bool textConcurrent = local.Text != remote.Text && (concurrent != null
+            ? local.Clk.Text != remote.Clk.Text && concurrent(local, remote)
+            : @base != null && Stamp.IsLater(local.Clk.Text, @base) && Stamp.IsLater(remote.Clk.Text, @base));
 
         if (Wins(remote.Clk.Text, remote.Text, local.Clk.Text, local.Text))
             value = value with { Text = remote.Text, Updated = remote.Updated, Clk = value.Clk with { Text = remote.Clk.Text } };

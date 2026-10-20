@@ -26,6 +26,7 @@ internal sealed class AppShell : IDisposable
 
     private readonly Workspace _ws;
     private readonly StateStore _store;
+    private readonly FolderSync _sync;
     private readonly OrbWindow _orb;
     private readonly PeekWindow _peek;
     private readonly PanelWindow _panel;
@@ -44,10 +45,11 @@ internal sealed class AppShell : IDisposable
     private bool _dialogOpen;
     private bool _anchorRight, _anchorBottom;
 
-    public AppShell(Workspace ws, StateStore store)
+    public AppShell(Workspace ws, StateStore store, FolderSync sync)
     {
         _ws = ws;
         _store = store;
+        _sync = sync;
 
         _orb = new OrbWindow();
         _peek = new PeekWindow();
@@ -91,6 +93,9 @@ internal sealed class AppShell : IDisposable
 
     public string DataFolder => _store.Folder;
 
+    /// <summary>Sync with Tack Focus through a OneDrive folder (off unless turned on).</summary>
+    public FolderSync Sync => _sync;
+
     public bool HotkeyActive { get; private set; }
 
     // ================= Lifecycle =================
@@ -123,6 +128,7 @@ internal sealed class AppShell : IDisposable
         }
 
         EvaluateFullscreen();
+        _sync.Start();
     }
 
     /// <summary>True once Tack is shutting down; windows may then really close.</summary>
@@ -194,6 +200,7 @@ internal sealed class AppShell : IDisposable
         _peek.Dismiss();
         _trimDelay.Stop();
         _ws.RefreshDay();
+        _sync.SyncNow(); // a cheap look at the folder, in case a change slipped past the watcher
 
         var rect = ComputePanelRect(out _anchorRight, out _anchorBottom);
         // Move while hidden (so it opens on the right monitor), then pin the exact size once
@@ -502,6 +509,18 @@ internal sealed class AppShell : IDisposable
     {
         try { Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_store.Folder}\"") { UseShellExecute = true }); }
         catch (Exception ex) { Log.Error("Could not open data folder", ex); }
+    }
+
+    /// <summary>Shows a file or folder dialog over the panel, which mustn't fold away meanwhile.</summary>
+    public bool? ShowDialog(Microsoft.Win32.CommonDialog dialog)
+    {
+        _dialogOpen = true;
+        try { return dialog.ShowDialog(_panel); }
+        finally
+        {
+            _dialogOpen = false;
+            BringPanelForward();
+        }
     }
 
     /// <summary>Settings → Import: picks a tack.json (from Tack Focus, another PC or a backup) and merges it in.</summary>

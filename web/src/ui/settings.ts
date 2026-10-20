@@ -4,6 +4,7 @@ import type { Workspace } from '../model/workspace';
 import type { Snapshot } from '../store/db';
 import { isPersisted, persistenceNeedsPrompt, requestPersistence, type Store } from '../store/persist';
 import { prefs, setPrefs, type ThemePref } from '../store/prefs';
+import type { SyncController, SyncStatus } from '../sync/controller';
 import { h, svg } from './dom';
 import { hapticsSupported, setHaptics } from './haptics';
 import { icons } from './icons';
@@ -24,11 +25,13 @@ export class Settings {
   private dialog: HTMLDialogElement | null = null;
   private cleanups: (() => void)[] = [];
   private dataStatus: HTMLElement | null = null;
+  private dataIntro: HTMLElement | null = null;
 
   constructor(
     private readonly ws: Workspace,
     private readonly store: Store,
     private readonly toasts: Toasts,
+    private readonly sync: SyncController,
   ) {}
 
   open(): void {
@@ -128,7 +131,7 @@ export class Settings {
     this.dataStatus = h('p.note.small.data-status', { role: 'status', hidden: true });
     const data = group(
       'Your data',
-      h('p.note', { text: 'Your tasks and notes are kept on this device only. Tack Focus has no servers and sends nothing anywhere.' }),
+      (this.dataIntro = h('p.note', { text: dataIntroText(this.sync.status) })),
       persistLine,
       h(
         'div.button-row',
@@ -153,7 +156,7 @@ export class Settings {
     const about = group(
       'About',
       h('p.note', {}, h('strong', { text: `Tack Focus ${VERSION}` }), ' · the pocket companion to Tack for Windows.'),
-      h('p.note', { text: 'Free and open source under the MIT licence. No accounts, no ads, no tracking, no paid tier.' }),
+      h('p.note', { text: 'Free and open source under the MIT licence. No Tack accounts, no ads, no tracking, no paid tier.' }),
       h('p.note', {}, h('a', { href: SOURCE_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Source code' }), ' · ', privacyLink()),
       h(
         'details.shortcuts',
@@ -179,7 +182,161 @@ export class Settings {
       ),
     );
 
-    return [h('div.sheet-grip', { 'aria-hidden': 'true' }), title, h('div.sheet-scroll', {}, appearance, feel, install, data, about)];
+    return [h('div.sheet-grip', { 'aria-hidden': 'true' }), title, h('div.sheet-scroll', {}, appearance, feel, this.syncSection(), install, data, about)];
+  }
+
+  // ------------------------------------------------------------------ sync
+
+  /**
+   * Settings → Sync. Built once per state (off, on) and then updated in place, so focus stays
+   * where it is and screen readers hear about real changes only (not the minute-by-minute sync,
+   * not "2 min ago" ticking over).
+   */
+  private syncSection(): HTMLElement | null {
+    if (!this.sync.status.available) return null;
+    const body = h('div.sync');
+    let mode: 'on' | 'off' | null = null;
+    let view: { update(st: SyncStatus): void; main: HTMLElement } | null = null;
+    const ui = { userAsked: false, turnedOff: false };
+    const render = () => {
+      const st = this.sync.status;
+      const next = st.enabled ? 'on' : 'off';
+      if (next !== mode) {
+        const hadFocus = body.contains(document.activeElement);
+        mode = next;
+        view = next === 'on' ? this.syncOn(body, ui) : this.syncOff(body, ui);
+        if (hadFocus) view.main.focus();
+      }
+      view!.update(st);
+      if (this.dataIntro) this.dataIntro.textContent = dataIntroText(st);
+    };
+    render();
+    this.cleanups.push(this.sync.onStatus(render));
+    const tick = setInterval(render, 30_000); // "2 min ago" stays true while you look
+    this.cleanups.push(() => clearInterval(tick));
+    return group('Sync', body);
+  }
+
+  private syncOff(body: HTMLElement, ui: { turnedOff: boolean }) {
+    const turnOn = h('button.button.primary', { type: 'button', onclick: () => void this.sync.turnOn() }, svg(icons.cloud), 'Turn on sync');
+    const message = h('p.note.small', { role: 'status' });
+    const copies = h('p.note.small', { hidden: true, text: 'Copies from when sync was on stay in your OneDrive until you delete its Apps \u203a Tack Focus folder.' });
+    body.replaceChildren(
+      h('p.note', { text: 'Keep Tack Focus and Tack for Windows in step through your own OneDrive. There\u2019s no Tack server in between: your tasks and notes go straight between your devices and your OneDrive.' }),
+      h('div.button-row', {}, turnOn),
+      message,
+      h(
+        'p.note.small',
+        {},
+        'You\u2019ll sign in with Microsoft. Tack can open only its own folder in your OneDrive (Apps \u203a Tack Focus), nothing else. Your tasks and notes are saved there as ordinary files, not end-to-end encrypted. What\u2019s on this device and what\u2019s already there are combined. ',
+        privacyLink(),
+      ),
+      copies,
+    );
+    return {
+      main: turnOn,
+      update: (st: SyncStatus) => {
+        const text = st.message ?? (ui.turnedOff ? 'Sync is off. Your tasks and notes stay on this device, and in OneDrive for your other devices.' : '');
+        if (message.textContent !== text) message.textContent = text;
+        message.classList.toggle('warn', !!st.message);
+        copies.hidden = !st.hasCopies;
+      },
+    };
+  }
+
+  private syncOn(body: HTMLElement, ui: { userAsked: boolean; turnedOff: boolean }) {
+    const account = h('small');
+    // The live part says what changed; the time beside it ticks quietly.
+    const phase = h('span', { role: 'status' });
+    const when = h('span.sync-when');
+    const action = h('button.text-button.inline', { type: 'button', hidden: true });
+    const status = h('p.note.sync-status', {}, phase, when, ' ', action);
+    const peers = h('p.note.small', { hidden: true });
+    const problems = h('p.note.small.warn', { hidden: true });
+    const syncNow = h('button.button', {
+      type: 'button',
+      text: 'Sync now',
+      onclick: () => {
+        ui.userAsked = true;
+        this.sync.syncNow();
+      },
+    });
+    const turnOff = h('button.button', {
+      type: 'button',
+      text: 'Turn off',
+      onclick: () => {
+        ui.turnedOff = true;
+        void this.sync.turnOff();
+      },
+    });
+    body.replaceChildren(
+      h('div.setting', {}, h('div.setting-label', {}, h('span', { text: 'OneDrive' }), account), svg(icons.cloud)),
+      status,
+      peers,
+      problems,
+      h('div.button-row', {}, syncNow, turnOff),
+      h(
+        'p.note.small',
+        {},
+        'Your tasks and notes are saved in your OneDrive as ordinary files. You can open them; Microsoft can read them as your storage provider, and so can any app you\u2019ve given your whole OneDrive to. They aren\u2019t end-to-end encrypted yet. ',
+        privacyLink(),
+      ),
+    );
+    let actionFor = '';
+    let lastEnded = ''; // the phase the last sync ended in, while this section is open
+    const texts: Record<string, string> = {
+      syncing: 'Syncing\u2026',
+      synced: 'Up to date',
+      offline: 'Offline. Changes are kept here and sync when you\u2019re back online.',
+      renew: 'Paused until Tack checks in with Microsoft, which it does by itself the next time you open it.',
+      signin: 'Microsoft asked you to sign in again.',
+    };
+    const actions: Record<string, [string, () => void]> = {
+      renew: ['Reconnect now', () => void this.sync.reconnect()],
+      signin: ['Sign in', () => void this.sync.signInAgain()],
+      error: ['Try again', () => this.sync.syncNow()],
+    };
+    return {
+      main: syncNow,
+      update: (st: SyncStatus) => {
+        account.textContent = st.account?.username || st.account?.name || 'Signed in';
+        status.dataset.synced = String(st.lastSync);
+        // Background syncs every minute aren't news: "Syncing" shows only when you asked, the first
+        // time, or when catching up (back online, or after a problem): it isn't up to date yet.
+        const catchingUp = lastEnded !== '' && lastEnded !== 'synced';
+        const busy = st.phase === 'syncing' && (ui.userAsked || !st.lastSync || catchingUp);
+        if (st.phase !== 'syncing') {
+          ui.userAsked = false;
+          lastEnded = st.phase;
+        }
+        const shown = st.phase === 'syncing' && !busy ? 'synced' : st.phase;
+        const text = shown === 'error' ? (st.message ?? 'Sync stopped.') : (texts[shown] ?? 'Up to date');
+        if (phase.textContent !== text) phase.textContent = text;
+        when.textContent = shown === 'synced' && st.lastSync ? ` \u00b7 ${ago(st.lastSync)}` : '';
+        status.classList.toggle('warn', shown === 'signin' || shown === 'error');
+        if (actionFor !== shown) {
+          actionFor = shown;
+          const a = actions[shown];
+          action.hidden = !a;
+          if (a) {
+            action.textContent = a[0];
+            action.onclick = a[1];
+          }
+        }
+        const others = st.peers.map((x) => `${x.name || 'another device'} (last change ${ago(x.written)})`).join(', ');
+        if (peers.textContent !== `Other devices: ${others}.`) peers.textContent = others ? `Other devices: ${others}.` : '';
+        peers.hidden = !others;
+        const issues = st.problems.map((x) => {
+          const who = st.peers.find((y) => y.device === x.device)?.name || 'another device';
+          return x.reason === 'newer'
+            ? `${who} has a newer Tack. Update Tack here to keep syncing with it.`
+            : `The sync file from ${who} couldn\u2019t be read. It\u2019ll be written again the next time that device syncs.`;
+        });
+        const issueText = issues.join(' ');
+        if (problems.textContent !== issueText) problems.textContent = issueText;
+        problems.hidden = issues.length === 0;
+      },
+    };
   }
 
   private installSection(): Node[] {
@@ -391,6 +548,27 @@ export class Settings {
   }
 }
 
+function privacyLink(): HTMLElement {
+  return h('a', { href: PRIVACY_URL, target: '_blank', rel: 'noopener', text: 'Privacy' });
+}
+
+/** What Settings → Your data says about where your data is. */
+function dataIntroText(st: SyncStatus): string {
+  if (st.enabled) return 'Your tasks and notes are kept on this device, and in your OneDrive while sync is on. Tack Focus has no servers of its own.';
+  if (st.hasCopies) return 'Your tasks and notes are kept on this device. Copies from when sync was on stay in your OneDrive until you delete them. Tack Focus has no servers.';
+  return 'Your tasks and notes are kept on this device only. Tack Focus has no servers and sends nothing anywhere.';
+}
+
+/** "just now", "5 min. ago", "yesterday"... */
+function ago(ms: number, now = Date.now()): string {
+  const s = Math.max(0, Math.round((now - ms) / 1000));
+  if (s < 60) return 'just now';
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto', style: 'short' });
+  if (s < 3600) return rtf.format(-Math.round(s / 60), 'minute');
+  if (s < 86400) return rtf.format(-Math.round(s / 3600), 'hour');
+  return rtf.format(-Math.round(s / 86400), 'day');
+}
+
 function group(title: string, ...children: (Node | null)[]): HTMLElement {
   return h('section.group', {}, h('h3.group-title', { text: title }), h('div.group-body', {}, ...children));
 }
@@ -407,8 +585,4 @@ function toggle(label: string, on: boolean, onChange: (on: boolean) => void): HT
     onChange(next);
   });
   return b;
-}
-
-function privacyLink(): HTMLElement {
-  return h('a', { href: PRIVACY_URL, target: '_blank', rel: 'noopener', text: 'Privacy' });
 }

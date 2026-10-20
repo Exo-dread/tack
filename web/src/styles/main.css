@@ -290,6 +290,20 @@ header.top {
   .icon-button:hover { background: var(--fill); color: var(--text); }
 }
 
+/* Sync needs you: a small dot on Settings, nothing more. */
+.settings-open { position: relative; }
+.settings-open.attention::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
 .pages {
   flex: 1;
   min-height: 0;
@@ -1311,7 +1325,11 @@ dialog.sheet.closing::backdrop { opacity: 0; transition: opacity .2s ease; }
 .setting + .setting { border-top: 1px solid var(--stroke); }
 
 .setting-label { display: grid; gap: 2px; font-size: 16px; }
-.setting-label small { color: var(--text-3); font-size: 13px; }
+.setting-label small { color: var(--text-3); font-size: 13px; overflow-wrap: anywhere; }
+
+.sync .setting > .icon { color: var(--accent); flex: none; }
+.sync .setting + .note { margin-top: 4px; }
+.sync-status { margin-bottom: 4px; }
 
 .segmented {
   display: inline-flex;

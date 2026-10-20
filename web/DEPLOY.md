@@ -51,6 +51,17 @@ npx wrangler pages deploy dist --project-name tack-focus
 
 (Wrangler isn't a dependency; `npx` fetches it when needed and asks you to log in.)
 
+## Sync (OneDrive)
+
+Sync is offered only in builds that know the Microsoft app ID: set `VITE_MS_CLIENT_ID` in the Pages
+project's variables (Production, and Preview if wanted) and redeploy. The app registration it comes
+from belongs to the Tack project; [../docs/ONEDRIVE-SETUP.md](../docs/ONEDRIVE-SETUP.md) has every
+step. With the ID set, the build also publishes `/.well-known/microsoft-identity-association.json`
+for Microsoft's publisher-domain check. Without it, Tack Focus works exactly as before and shows no
+Sync section.
+
+Sync needs no Functions or Workers either: the browser talks to Microsoft directly.
+
 ## After the first deploy
 
 - Open https://tackfocus.app, then **Settings → About** shows the version.

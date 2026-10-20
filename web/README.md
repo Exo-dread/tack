@@ -25,6 +25,10 @@ same notes, same `tack.json`.
 - **Phones get a dock, wide screens get both.** Above 900 px, Tasks and Notes sit side by side.
 - **Your data stays yours.** IndexedDB on the device, a daily snapshot for the last seven days,
   export to (and import from) `tack.json`, which Tack for Windows reads.
+- **Sync, if you want it** (switched on once the Microsoft app registration exists; see
+  [../docs/SYNC.md](../docs/SYNC.md)). Settings → Sync → *Turn on sync*, sign in with Microsoft
+  once, and Tack Focus and Tack for Windows keep each other up to date through a folder in your own
+  OneDrive. No Tack server, nothing to press.
 
 Everything has a non-gesture route: tapping a task opens it with Focus / Move / Delete tools, and the
 keyboard covers the rest (see Settings → Keyboard shortcuts).
@@ -59,6 +63,12 @@ web/
 │   │   ├── order.ts        Fractional sort keys
 │   │   ├── file.ts         tack.json import/export (desktop-compatible)
 │   │   └── text.ts, time.ts, ids.ts, types.ts
+│   ├── sync/               Optional sync through your OneDrive (docs/SYNC.md)
+│   │   ├── engine.ts       One sync cycle: read others' device files, merge, write ours
+│   │   ├── devicefile.ts   The device file format
+│   │   ├── onedrive.ts     The app folder through Microsoft Graph
+│   │   ├── msauth.ts       Sign-in: authorization code + PKCE, quiet renewal
+│   │   └── controller.ts   When to sync, status, retries, one tab at a time
 │   ├── store/
 │   │   ├── db.ts           IndexedDB (falls back to localStorage, then memory with a warning)
 │   │   ├── persist.ts      Saves: tasks immediately, typing debounced, everything on hide
@@ -74,9 +84,9 @@ web/
 │   │   └── orb.ts, toast.ts, haptics.ts, theme.ts, icons.ts, install.ts, sw.ts, dom.ts
 │   ├── styles/main.css     Tokens (dark/light/accents), layout, components
 │   └── sw.js               Service worker (precache list injected at build)
-├── public/                 Manifest, icons, robots.txt
+├── public/                 Manifest, icons, robots.txt, privacy/ (the privacy page), auth/ (sign-in landing page)
 ├── deploy/_headers         Cloudflare Pages headers (CSP etc.), copied into the build
-└── tests/                  Vitest (model) and Playwright (app, in WebKit and Chromium)
+└── tests/                  Vitest (model, sync), Playwright (app, in WebKit and Chromium), fakes/ (a stand-in Microsoft)
 ```
 
 **Why no framework?** Tack's UI is two lists, a text area and a dock. The hard parts (gestures,
@@ -89,9 +99,10 @@ transaction. Note typing is saved after a short pause, and everything (including
 its grace period, or a task being edited) is written when the app is hidden. Writes are per
 record, so two open tabs never overwrite each other; tabs tell each other about saves and merge.
 
-**Sync-ready.** Records carry a clock per field, deletions are tombstones, and order is a sort key,
-so the merge that keeps tabs consistent today is the one sync will use. See
-[../docs/SYNC.md](../docs/SYNC.md).
+**Sync.** Records carry a clock per field, deletions are tombstones, and order is a sort key, so the
+merge that keeps tabs consistent is the one sync uses. Each device writes its own file to the
+OneDrive app folder and merges everyone else's. See [../docs/SYNC.md](../docs/SYNC.md); the
+Microsoft app registration it needs is in [../docs/ONEDRIVE-SETUP.md](../docs/ONEDRIVE-SETUP.md).
 
 ## Develop
 
@@ -112,9 +123,10 @@ and [DEPLOY.md](DEPLOY.md) for Cloudflare Pages.
 
 ## Privacy
 
-No accounts, no analytics, no ads, no third-party scripts, fonts or requests. The Content Security
-Policy only allows the app's own origin. Your tasks and notes never leave the device unless you
-export them (and, later, if you turn on sync to your own cloud storage).
+No accounts, no analytics, no ads, no third-party scripts or fonts. The Content Security Policy
+allows the app's own origin, plus Microsoft's sign-in, Graph and OneDrive hosts for sync. Your tasks
+and notes never leave the device unless you export them, or turn on sync, which sends them only to
+your own OneDrive (plain files, not end-to-end encrypted yet). See https://tackfocus.app/privacy/.
 
 The privacy page users see is [`public/privacy/`](public/privacy/index.html), served at
 [tackfocus.app/privacy/](https://tackfocus.app/privacy/) and linked from Settings → About. It's also the

@@ -25,6 +25,7 @@ export const icons = {
   upload: icon('<path d="M12 15.5v-11M7.75 8.75 12 4.5l4.25 4.25M5 19.75h14"/>'),
   restore: icon('<path d="M4.75 12a7.25 7.25 0 1 0 2.2-5.2"/><path d="M4.5 4.75v3.5H8"/><path d="M12 8.5V12l2.5 1.5"/>'),
   grip: icon('<circle cx="9" cy="7" r=".9" fill="currentColor"/><circle cx="15" cy="7" r=".9" fill="currentColor"/><circle cx="9" cy="12" r=".9" fill="currentColor"/><circle cx="15" cy="12" r=".9" fill="currentColor"/><circle cx="9" cy="17" r=".9" fill="currentColor"/><circle cx="15" cy="17" r=".9" fill="currentColor"/>'),
+  cloud: icon('<path d="M7.25 18.25h9.5a3.75 3.75 0 0 0 .6-7.45 5.25 5.25 0 0 0-10.2-.9A4.2 4.2 0 0 0 7.25 18.25Z"/>'),
   reopen: icon('<path d="M5 12a7 7 0 1 0 2.05-4.95"/><path d="M4.75 4.5v3.75H8.5"/>'),
 };
 
