@@ -1,6 +1,6 @@
 # Tack Focus changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (20 October 2026)
 
 - **Sync with Tack for Windows through your own OneDrive.** Settings → Sync → Turn on sync, sign in
   with Microsoft once; from then on it's automatic. Tack can open only its own folder in your
