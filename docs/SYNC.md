@@ -1,9 +1,9 @@
 # Syncing Tack across devices
 
-Status: **built and tested, not yet live.** Tack Focus (`web/`) and Tack for Windows (`src/Tack`)
-sync through a folder in **your own OneDrive**. Nothing is deployed or released: it needs a
-Microsoft app registration owned by the Tack project first ([ONEDRIVE-SETUP.md](ONEDRIVE-SETUP.md)),
-and it hasn't yet run against the real Microsoft services (see [What's verified](#whats-verified)).
+Status: **live** since 20 October 2026, in Tack Focus 0.2.0 (tackfocus.app) and Tack for Windows
+1.3.0. Tack Focus (`web/`) and Tack for Windows (`src/Tack`) sync through a folder in **your own
+OneDrive**, using the Tack project's Microsoft app registration ([ONEDRIVE-SETUP.md](ONEDRIVE-SETUP.md)).
+What has been checked with the real services, and what hasn't: [What's verified](#whats-verified).
 
 The goal: write a task on your phone at night, see it on your PC in the morning, with nobody
 (Tack included) running a server that holds your data, and without a bill that grows with users.
@@ -286,12 +286,19 @@ The same, in plain words, is at https://tackfocus.app/privacy/ (`web/public/priv
   the OneDrive folder, merges the phone's tasks, keeps the phone's focus, and leaves the PC's
   welcome tasks behind.
 
-**Not verified yet (needs the real thing):**
+**With the real services (20 October 2026):**
 
-- Real Microsoft sign-in and OneDrive (needs the app registration).
-- Real browsers' cookie behaviour for the hidden frame and the visit, especially an installed
-  Home Screen app on a real iPhone (out-of-scope navigation in standalone mode).
-- The OneDrive app on a PC: Files On-Demand, pinning, upload timing.
+- Microsoft sign-in with a personal account, consent, and the `Apps/Tack Focus` folder appearing in
+  OneDrive (Tack Focus in Chrome, on a preview build).
+- Tack for Windows (a test build of this code) syncing through the OneDrive app on a PC: a task
+  added in Tack Focus appeared on the desktop at once.
+
+**Not verified yet:**
+
+- Staying signed in past 24 hours on a real phone: the hidden frame (Android) and the visit
+  (an installed Home Screen app on a real iPhone, out-of-scope navigation in standalone mode).
+- Offline and simultaneous edits between real devices (covered by the automated tests above).
+- The OneDrive app's Files On-Demand and pinning over weeks of use.
 - Work and school accounts.
 
 ## Phases

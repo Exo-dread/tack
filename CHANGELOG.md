@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 (2026-10-20)
+
+Tack and Tack Focus (tackfocus.app) now keep each other up to date through your own OneDrive, with
+no account and no Tack server.
 
 - **Sync with Tack Focus through your OneDrive.** Settings → Sync → Turn on sync finds Tack Focus's
   folder in OneDrive on your PC (or choose any folder). Tack writes its own file there and reads the

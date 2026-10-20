@@ -13,7 +13,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\Tack.ico</ApplicationIcon>
 
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <Product>Tack</Product>
     <Company>Tack contributors</Company>
     <Description>A tiny always-on-top home for your tasks and quick notes.</Description>
