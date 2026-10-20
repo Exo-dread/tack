@@ -1,6 +1,7 @@
 import { isObject, readFocus, readSheetRecord, readTaskRecord } from '../model/file';
 import { isPlausibleStamp, ZERO, type Stamp } from '../model/hlc';
 import { mergeSheet, mergeTask } from '../model/merge';
+import { wellFormedValues } from '../model/text';
 import type { Focus, Sheet, Task, WorkspaceData } from '../model/types';
 
 /**
@@ -25,6 +26,15 @@ export const DEVICE_FORMAT = 'tack-sync-device';
 export const DEVICE_VERSION = 1;
 /** Device files bigger than this can't be Tack's (thousands of tasks are well under 2 MB). */
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
+/**
+ * Limits inside a device file, far beyond any real use. A file over them is refused whole (and
+ * set aside), and an over-long record is skipped, so a damaged or crafted file can't swell every
+ * device's own file for good. Tack for Windows uses the same numbers.
+ */
+export const MAX_RECORDS = 200_000; // tasks + sheets + deletions
+export const MAX_SEEN = 1_000;
+export const MAX_TASK_TEXT = 100_000;
+export const MAX_NOTE_TEXT = 1_000_000;
 
 const DEVICE_ID = /^[0-9A-Za-z]{4,32}$/;
 const FILE_NAME = /^([0-9A-Za-z]{4,32})\.json$/;
@@ -68,7 +78,8 @@ export function makeDeviceFile(
 ): Record<string, unknown> {
   const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   const gone = (records: { id: string; deleted: boolean; clk: { deleted: Stamp } }[]) => {
-    const out: Record<string, Stamp> = {};
+    // No prototype: an id such as "__proto__" stays a plain key.
+    const out: Record<string, Stamp> = Object.create(null);
     for (const r of records.filter((x) => x.deleted).sort(byId)) out[r.id] = r.clk.deleted;
     return out;
   };
@@ -88,7 +99,7 @@ export function makeDeviceFile(
 }
 
 export function serializeDeviceFile(file: Record<string, unknown>): string {
-  return JSON.stringify(file);
+  return JSON.stringify(file, wellFormedValues);
 }
 
 export class DeviceFileError extends Error {
@@ -105,7 +116,9 @@ export function parseDeviceFile(text: string, device: string, now = Date.now()):
   if (text.length > MAX_FILE_BYTES) throw new DeviceFileError('unreadable');
   let doc: unknown;
   try {
-    doc = JSON.parse(text.replace(/^﻿/, ''));
+    // Lone surrogates ("\ud800") are valid JSON but not text: they become U+FFFD here, so they
+    // can never travel on to Tack for Windows, which can't read them.
+    doc = JSON.parse(text.replace(/^﻿/, ''), wellFormedValues);
   } catch {
     throw new DeviceFileError('unreadable');
   }
@@ -117,19 +130,23 @@ export function parseDeviceFile(text: string, device: string, now = Date.now()):
   if (!isPlausibleStamp(doc.written, now) || !Array.isArray(doc.tasks) || !Array.isArray(doc.sheets)) {
     throw new DeviceFileError('unreadable');
   }
+  const deleted = isObject(doc.deleted) ? doc.deleted : {};
+  const count = (map: unknown) => (isObject(map) ? Object.keys(map).length : 0);
+  if (doc.tasks.length + doc.sheets.length + count(deleted.tasks) + count(deleted.sheets) > MAX_RECORDS || count(doc.seen) > MAX_SEEN) {
+    throw new DeviceFileError('unreadable');
+  }
 
   // Duplicate ids (only a hand edit makes them) merge rather than one silently replacing the other.
   const tasks = new Map<string, Task>();
   const addTask = (t: Task | null) => {
-    if (t) tasks.set(t.id, mergeTask(tasks.get(t.id), t).value);
+    if (t && t.text.length <= MAX_TASK_TEXT) tasks.set(t.id, mergeTask(tasks.get(t.id), t).value);
   };
   const sheets = new Map<string, Sheet>();
   const addSheet = (s: Sheet | null) => {
-    if (s) sheets.set(s.id, mergeSheet(sheets.get(s.id), s).value);
+    if (s && s.text.length <= MAX_NOTE_TEXT) sheets.set(s.id, mergeSheet(sheets.get(s.id), s).value);
   };
   doc.tasks.forEach((raw) => addTask(readTaskRecord(raw, now)));
   doc.sheets.forEach((raw) => addSheet(readSheetRecord(raw, now)));
-  const deleted = isObject(doc.deleted) ? doc.deleted : {};
   for (const [id, stamp] of entries(deleted.tasks, now)) addTask(deadTask(id, stamp));
   for (const [id, stamp] of entries(deleted.sheets, now)) addSheet(deadSheet(id, stamp));
 
@@ -154,7 +171,15 @@ function entries(raw: unknown, now: number): [string, Stamp][] {
 }
 
 function sortedMap(map: Record<string, Stamp>, without: string): Record<string, Stamp> {
-  const out: Record<string, Stamp> = {};
+  const out: Record<string, Stamp> = Object.create(null);
   for (const k of Object.keys(map).sort()) if (k !== without && isDeviceId(k)) out[k] = map[k]!;
   return out;
+}
+
+/**
+ * A device's entry in a map keyed by device id, ignoring what every object inherits: an id such
+ * as "constructor" is valid, and must read as absent until that device is actually seen.
+ */
+export function stampOf(map: Record<string, Stamp>, device: string): Stamp | undefined {
+  return Object.hasOwn(map, device) ? map[device] : undefined;
 }

@@ -67,7 +67,17 @@ internal static class StateFile
     /// <param name="fileMs">When the file was saved: the time the focus task (which has no date of its own) was set.</param>
     public static WorkspaceData ToData(StateDocument doc, Hlc clock, long fileMs, long nowMs)
     {
-        var section = doc.TackFocus is { } raw ? TackFile.ReadSection(raw.Raw, nowMs, clean: false) : null;
+        WorkspaceData? section = null;
+        try
+        {
+            section = doc.TackFocus is { } raw ? TackFile.ReadSection(raw.Raw, nowMs, clean: false) : null;
+        }
+        catch (Exception ex) when (TackFile.IsUnreadableText(ex))
+        {
+            // Text that can't be read (only a hand edit or damage puts it there): start from the
+            // top level, as with a file from Tack 1.1, rather than refuse to open at all.
+            Log.Error("The tackFocus section is unreadable; using the top level", ex);
+        }
         if (section != null)
         {
             foreach (var t in section.Tasks) clock.Observe(t.Clk.Max());

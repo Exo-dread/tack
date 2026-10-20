@@ -32,7 +32,7 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             DeviceFile? own = null;
             try
             {
-                own = DeviceFile.Parse(await folder.ReadAsync(ownEntry), me, nowMs);
+                if (!TooBig(ownEntry)) own = DeviceFile.Parse(await folder.ReadAsync(ownEntry), me, nowMs);
             }
             catch (DeviceFileException)
             {
@@ -77,6 +77,18 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
                 if (known.Problem != null) result.Problems.Add((device, ProblemOf(known.Problem)));
                 continue;
             }
+            // Noted, so it isn't fetched again until it changes.
+            void Unusable(DeviceFileProblem problem)
+            {
+                result.Problems.Add((device, problem));
+                meta.Files[entry.Name] = new FileSummary(entry.Tag, device, known?.Name ?? "", known?.App ?? "", known?.Written ?? Stamp.Zero,
+                    problem.ToString().ToLowerInvariant());
+            }
+            if (TooBig(entry))
+            {
+                Unusable(DeviceFileProblem.Unreadable); // never read
+                continue;
+            }
             try
             {
                 var file = DeviceFile.Parse(await folder.ReadAsync(entry), device, nowMs);
@@ -85,14 +97,16 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             }
             catch (DeviceFileException ex)
             {
-                // Noted, so it isn't fetched again until it changes.
-                result.Problems.Add((device, ex.Problem));
-                meta.Files[entry.Name] = new FileSummary(entry.Tag, device, known?.Name ?? "", known?.App ?? "", known?.Written ?? Stamp.Zero,
-                    ex.Problem.ToString().ToLowerInvariant());
+                Unusable(ex.Problem);
             }
             catch (SyncException ex) when (ex.Kind == SyncErrorKind.Gone)
             {
                 // Deleted between listing and reading: next time.
+            }
+            catch (SyncException ex) when (ex.Kind is SyncErrorKind.Offline or SyncErrorKind.Server)
+            {
+                // This one file couldn't be read (the OneDrive app holds it, it isn't downloaded yet):
+                // the rest still sync, and it's tried again next time. Merges don't depend on order.
             }
         }
         foreach (string name in meta.Files.Keys.Where(n => !present.Contains(n)).ToList()) meta.Files.Remove(name);
@@ -102,15 +116,19 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
         if (adopted != null) news |= ws.MergeFrom(new WorkspaceData(adopted.Tasks, adopted.Sheets, adopted.Focus));
         foreach (var file in fresh.OrderBy(f => f.Device, StringComparer.Ordinal))
         {
-            if (!Stamp.IsLater(file.Written, meta.Seen.GetValueOrDefault(file.Device, Stamp.Zero))) continue;
+            // Every changed file is merged, even one that seems already had through another device:
+            // merges are idempotent, and skipping on another file's word would let one bad file
+            // hide a device's changes from everyone.
             var seenHere = new Dictionary<string, string>(meta.Seen);
             var data = new WorkspaceData(file.Tasks, file.Sheets, file.Focus);
             // A note changed on both sides is kept twice only if neither side had seen the other's text.
             news |= ws.MergeFrom(data, null, (local, remote) =>
                 !SeenBy(local.Clk.Text, file.Device, file.Seen) && !SeenBy(remote.Clk.Text, me, seenHere));
             meta.Seen[file.Device] = Later(meta.Seen.GetValueOrDefault(file.Device), file.Written);
-            // Whatever that device had merged, this one now has too.
-            foreach (var (d, w) in file.Seen) if (d != me) meta.Seen[d] = Later(meta.Seen.GetValueOrDefault(d), w);
+            // Whatever that device had merged, this one now has too; no device can have seen past its
+            // own clock, so a claim beyond the file's "written" is cut back to it.
+            foreach (var (d, w) in file.Seen)
+                if (d != me) meta.Seen[d] = Later(meta.Seen.GetValueOrDefault(d), Stamp.IsLater(w, file.Written) ? file.Written : w);
             result.Merged.Add(file.Device);
         }
 
@@ -126,6 +144,8 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             string written = ws.Clock.Now();
             var (name, app) = hooks.Label();
             byte[] bytes = DeviceFile.Write(ws.ToData(), me, name, app, written, meta.Seen);
+            // Every device refuses a file this big, so writing it would only look like syncing.
+            if (bytes.Length > DeviceFile.MaxBytes) throw new SyncException(SyncErrorKind.TooLarge, "This PC's sync file would be over 20 MB");
             meta.Own = meta.Own with { Pending = written };
             await hooks.SaveMetaAsync(meta);
             var entry = await folder.WriteAsync(DeviceFile.FileName(me), bytes);
@@ -138,6 +158,9 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
         result.Peers.AddRange(meta.Files.Values.Select(s => new PeerInfo(s.Device, s.Name, s.App, (long)Stamp.Time(s.Written))));
         return result;
     }
+
+    /// <summary>A file the listing already shows to be too big to be Tack's.</summary>
+    private static bool TooBig(FolderEntry entry) => entry.Size is { } size && size > DeviceFile.MaxBytes;
 
     private static DeviceFileProblem ProblemOf(string problem) =>
         Enum.TryParse<DeviceFileProblem>(problem, ignoreCase: true, out var p) ? p : DeviceFileProblem.Unreadable;
@@ -193,9 +216,11 @@ internal interface ISyncFolder
 }
 
 /// <summary>A file in the sync folder. <c>Tag</c> changes whenever its content does.</summary>
-internal record FolderEntry(string Name, string Tag);
+/// <param name="Size">Its size in bytes, if the listing says (a file too big to be Tack's is never read).</param>
+internal record FolderEntry(string Name, string Tag, long? Size = null);
 
-internal enum SyncErrorKind { Offline, Throttled, Full, Gone, Denied, Server }
+/// <summary>Why a sync failed. <c>TooLarge</c>: this device's own file would be over the size every device accepts.</summary>
+internal enum SyncErrorKind { Offline, Throttled, Full, Gone, Denied, Server, TooLarge }
 
 internal sealed class SyncException(SyncErrorKind kind, string message) : Exception(message)
 {

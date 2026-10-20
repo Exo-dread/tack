@@ -1,7 +1,7 @@
 import { decode, stampTime, ZERO, type Stamp } from '../model/hlc';
 import type { Sheet } from '../model/types';
 import type { Workspace } from '../model/workspace';
-import { deviceOfFile, DeviceFileError, fileName, makeDeviceFile, parseDeviceFile, serializeDeviceFile, type DeviceFile } from './devicefile';
+import { deviceOfFile, DeviceFileError, fileName, makeDeviceFile, MAX_FILE_BYTES, parseDeviceFile, serializeDeviceFile, stampOf, type DeviceFile } from './devicefile';
 
 /**
  * Sync through a shared folder that every device can read and write (OneDrive's app folder, or
@@ -19,6 +19,8 @@ import { deviceOfFile, DeviceFileError, fileName, makeDeviceFile, parseDeviceFil
 export interface FolderEntry {
   name: string;
   tag: string;
+  /** Its size in bytes, if the listing says (a file too big to be Tack's is never downloaded). */
+  size?: number;
 }
 
 /** The sync folder, as a provider (OneDrive, a folder on disk, memory in tests) offers it. */
@@ -44,7 +46,9 @@ export type SyncErrorKind =
   /** The folder can't be reached for a reason that won't fix itself (permissions, misconfiguration). */
   | 'denied'
   /** The service had a problem; try again later. */
-  | 'server';
+  | 'server'
+  /** This device's own file would be over the size every device accepts, so it isn't written. */
+  | 'toolarge';
 
 export class SyncError extends Error {
   constructor(
@@ -131,7 +135,7 @@ const later = (a: Stamp | undefined, b: Stamp | undefined): Stamp => ((a ?? ZERO
  */
 export function seenBy(stamp: Stamp, device: string, seen: Record<string, Stamp>): boolean {
   const node = nodeOf(stamp);
-  return node === '' || node === device || (seen[node] ?? ZERO) >= stamp;
+  return node === '' || node === device || (stampOf(seen, node) ?? ZERO) >= stamp;
 }
 
 export class SyncEngine {
@@ -160,7 +164,7 @@ export class SyncEngine {
     if (ownEntry && ownEntry.tag !== meta.own.tag) {
       let own: DeviceFile | null = null;
       try {
-        own = parseDeviceFile(await this.folder.read(ownEntry), me, now);
+        if (!tooBig(ownEntry)) own = parseDeviceFile(await this.folder.read(ownEntry), me, now);
       } catch (error) {
         if (error instanceof SyncError && error.kind !== 'gone') throw error;
       }
@@ -188,9 +192,18 @@ export class SyncEngine {
       const device = deviceOfFile(entry.name);
       if (!device || device === me) continue;
       present.add(entry.name);
-      const known = meta.files[entry.name];
+      const known = Object.hasOwn(meta.files, entry.name) ? meta.files[entry.name] : undefined;
       if (known?.tag === entry.tag) {
         if (known.problem) result.problems.push({ device, reason: known.problem });
+        continue;
+      }
+      // Noted, so it isn't fetched again until it changes.
+      const unusable = (reason: DeviceFileError['reason']) => {
+        result.problems.push({ device, reason });
+        meta.files[entry.name] = { tag: entry.tag, device, name: known?.name ?? '', app: known?.app ?? '', written: known?.written ?? ZERO, problem: reason };
+      };
+      if (tooBig(entry)) {
+        unusable('unreadable'); // never downloaded
         continue;
       }
       try {
@@ -198,10 +211,10 @@ export class SyncEngine {
         fresh.push(file);
         meta.files[entry.name] = { tag: entry.tag, device, name: file.name, app: file.app, written: file.written };
       } catch (error) {
-        if (error instanceof DeviceFileError) {
-          // Noted, so it isn't fetched again until it changes.
-          result.problems.push({ device, reason: error.reason });
-          meta.files[entry.name] = { tag: entry.tag, device, name: known?.name ?? '', app: known?.app ?? '', written: known?.written ?? ZERO, problem: error.reason };
+        if (error instanceof DeviceFileError) unusable(error.reason);
+        else if (error instanceof SyncError && (error.kind === 'offline' || error.kind === 'server')) {
+          // This one file couldn't be fetched (a dropped download, a link that failed): the rest
+          // still sync, and it's tried again next time. Merges don't depend on order.
         } else if (!(error instanceof SyncError && error.kind === 'gone')) throw error;
       }
     }
@@ -215,14 +228,19 @@ export class SyncEngine {
     try {
       if (adopted) this.ws.merge({ tasks: adopted.tasks, sheets: adopted.sheets, focus: adopted.focus }, 'remote');
       for (const file of fresh.sort((a, b) => (a.device < b.device ? -1 : 1))) {
-        if ((meta.seen[file.device] ?? ZERO) >= file.written) continue; // had it already (perhaps through another device)
+        // Every changed file is merged, even one that seems already had through another device:
+        // merges are idempotent, and skipping on another file's word would let one bad file
+        // hide a device's changes from everyone.
         const seenHere = { ...meta.seen };
         // A note changed on both sides is kept twice only if neither side had seen the other's text.
         const concurrent = (local: Sheet, remote: Sheet) => !seenBy(local.clk.text, file.device, file.seen) && !seenBy(remote.clk.text, me, seenHere);
         this.ws.merge({ tasks: file.tasks, sheets: file.sheets, focus: file.focus }, 'remote', concurrent);
-        meta.seen[file.device] = later(meta.seen[file.device], file.written);
-        // Whatever that device had merged, this one now has too.
-        for (const [d, w] of Object.entries(file.seen)) if (d !== me) meta.seen[d] = later(meta.seen[d], w);
+        meta.seen[file.device] = later(stampOf(meta.seen, file.device), file.written);
+        // Whatever that device had merged, this one now has too; no device can have seen past its
+        // own clock, so a claim beyond the file's `written` is cut back to it.
+        for (const [d, w] of Object.entries(file.seen)) {
+          if (d !== me) meta.seen[d] = later(stampOf(meta.seen, d), w < file.written ? w : file.written);
+        }
         result.merged.push(file.device);
       }
     } finally {
@@ -239,9 +257,12 @@ export class SyncEngine {
       // this device knew at `written`, and anything later is news for the next write.
       const written = this.ws.hlc.now();
       const file = makeDeviceFile(this.ws.toData(), { device: me, ...this.hooks.label(), written, seen: meta.seen });
+      const text = serializeDeviceFile(file);
+      // Every device refuses a file this big, so writing it would only look like syncing.
+      if (new TextEncoder().encode(text).length > MAX_FILE_BYTES) throw new SyncError('toolarge', 'This device’s sync file would be over 20 MB');
       meta.own.pending = written;
       await this.hooks.saveMeta(meta);
-      const entry = await this.folder.write(fileName(me), serializeDeviceFile(file));
+      const entry = await this.folder.write(fileName(me), text);
       meta.own = { tag: entry.tag, written, pending: null };
       result.wrote = true;
     }
@@ -252,6 +273,9 @@ export class SyncEngine {
     return result;
   }
 }
+
+/** A file the listing already shows to be too big to be Tack's. */
+const tooBig = (entry: FolderEntry): boolean => entry.size !== undefined && entry.size > MAX_FILE_BYTES;
 
 /** The newest stamp this device made that's still in the workspace: anything after its last write is news. */
 function ownClock(ws: Workspace, me: string): Stamp {

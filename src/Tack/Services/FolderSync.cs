@@ -265,13 +265,14 @@ internal sealed class FolderSync : IDisposable
             _failures++;
             Log.Info($"Sync attempt failed ({ex.Kind}): {ex.Message}");
             retry = TimeSpan.FromSeconds(Math.Min(1800, 5 * Math.Pow(2, Math.Min(_failures - 1, 10))));
-            bool lasting = ex.Kind is SyncErrorKind.Full or SyncErrorKind.Denied;
+            bool lasting = ex.Kind is SyncErrorKind.Full or SyncErrorKind.Denied or SyncErrorKind.TooLarge;
             if (lasting || _failures >= QuietFailures)
             {
                 string message = ex.Kind switch
                 {
                     SyncErrorKind.Full => "The disk is full, so Tack can’t save its sync file.",
                     SyncErrorKind.Denied => "Tack isn’t allowed to write in the sync folder.",
+                    SyncErrorKind.TooLarge => "There’s more here than sync can carry (its file would be over 20 MB), so this PC’s changes aren’t being shared.",
                     SyncErrorKind.Gone => "The sync folder went away (is OneDrive running?). Tack will keep trying.",
                     _ => "The OneDrive app is busy with the sync folder. Tack will keep trying.",
                 };

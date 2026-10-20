@@ -682,7 +682,8 @@
     },
     "result": {
      "merged": [
-      "desk0001"
+      "desk0001",
+      "phone001"
      ],
      "wrote": true,
      "problems": []
@@ -1453,7 +1454,8 @@
     },
     "result": {
      "merged": [
-      "phone001"
+      "phone001",
+      "tablet01"
      ],
      "wrote": true,
      "problems": []
@@ -3751,7 +3753,8 @@
     },
     "result": {
      "merged": [
-      "desk0001"
+      "desk0001",
+      "tablet01"
      ],
      "wrote": true,
      "problems": []
@@ -5187,7 +5190,8 @@
     },
     "result": {
      "merged": [
-      "desk0001"
+      "desk0001",
+      "tablet01"
      ],
      "wrote": true,
      "problems": []
@@ -9143,7 +9147,8 @@
     },
     "result": {
      "merged": [
-      "phone001"
+      "phone001",
+      "tablet01"
      ],
      "wrote": true,
      "problems": []

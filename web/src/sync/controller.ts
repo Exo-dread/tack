@@ -454,6 +454,9 @@ export class SyncController {
         case 'denied':
           this.update({ phase: 'error', message: 'OneDrive refused Tack’s request. Turning sync off and on again may help.' });
           return 30 * MINUTE;
+        case 'toolarge':
+          this.update({ phase: 'error', message: 'There’s more here than sync can carry (its file would be over 20 MB), so this device’s changes aren’t being shared.' });
+          return 30 * MINUTE;
         case 'gone':
           this.folderKey = null; // the folder was removed: find or make it again
           keepTrying('Tack can’t reach its folder in OneDrive right now. It will keep trying.');

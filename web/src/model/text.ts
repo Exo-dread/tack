@@ -17,6 +17,18 @@ export function noteText(text: string): string {
   return text.replace(/\r\n?/g, '\n');
 }
 
+/**
+ * Replaces lone surrogates (half of an emoji, which valid JSON can still spell as "\ud83d") with
+ * U+FFFD. Strings read from files go through this, and so does every file Tack writes: other
+ * readers, Tack for Windows among them, refuse such text.
+ */
+export function wellFormed(text: string): string {
+  return text.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g, (c) => (c.length === 2 ? c : '�'));
+}
+
+/** For JSON.parse and JSON.stringify: every string value comes out well-formed. */
+export const wellFormedValues = (_key: string, value: unknown): unknown => (typeof value === 'string' ? wellFormed(value) : value);
+
 /** Splits pasted text into task lines, stripping bullets and numbering (twice, for "1. [ ] x"). */
 export function pastedLines(text: string): string[] {
   return text

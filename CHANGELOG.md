@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Sync shrugs off bad files.** A damaged or crafted file in the sync folder can no longer stop
+  sync: unreadable text (half an emoji, invalid UTF-8) sets that one file aside instead of stopping
+  every cycle, and the rest keeps syncing. Files are checked against generous limits (size before
+  reading, number of records, text length, real dates, sane clocks), and one file's word that it
+  has "seen" another device can no longer hide that device's changes. Importing such a file says
+  so instead of failing silently. Found in a security review; see docs/SYNC.md.
+- An empty "completed" date now means not done, as in Tack Focus.
+- A file that can't be read right now (the OneDrive app holds it) no longer holds up the others.
+- If this PC's sync file would grow past 20 MB, Settings says so instead of writing a file other
+  devices would refuse.
+
 ## 1.3.0 (2026-10-20)
 
 Tack and Tack Focus (tackfocus.app) now keep each other up to date through your own OneDrive, with

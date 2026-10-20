@@ -1,5 +1,18 @@
 # Tack Focus changelog
 
+## Unreleased
+
+- **Sync shrugs off bad files.** Text that only half spells a character is cleaned up when read
+  and never written out, so it can't reach Tack for Windows. A device id such as "constructor" no
+  longer stops this device's changes from being shared. Files too big to be Tack's are never
+  downloaded, one file that fails to download no longer holds up the others, and files are checked
+  against generous limits (records, text length, real dates, sane clocks). One file's word that it
+  has "seen" another device can no longer hide that device's changes. Found in a security review;
+  see docs/SYNC.md.
+- An empty "completed" date means not done, as in Tack for Windows.
+- If this device's sync file would grow past 20 MB, Settings says so instead of writing a file
+  other devices would refuse.
+
 ## 0.2.0 (20 October 2026)
 
 - **Sync with Tack for Windows through your own OneDrive.** Settings → Sync → Turn on sync, sign in

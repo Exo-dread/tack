@@ -35,6 +35,16 @@ internal sealed record DeviceFile(
     /// <summary>Device files bigger than this can't be Tack's.</summary>
     public const int MaxBytes = 20 * 1024 * 1024;
 
+    /// <summary>
+    /// Limits inside a device file (the same as devicefile.ts), far beyond any real use. A file over
+    /// them is refused whole and an over-long record is skipped, so a damaged or crafted file can't
+    /// swell every device's own file for good.
+    /// </summary>
+    public const int MaxRecords = 200_000; // tasks + sheets + deletions
+    public const int MaxSeen = 1_000;
+    public const int MaxTaskText = 100_000;
+    public const int MaxNoteText = 1_000_000;
+
     private static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     public static bool IsDeviceId(string? id) =>
@@ -143,6 +153,20 @@ internal sealed record DeviceFile(
         {
             throw new DeviceFileException(DeviceFileProblem.Unreadable);
         }
+        try
+        {
+            return Read(json, device, nowMs);
+        }
+        catch (Exception ex) when (TackFile.IsUnreadableText(ex))
+        {
+            // Valid JSON with text that can't be read (invalid UTF-8, a lone surrogate): this file
+            // is unreadable, like a damaged one, and is set aside; it never stops the sync.
+            throw new DeviceFileException(DeviceFileProblem.Unreadable);
+        }
+    }
+
+    private static DeviceFile Read(JsonDocument json, string device, long nowMs)
+    {
         using (json)
         {
             var doc = json.RootElement;
@@ -155,17 +179,21 @@ internal sealed record DeviceFile(
             string? written = Str(doc, "written");
             if (!Stamp.IsPlausible(written, nowMs) || !IsArray(doc, "tasks") || !IsArray(doc, "sheets"))
                 throw new DeviceFileException(DeviceFileProblem.Unreadable);
+            doc.TryGetProperty("deleted", out var deletedMaps);
+            if (doc.GetProperty("tasks").GetArrayLength() + doc.GetProperty("sheets").GetArrayLength()
+                + Count(deletedMaps, "tasks") + Count(deletedMaps, "sheets") > MaxRecords || Count(doc, "seen") > MaxSeen)
+                throw new DeviceFileException(DeviceFileProblem.Unreadable);
 
             // Duplicate ids (only a hand edit makes them) merge rather than one silently replacing the other.
             var tasks = new Dictionary<string, TaskData>();
             void AddTask(TaskData? t)
             {
-                if (t != null) tasks[t.Id] = tasks.TryGetValue(t.Id, out var had) ? Merge.Task(had, t).Value : t;
+                if (t != null && t.Text.Length <= MaxTaskText) tasks[t.Id] = tasks.TryGetValue(t.Id, out var had) ? Merge.Task(had, t).Value : t;
             }
             var sheets = new Dictionary<string, SheetData>();
             void AddSheet(SheetData? s)
             {
-                if (s != null) sheets[s.Id] = sheets.TryGetValue(s.Id, out var had) ? Merge.Sheet(had, s).Value : s;
+                if (s != null && s.Text.Length <= MaxNoteText) sheets[s.Id] = sheets.TryGetValue(s.Id, out var had) ? Merge.Sheet(had, s).Value : s;
             }
             foreach (var r in doc.GetProperty("tasks").EnumerateArray()) AddTask(TackFile.ReadTaskRecord(r, nowMs, clean: true));
             foreach (var r in doc.GetProperty("sheets").EnumerateArray()) AddSheet(TackFile.ReadSheetRecord(r, nowMs));
@@ -200,6 +228,11 @@ internal sealed record DeviceFile(
                 yield return (p.Name, p.Value.GetString()!);
         }
     }
+
+    /// <summary>How many properties an object property has (0 if it's missing or not an object).</summary>
+    private static int Count(JsonElement obj, string name) =>
+        obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty(name, out var map) && map.ValueKind == JsonValueKind.Object
+            ? map.EnumerateObject().Count() : 0;
 
     private static string Cap(string? s) => s == null ? "" : s.Length > 100 ? s[..100] : s;
 
