@@ -53,28 +53,29 @@ There's no client secret and no certificate: Tack Focus is a public client using
 
 ## 4. Give the app ID to the build
 
-Cloudflare dashboard → Workers & Pages → the Tack Focus project → **Settings → Variables and
-Secrets** → add, for **Production** (and Preview, if you want sync on preview builds):
+GitHub builds Tack Focus and uploads it to Cloudflare ([../web/DEPLOY.md](../web/DEPLOY.md)), so
+the ID goes to GitHub: repository → **Settings → Secrets and variables → Actions → Variables** →
+**New repository variable**:
 
 | Name | Value |
 |---|---|
 | `VITE_MS_CLIENT_ID` | the Application (client) ID |
 
-Add it as type **Text**. Production and Preview have separate variables: the box at the top of
-Settings' right-hand column (it reads **Production ⇕**) switches between them, and Settings shows
-the variables of the environment chosen there. That column is hidden when the window is narrow;
-widen the window if it's missing.
-
-To check that a build got it, open `/.well-known/microsoft-identity-association.json` on that
-build's address (for example `https://<branch>.<project>.pages.dev/`): the build writes it only
-when `VITE_MS_CLIENT_ID` is set, with the app ID inside. Don't rely on
-`wrangler pages download config` or `wrangler pages secret list` for this: in October 2026 a
-Preview variable added in the dashboard reached the build but showed in neither.
-
 Optional: `VITE_MS_AUTHORITY` (default `https://login.microsoftonline.com/common`). Use
 `…/consumers` to allow personal accounts only.
 
-Then redeploy (a new build picks the variable up). Settings → Sync appears in Tack Focus.
+The next deploy picks it up (merge something, or re-run the latest `Tack Focus (web)` run on
+`main`). Settings → Sync appears in Tack Focus.
+
+To check that a build got it, open `/.well-known/microsoft-identity-association.json` on that
+build's address (for example `https://<branch>.<project>.pages.dev/`): the build writes it only
+when `VITE_MS_CLIENT_ID` is set, with the app ID inside.
+
+If Cloudflare ever builds the site again instead, the ID goes in the Pages project: **Settings →
+Variables and Secrets**, type **Text**, for Production and Preview separately (the **Production ⇕**
+box at the top of Settings' right-hand column switches between them; it's hidden in a narrow
+window). Variables added there don't show in `wrangler pages download config` or
+`wrangler pages secret list`, so check the built file instead.
 
 ## 5. Check it
 
