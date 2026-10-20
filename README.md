@@ -45,8 +45,7 @@ and gets out of the way the moment you're done.
   size, and any size you drag to is remembered per tab. Switching tabs never makes the panel jump.
 - **Polite.** Steps aside while a full-screen video, game or slideshow is in front.
 - **Yours.** No account, no telemetry, and Tack never connects to anything. Your data is one readable JSON
-  file. Optional sync with Tack Focus on your phone, through your own OneDrive folder, is coming in the
-  next release.
+  file. Optional sync with Tack Focus on your phone goes through your own OneDrive folder.
 
 ## Download
 
@@ -70,7 +69,7 @@ To start Tack with Windows, turn on **Settings → Start with Windows**.
 | **Move** | Drag the orb, or drag the panel by its header. The orb follows the panel's nearest corner. |
 | **Resize** | Drag the panel's edges. Each tab remembers its own size; until you resize Tasks, it fits its list. Double-click the header to go back to automatic sizing. |
 | **Theme** | **Settings → Theme**: System (follows Windows), Light or Dark. |
-| **Sync** | Coming in the next release: **Settings → Sync → Turn on sync** keeps Tack in step with [Tack Focus](web/README.md) through your OneDrive (see below). |
+| **Sync** | **Settings → Sync → Turn on sync** keeps Tack in step with [Tack Focus](web/README.md) through your OneDrive (see below). |
 | **Import** | **Settings → Import** merges a tack.json from [Tack Focus](web/README.md) (its Settings → Export), another PC or a backup. Undo puts it back. |
 | **Pin** | 📌 keeps the panel open over other apps. Unpinned, it folds away when you click elsewhere. |
 | **Orb menu** | Right-click the orb for Open, Settings and Quit. |
@@ -125,7 +124,7 @@ brings in a tack.json exported from Tack Focus (or copied from another PC, or a 
 is added, where both changed the newer edit wins, a note written in both places is kept twice, and
 Undo puts everything back.
 
-**Sync (optional, coming in the next release; status in [docs/SYNC.md](docs/SYNC.md)).** Turn on sync in Tack Focus first (it makes an "Apps › Tack Focus" folder in your
+**Sync (optional).** Turn on sync in Tack Focus first (it makes an "Apps › Tack Focus" folder in your
 OneDrive); once the OneDrive app has brought that folder to your PC, **Settings → Sync → Turn on sync**
 here finds it by itself. From then on the two keep each other up to date: Tack writes its own file in
 that folder and reads the other devices' files, and the OneDrive app carries them. Tack itself still
