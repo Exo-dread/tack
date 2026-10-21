@@ -8,13 +8,15 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Tack.Controls;
 using Tack.Model;
+using Tack.Sync;
 using Tack.Windows;
 
 namespace Tack.Views;
 
 /// <summary>
 /// Tasks: one task in focus, a quick-add box, the list, and a folded "Done" section.
-/// Everything is editable in place; there are no dialogs.
+/// Everything is editable in place; there are no dialogs. It shows the space on show
+/// (<see cref="SpaceView"/>): with no spaces, everything, as it always has.
 /// </summary>
 public partial class TasksView : UserControl
 {
@@ -25,6 +27,7 @@ public partial class TasksView : UserControl
 
     private readonly Dictionary<TaskItem, DispatcherTimer> _checking = new();
     private Workspace _ws = null!;
+    private SpaceView _view = null!;
     private PanelWindow _panel = null!;
     private string? _editOriginal;
     private TaskItem? _dragItem;
@@ -37,10 +40,12 @@ public partial class TasksView : UserControl
     /// <summary>Raised whenever the list's natural height may have changed (rows added, removed, re-wrapped, folded).</summary>
     public event Action? ContentHeightChanged;
 
-    internal void Initialize(Workspace ws, PanelWindow panel)
+    internal void Initialize(Workspace ws, SpaceView view, PanelWindow panel)
     {
         _ws = ws;
+        _view = view;
         _panel = panel;
+        DataContext = view;
         DataObject.AddPastingHandler(AddBox, OnAddBoxPaste);
 
         ListStack.SizeChanged += (_, _) => ContentHeightChanged?.Invoke();
@@ -67,7 +72,7 @@ public partial class TasksView : UserControl
                 if (text.Length > 0)
                 {
                     bool asNow = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
-                    var task = _ws.AddTask(text, asNow);
+                    var task = _ws.AddTask(text, asNow, _view.NewItemSpace);
                     AddBox.Clear();
                     if (asNow) AnimateNowCard(); else AnimateIn(task);
                     Scroller.ScrollToTop();
@@ -80,12 +85,12 @@ public partial class TasksView : UserControl
                 e.Handled = true;
                 break;
 
-            case Key.Down when _ws.Open.Count > 0:
-                FocusEditor(_ws.Open[0], atEnd: true);
+            case Key.Down when _view.Open.Count > 0:
+                FocusEditor(_view.Open[0], atEnd: true);
                 e.Handled = true;
                 break;
 
-            case Key.Up when _ws.Now != null:
+            case Key.Up when _view.Now != null:
                 FocusTextBox(NowEditor, atEnd: true);
                 e.Handled = true;
                 break;
@@ -113,7 +118,7 @@ public partial class TasksView : UserControl
 
         e.CancelCommand();
         var added = new List<TaskItem>();
-        for (int i = lines.Count - 1; i >= 0; i--) added.Add(_ws.AddTask(lines[i]));
+        for (int i = lines.Count - 1; i >= 0; i--) added.Add(_ws.AddTask(lines[i], space: _view.NewItemSpace));
         Scroller.ScrollToTop();
         _panel.ShowToast($"Added {lines.Count} tasks", () => { foreach (var t in added) _ws.Delete(t); });
     }
@@ -163,8 +168,8 @@ public partial class TasksView : UserControl
 
     private void ClearDone_Click(object sender, RoutedEventArgs e)
     {
-        int n = _ws.Done.Count;
-        var undo = _ws.ClearDone();
+        int n = _view.Done.Count;
+        var undo = _view.ClearDone();
         _panel.ShowToast(n == 1 ? "Cleared 1 finished task" : $"Cleared {n} finished tasks", undo);
     }
 
@@ -189,6 +194,15 @@ public partial class TasksView : UserControl
         if (task == null) return;
         _ws.ClearNow();
         AnimateIn(task);
+    }
+
+    /// <summary>The line about the task in focus in another space: shows that space.</summary>
+    private void NowLine_Click(object sender, RoutedEventArgs e)
+    {
+        if (_view.NowElsewhere is not { } now) return;
+        _panel.ShowSpace(_view.SpaceOf(now));
+        // The line goes with the switch: typing goes on in the add box, as after a click on the strip.
+        _panel.FocusDefault();
     }
 
     // ================= Deleting =================
@@ -226,7 +240,67 @@ public partial class TasksView : UserControl
 
     private void MenuTop_Click(object sender, RoutedEventArgs e)
     {
-        if (MenuItemTask(sender) is { } t) MoveWithFlip(_ws.Open.IndexOf(t), 0);
+        if (MenuItemTask(sender) is { } t) MoveWithFlip(_view.Open.IndexOf(t), 0);
+    }
+
+    // ================= Spaces: Move to (the menus, and Ctrl+M) =================
+
+    /// <summary>"Move to" shows once there are spaces, listing them all; the task's own is greyed out.</summary>
+    private void TaskMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ContextMenu menu || (menu.PlacementTarget as FrameworkElement)?.DataContext is not TaskItem task) return;
+        if (menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Tag is "MoveTo") is not { } moveTo) return;
+        moveTo.Visibility = _view.HasSpaces ? Visibility.Visible : Visibility.Collapsed;
+        moveTo.Items.Clear();
+        if (_view.HasSpaces) FillMoveMenu(moveTo.Items, task);
+    }
+
+    private void FillMoveMenu(ItemCollection items, TaskItem task)
+    {
+        string current = _view.SpaceOf(task);
+        foreach (var space in _view.Tabs)
+        {
+            var item = new MenuItem
+            {
+                // A TextBlock, so an underscore in a name stays an underscore.
+                Header = new TextBlock { Text = space.Name, MaxWidth = 220, TextTrimming = TextTrimming.CharacterEllipsis },
+                IsEnabled = space.Id != current,
+            };
+            System.Windows.Automation.AutomationProperties.SetName(item, space.Name);
+            item.Click += (_, _) => MoveToSpace(task, space.Id);
+            items.Add(item);
+        }
+    }
+
+    /// <summary>Ctrl+M: the same list of spaces, under the task.</summary>
+    private void OpenMoveMenu(TaskItem task, TextBox editor)
+    {
+        var menu = new ContextMenu { PlacementTarget = editor, Placement = PlacementMode.Bottom };
+        System.Windows.Automation.AutomationProperties.SetName(menu, "Move to");
+        FillMoveMenu(menu.Items, task);
+        menu.Opened += (_, _) => menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.IsEnabled)?.Focus();
+        menu.IsOpen = true;
+    }
+
+    /// <summary>Puts a task in another space; only its space changes. Undo puts it back.</summary>
+    private void MoveToSpace(TaskItem task, string space)
+    {
+        string before = task.Space.Length > 0 ? task.Space : SpaceField.Main;
+        bool leaves = !_view.IsAll && space != _view.Shown && _view.Open.Contains(task);
+        void Move()
+        {
+            _ws.MoveTaskToSpace(task.Id, space);
+            // Out of the list on show (anywhere but All): typing goes on in the add box.
+            if (!_view.IsAll) Dispatcher.BeginInvoke(DispatcherPriority.Input, FocusInput);
+            _panel.Announce($"Moved to {_view.NameOf(space)}");
+            _panel.ShowToast($"Moved to {SpaceView.ToastName(_view.NameOf(space))}", () =>
+            {
+                _ws.MoveTaskToSpace(task.Id, before);
+                if (task == _ws.Now) AnimateNowCard(); else AnimateIn(task);
+            });
+        }
+        if (leaves && ContainerFor(task) is { } container) Anim.Collapse(container, 180, Move);
+        else Move();
     }
 
     // ================= Editing in place =================
@@ -282,11 +356,16 @@ public partial class TasksView : UserControl
                 e.Handled = true;
                 break;
 
+            case Key.M when mods == ModifierKeys.Control && _view.HasSpaces:
+                OpenMoveMenu(task, tb);
+                e.Handled = true;
+                break;
+
             case Key.Up when mods == ModifierKeys.Alt && !isNow:
             case Key.Down when mods == ModifierKeys.Alt && !isNow:
-                int from = _ws.Open.IndexOf(task);
+                int from = _view.Open.IndexOf(task);
                 int to = key == Key.Up ? from - 1 : from + 1;
-                if (to >= 0 && to < _ws.Open.Count)
+                if (to >= 0 && to < _view.Open.Count)
                 {
                     int caret = tb.CaretIndex;
                     MoveWithFlip(from, to);
@@ -300,24 +379,24 @@ public partial class TasksView : UserControl
 
             case Key.Up when mods == ModifierKeys.None && OnFirstLine(tb):
                 if (isNow) break;
-                int i = _ws.Open.IndexOf(task);
-                if (i > 0) FocusEditor(_ws.Open[i - 1], atEnd: true);
+                int i = _view.Open.IndexOf(task);
+                if (i > 0) FocusEditor(_view.Open[i - 1], atEnd: true);
                 else FocusInput();
                 e.Handled = true;
                 break;
 
             case Key.Down when mods == ModifierKeys.None && OnLastLine(tb):
                 if (isNow) { FocusInput(); e.Handled = true; break; }
-                int j = _ws.Open.IndexOf(task);
-                if (j >= 0 && j < _ws.Open.Count - 1) FocusEditor(_ws.Open[j + 1], atEnd: true);
+                int j = _view.Open.IndexOf(task);
+                if (j >= 0 && j < _view.Open.Count - 1) FocusEditor(_view.Open[j + 1], atEnd: true);
                 e.Handled = true;
                 break;
 
             case Key.Back when tb.Text.Length == 0 && !isNow:
-                int k = _ws.Open.IndexOf(task);
+                int k = _view.Open.IndexOf(task);
                 _editOriginal = null;
                 DeleteWithUndo(task, animate: false);
-                if (k > 0 && k - 1 < _ws.Open.Count) FocusEditor(_ws.Open[k - 1], atEnd: true);
+                if (k > 0 && k - 1 < _view.Open.Count) FocusEditor(_view.Open[k - 1], atEnd: true);
                 else FocusInput();
                 e.Handled = true;
                 break;
@@ -361,8 +440,8 @@ public partial class TasksView : UserControl
         if (_dragItem == null || !IsMouseCaptured) return;
 
         double y = e.GetPosition(OpenList).Y;
-        int from = _ws.Open.IndexOf(_dragItem), to = from;
-        for (int i = 0; i < _ws.Open.Count; i++)
+        int from = _view.Open.IndexOf(_dragItem), to = from;
+        for (int i = 0; i < _view.Open.Count; i++)
         {
             if (i == from || ContainerAt(i) is not { } c) continue;
             double mid = c.TranslatePoint(new Point(0, 0), OpenList).Y + c.ActualHeight / 2;
@@ -410,13 +489,13 @@ public partial class TasksView : UserControl
     {
         if (from < 0 || to < 0 || from == to) return;
         var before = new Dictionary<TaskItem, double>();
-        foreach (var t in _ws.Open)
+        foreach (var t in _view.Open)
             if (ContainerFor(t) is { } c) before[t] = c.TranslatePoint(new Point(0, 0), OpenList).Y;
 
-        _ws.MoveOpen(from, to);
+        _view.MoveOpen(from, to);
         OpenList.UpdateLayout();
 
-        foreach (var t in _ws.Open)
+        foreach (var t in _view.Open)
         {
             if (ContainerFor(t) is not { } c || !before.TryGetValue(t, out double oldY)) continue;
             double dy = oldY - c.TranslatePoint(new Point(0, 0), OpenList).Y;

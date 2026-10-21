@@ -16,11 +16,16 @@
         <StackPanel>
             <StackPanel Orientation="Horizontal">
                 <Ellipse x:Name="Dot" Width="6" Height="6" Fill="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                <TextBlock x:Name="Label" Style="{StaticResource Overline}" Text="NOW" VerticalAlignment="Center" />
+                <TextBlock x:Name="Label" Style="{StaticResource Overline}" Text="NOW" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             </StackPanel>
             <TextBlock x:Name="TaskText" Margin="0,3,0,0" FontFamily="{StaticResource UiFont}" FontSize="13.5" FontWeight="SemiBold"
                        Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" MaxHeight="58" TextTrimming="CharacterEllipsis" />
             <TextBlock x:Name="Summary" Margin="0,3,0,0" Style="{StaticResource Caption}" />
+            <!-- Once there are spaces: the space's name, which gives way (with an ellipsis) before its counts do. -->
+            <StackPanel x:Name="SpaceSummary" Orientation="Horizontal" Margin="0,3,0,0" Visibility="Collapsed">
+                <TextBlock x:Name="SpaceName" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="SpaceCounts" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
         </StackPanel>
     </Border>
 </Window>

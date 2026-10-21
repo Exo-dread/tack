@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { exportFile, importFile, readSheetRecord, readSpaceRecord, readTaskRecord, type TackFile } from '../../src/model/file';
 import { encode, Hlc, stampTime, ZERO, type Stamp } from '../../src/model/hlc';
 import { mergeSheet, mergeSpace, mergeTask } from '../../src/model/merge';
-import { effectiveSpace, MAIN } from '../../src/model/spaces';
+import { ALL, effectiveSpace, MAIN } from '../../src/model/spaces';
 import { wellFormedValues } from '../../src/model/text';
 import type { Sheet, Space, Task, WorkspaceData } from '../../src/model/types';
 import { untouchedWelcome } from '../../src/model/welcome';
@@ -162,6 +162,9 @@ describe('reading a space from a file', () => {
     expect(readSpaceRecord({ ...good, name: 'x'.repeat(150) }, NOW)?.name).toBe('x'.repeat(100));
     expect(readSpaceRecord({ ...good, name: `${'x'.repeat(99)}${U(0xd83d, 0xde00)}` }, NOW)?.name).toBe('x'.repeat(99));
     expect(readSpaceRecord({ ...good, name: ` ${'y'.repeat(100)} ` }, NOW)?.name).toBe('y'.repeat(100));
+    // Control characters are spaces: none is kept invisible, and U+0085 can't break the line on the desktop.
+    expect(readSpaceRecord({ ...good, name: `a${U(0)}b${U(0x1b)}c${U(0x7f)}d${U(0x85)}e${U(0x9f)}` }, NOW)?.name).toBe('a b c d e');
+    expect(readSpaceRecord({ ...good, name: `${U(0x85)}Work${U(0x85, 0x85)}` }, NOW)?.name).toBe('Work');
     for (const bad of [
       'nonsense',
       null,
@@ -199,6 +202,8 @@ describe('effectiveSpace', () => {
     expect(effectiveSpace('gone', spaces)).toBe(MAIN);
     expect(effectiveSpace('nosuchspace', spaces)).toBe(MAIN);
     expect(effectiveSpace('Work', spaces)).toBe(MAIN);
+    // All's id is never a space, even with a live record (only a hand-made file has one).
+    expect(effectiveSpace(ALL, [...spaces, space(ALL, 'Everything')])).toBe(MAIN);
   });
 });
 

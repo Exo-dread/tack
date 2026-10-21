@@ -1167,6 +1167,8 @@ html.kb-open .page.notes { bottom: calc(var(--dock-h) + 10px); }
   bottom: calc(var(--dock-h) + max(10px, var(--safe-b)) + 14px);
   z-index: 30;
   display: grid;
+  /* One column no wider than the screen, so a long message ends in an ellipsis and Undo stays on it. */
+  grid-template-columns: minmax(0, 1fr);
   justify-items: center;
   padding: 0 16px;
   pointer-events: none;
@@ -1540,7 +1542,7 @@ kbd {
   .notes-head .note-tools .spacer, .notes-head .n-done { display: none; }
   .notes-head .tool span { display: none; }
   .notes-head .tool { padding: 0 11px; }
-  .notes-head .sheet-pill { height: 38px; font-size: 14.5px; }
+  .notes-head :is(.sheet-pill, .sheet-ghost) { height: 38px; font-size: 14.5px; }
   .wide .paper { padding: 14px 22px 0; }
   .wide .editor { padding-bottom: 40px; }
   .wide .empty { padding-top: 48px; }
@@ -1585,3 +1587,263 @@ kbd {
 .install-actions .note { margin: 0; }
 
 #boot-error .button { margin-top: 16px; }
+
+/* ============================================================== spaces
+   Nothing here shows until there's a space besides Main (the .spaces class, or elements that
+   only exist then): with Main alone, Tack looks exactly as it always has. */
+
+/* ---- the title: the space on show, which opens the switcher */
+
+.app.spaces .title > span { display: none !important; }
+
+.space-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  height: 40px;
+  margin: -7px 0 0 -8px;
+  padding: 0 6px 0 8px;
+  border-radius: 12px;
+  font: inherit;
+  letter-spacing: inherit;
+  transition: background-color .15s ease;
+}
+
+.space-title-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.space-title .icon { width: 20px; height: 20px; margin-top: 2px; color: var(--text-3); }
+.space-title:active { background: var(--fill-2); }
+/* Its ring stays inside it: it sits tight under the top of the screen, over the subtitle. */
+.space-title:focus-visible { outline-offset: -2px; }
+
+@media (hover: hover) {
+  .space-title:hover { background: var(--fill); }
+}
+
+.app:not([data-mode="notes"]) .actions .sheet-more { display: none; }
+
+/* ---- the task box says where Enter puts a task ("Add to BIM coordination"): cut with an ellipsis, never mid-word.
+   While it's empty the (hidden) send button is out of the way, so the hint has the whole box. */
+
+.app.spaces .composer-input { text-overflow: ellipsis; }
+.app.spaces .composer { position: relative; }
+.app.spaces .composer:not(.has-text) .send { position: absolute; right: 6px; }
+.app.spaces .composer:not(.has-text) .composer-input { padding-right: 14px; }
+
+/* ---- a task's tools with Move among them: on a narrow phone Focus and Delete go icon-only
+   (their names stay for screen readers), so all five keep to one line */
+
+@media (max-width: 400px) {
+  .app.spaces .row-tools :is(.t-focus, .t-delete) { width: 44px; padding: 0; justify-content: center; }
+  .app.spaces .row-tools :is(.t-focus, .t-delete) > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* ---- the task in focus, from another space */
+
+.now-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 4px 0 8px;
+  padding: 0 14px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--glass));
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--stroke));
+  font-size: 14.5px;
+  text-align: left;
+  transition: background-color .15s ease, transform .15s ease;
+}
+
+.now-line .now-dot { flex: none; animation: none; }
+/* A long space name gives way (with an ellipsis) before the task does: the task keeps at least 40%. */
+.now-line-where { flex: 0 1 auto; min-width: 0; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); font-weight: 650; }
+.now-line-text { flex: 1 1 40%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.now-line:active { transform: scale(.98); }
+
+@media (hover: hover) {
+  .now-line:hover { background: color-mix(in srgb, var(--accent) 12%, var(--glass)); }
+}
+
+/* ---- All: each task's space, small and quiet */
+
+.row-space {
+  display: block;
+  margin-top: 1px;
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.3;
+  background: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text:has(> .row-space) { padding-bottom: 10px; }
+.now-head .overline:has(> .now-space) { min-width: 0; }
+.now-space { min-width: 0; margin-left: -2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); }
+
+/* ---- sheets listing spaces (the switcher, Move to…) */
+
+.space-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  margin-top: 6px;
+  padding: 4px;
+  border-radius: 20px;
+  background: var(--fill);
+  border: 1px solid var(--stroke);
+}
+
+.space-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px 0 12px;
+  border-radius: 16px;
+  text-align: left;
+  font-size: 16.5px;
+  transition: background-color .15s ease;
+}
+
+.space-option:active:not(:disabled) { background: var(--fill-2); }
+.space-option[aria-current="true"] { font-weight: 650; }
+.space-option:disabled { opacity: 1; color: var(--text-3); }
+.space-mark { flex: none; display: grid; place-items: center; width: 24px; color: var(--accent); }
+.space-mark .icon { width: 20px; height: 20px; }
+.space-option-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.space-option-count { color: var(--text-3); font-size: 14.5px; font-variant-numeric: tabular-nums; }
+.space-add { color: var(--accent); font-weight: 600; }
+
+@media (hover: hover) {
+  .space-option:hover:not(:disabled) { background: var(--fill-2); }
+}
+
+.space-new-form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 52px;
+  padding: 0 4px 0 12px;
+}
+
+.space-new-name,
+.space-name {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--fill-2);
+  color: var(--text);
+  font: 16px var(--font);
+  caret-color: var(--accent);
+  outline: none;
+}
+
+.space-new-name:focus-visible,
+.space-name:focus-visible,
+.space-new-name:focus,
+.space-name:focus { box-shadow: 0 0 0 2px var(--accent); }
+
+.space-new-name::placeholder { color: var(--text-3); }
+
+/* ---- Settings → Spaces */
+
+.space-rows { display: grid; grid-template-columns: minmax(0, 1fr); }
+
+.space-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 56px;
+}
+
+.space-row + .space-row { border-top: 1px solid var(--stroke); }
+
+.space-name {
+  margin-left: -10px;
+  margin-right: 6px;
+  background: transparent;
+  font-size: 16px;
+  text-overflow: ellipsis;
+}
+
+.space-name:focus { background: var(--fill-2); }
+.space-row .icon-button { width: 44px; height: 44px; border-radius: 12px; }
+.space-row .icon-button .icon { width: 19px; height: 19px; }
+.space-row .icon-button:disabled { opacity: .3; }
+.space-delete { margin-left: 8px; }
+.space-delete:not(:disabled) { color: var(--danger); }
+
+.group-body > .space-new { margin: 0 -12px; }
+.group-body > .space-new .space-option { min-height: 48px; }
+.group-body > .space-new .space-new-form { padding-left: 12px; }
+.space-new + .note { margin-top: 4px; }
+
+/* ---- a space's blank paper: a quiet stand-in where its first sheet will be (no sheet yet) */
+
+.sheet-ghost {
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: 44px;
+  padding: 0 15px;
+  color: var(--text-3);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ---- the ⋯ menu */
+
+.menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 210px;
+  padding: 6px;
+  border-radius: 18px;
+  background: var(--glass-solid);
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+  backdrop-filter: blur(26px) saturate(170%);
+  border: 1px solid var(--stroke-2);
+  box-shadow: var(--shadow-2);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px 0 12px;
+  border-radius: 12px;
+  font-size: 15.5px;
+  text-align: left;
+}
+
+.menu-item .icon { width: 20px; height: 20px; color: var(--accent); }
+.menu-item.danger .icon { color: var(--danger); }
+.menu-item:focus-visible { outline-offset: -2px; }
+.menu-item:active, .menu-item:focus-visible { background: var(--fill-2); }
+
+@media (hover: hover) {
+  .menu-item:hover:not(:disabled) { background: var(--fill-2); }
+}
+
+/* ---- toasts over an open sheet (Settings → Spaces: "Deleted Dev · Undo") */
+
+dialog.sheet > .toasts { bottom: max(18px, calc(var(--safe-b) + 10px)); z-index: 2; }

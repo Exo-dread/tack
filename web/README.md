@@ -18,6 +18,16 @@ same notes, same `tack.json`.
   Finishing the last task of the day gets a single soft bloom of light. No streaks, no points.
 - **Delete with Undo, never "Are you sure?"** Swipe left, or use the row's tools.
 - **Reorder** by holding a task and dragging (or dragging with a mouse, or Alt+↑/↓).
+- **Spaces, if you want them.** Keep work, development and personal tasks apart: Settings →
+  Spaces → *New space* (and rename Main there, say to "Work"). Once there's a second space, the
+  title says which one is on show ("Work ▾"); tap it for All, each space with its open tasks, and
+  *New space*. On a keyboard, Alt+1 to Alt+9 show the spaces in order and Alt+0 shows All, even
+  while you type a task (the draft stays). A space shows its own tasks and sheets in the one order
+  you set; new ones go into the space on show ("Add to Work"; from All, into Main). Tap a task →
+  *Move* (or Notes ⋯ → *Move sheet to…*) to put it in another space, with Undo. The task in focus
+  shows in other spaces as a line, "Now in Work: …", that takes you there; Done, Clear and the
+  count go by space, and All shows everything with each task's space. Each device remembers which
+  space it shows. Until you make a space, nothing about them is on screen.
 - **Notes are scrap paper.** Plain text, titled by the first line, saved as you type. Lists continue
   themselves; *Make task* turns the current line or selection into tasks; *Time* stamps the date.
 - **Light and dark**, six accents (each with a deeper shade for light mode), haptic ticks on phones,
@@ -57,7 +67,8 @@ web/
 ├── src/
 │   ├── main.ts             Boot: open storage, load, seed the first run, start the app
 │   ├── model/              Pure, tested, no DOM
-│   │   ├── workspace.ts    Every mutation; views (now/open/done); batched change events
+│   │   ├── workspace.ts    Every mutation; views (now/open/done, per space); batched change events
+│   │   ├── spaces.ts       Spaces: names, ids, where a task or sheet shows
 │   │   ├── merge.ts        Field-by-field merge (tabs today, devices tomorrow)
 │   │   ├── hlc.ts          Hybrid logical clocks
 │   │   ├── order.ts        Fractional sort keys
@@ -78,7 +89,9 @@ web/
 │   │   ├── tasks.ts        Keyed rendering + FLIP, ticking, editing in place
 │   │   ├── gestures.ts     Swipe and long-press reorder (pointer events)
 │   │   ├── notes.ts        Sheets, list continuation, make task
-│   │   ├── settings.ts     Bottom sheet: appearance, data, install, about
+│   │   ├── spaces.ts       Spaces on screen: the switcher, Move to…, the space on show
+│   │   ├── settings.ts     Bottom sheet: appearance, spaces, sync, data, install, about
+│   │   ├── sheet.ts        Small bottom sheets (the switcher, Move to…) and the ⋯ menu
 │   │   ├── motion.ts       Springs (CSS linear()), FLIP, reduced motion
 │   │   ├── viewport.ts     Keeps the app inside the visible area above the keyboard
 │   │   └── orb.ts, toast.ts, haptics.ts, theme.ts, icons.ts, install.ts, sw.ts, dom.ts

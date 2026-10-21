@@ -145,8 +145,10 @@ hide a device's changes after it's gone. Both apps apply the same rules (`device
   100,000 characters per task and 1,000,000 per note; clock device ids of at most 32 characters;
   order keys of at most 10,000. A file over a limit is set aside; an over-long record is skipped.
   Space names are the exception: both apps keep every name to 100 characters (UTF-16 units, never
-  half an emoji) wherever it comes from, typed, imported or read, so a longer one is cut, not
-  skipped, and no device holds a name its peers would refuse.
+  half an emoji) and one line, control characters made spaces, wherever it comes from, typed,
+  imported or read, so a longer one is cut, not skipped, and no device holds a name its peers would
+  refuse. A space record whose id is `all` (no app makes one) is kept and synced as it came, but
+  neither app treats it as a space: `all` is the view of everything, so what's in it shows in Main.
 - **Dates** must be ISO 8601 dates of at most 40 characters; anything else counts as missing (an
   empty `completed` means not done, in both apps).
 - **Clocks** more than a year and a day ahead are refused in files and not adopted by clocks.

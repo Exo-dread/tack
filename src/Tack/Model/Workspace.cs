@@ -118,13 +118,17 @@ public sealed class Workspace : Observable, IImportTarget
 
     // ---- Task operations ----
 
-    /// <summary>Adds a task at the top of the list (or straight into focus).</summary>
-    public TaskItem AddTask(string text, bool asNow = false)
+    /// <summary>
+    /// Adds a task at the top of the list (or straight into focus), in <paramref name="space"/> if
+    /// that's a live space other than Main (its space stamped with the task's other clocks), else in Main.
+    /// </summary>
+    public TaskItem AddTask(string text, bool asNow = false, string? space = null)
     {
         string? top = TopOrder();
         string c = Clock.Now();
+        string where = RealSpace(space);
         var task = AddItem(new TaskData(_newId(), JsText.CleanTaskText(text), Today(), null,
-            top != null ? OrderKey.Before(top) : OrderKey.Mid, false, "", TaskClocks.All(c)));
+            top != null ? OrderKey.Before(top) : OrderKey.Mid, false, where, TaskClocks.All(c) with { Space = where.Length > 0 ? c : Stamp.Zero }));
         if (asNow)
         {
             var previous = _now;
@@ -229,12 +233,16 @@ public sealed class Workspace : Observable, IImportTarget
         };
     }
 
-    public Action ClearDone()
+    public Action ClearDone() => ClearDone(null);
+
+    /// <summary>Clears finished tasks: all of them, or only <paramref name="only"/> (what a space shows). Returns an undo action.</summary>
+    internal Action ClearDone(IReadOnlyCollection<TaskItem>? only)
     {
-        var removed = Done.ToList();
+        var removed = only == null ? Done.ToList() : Done.Where(only.Contains).ToList();
         if (removed.Count == 0) return () => { };
         foreach (var t in removed) Remove(t);
-        Done.Clear();
+        if (only == null) Done.Clear();
+        else foreach (var t in removed) Done.Remove(t);
         return () =>
         {
             foreach (var t in removed)
@@ -259,11 +267,29 @@ public sealed class Workspace : Observable, IImportTarget
         if (target != from) Open.Move(from, target);
     }
 
+    /// <summary>
+    /// Gives an open task the place at <paramref name="index"/> in <paramref name="list"/> (some of the open
+    /// tasks, in order, without it: one space's), so only tasks of that list make room where keys tie.
+    /// </summary>
+    internal void MoveOpenAmong(TaskItem task, IReadOnlyList<TaskItem> list, int index)
+    {
+        if (!Open.Contains(task) || index < 0 || index > list.Count) return;
+        SetOrderAt(task, list, index);
+        var sorted = Open.ToList();
+        sorted.Sort(CompareOpen);
+        Reconcile(Open, sorted);
+    }
+
     // ---- Notes ----
 
-    public NoteSheet AddSheet()
+    /// <summary>
+    /// A new sheet after the last one, in <paramref name="space"/> as <see cref="AddTask"/> puts tasks
+    /// in one, and the one being written on. It may start with <paramref name="text"/> (the first
+    /// keystrokes on a space's blank paper).
+    /// </summary>
+    public NoteSheet AddSheet(string? space = null, string text = "")
     {
-        var sheet = AddSheetAtEnd();
+        var sheet = AddSheetAtEnd(space, text);
         ActiveSheet = sheet;
         return sheet;
     }
@@ -292,11 +318,43 @@ public sealed class Workspace : Observable, IImportTarget
         };
     }
 
-    // ---- Spaces (groundwork: kept, merged and synced; nothing on screen calls these yet) ----
+    // ---- Spaces ----
 
-    /// <summary>Live spaces in their order (key, then id), Main's own record included once it has one.</summary>
+    /// <summary>Raised when a space is added, renamed, moved or deleted, or a task or sheet moves to another space.</summary>
+    public event EventHandler? SpacesChanged;
+
+    /// <summary>
+    /// Live spaces in their order (key, then id), Main's own record included once it has one. A
+    /// record with All's id is never a space (<see cref="SpaceField.All"/>).
+    /// </summary>
     internal IReadOnlyList<SpaceData> SpaceList =>
-        _spaceIds.Select(id => _spaces[id]).Where(s => !s.Deleted).OrderBy(s => s, Comparer<SpaceData>.Create((a, b) => CompareKeys(a.Order, a.Id, b.Order, b.Id))).ToList();
+        _spaceIds.Select(id => _spaces[id]).Where(s => !s.Deleted && s.Id != SpaceField.All).OrderBy(s => s, Comparer<SpaceData>.Create((a, b) => CompareKeys(a.Order, a.Id, b.Order, b.Id))).ToList();
+
+    /// <summary>
+    /// The spaces as they're listed everywhere, Main included: by order key, then id. Main without a
+    /// place of its own comes first: with no record (never renamed or moved) as <see cref="MainStandIn"/>,
+    /// or as its record when it was only ever renamed (its order never stamped, so its key means nothing).
+    /// </summary>
+    internal IReadOnlyList<SpaceData> ShownSpaces
+    {
+        get
+        {
+            var live = SpaceList;
+            if (MainHasPlace) return live;
+            var main = live.FirstOrDefault(s => s.Id == SpaceField.Main) ?? MainStandIn;
+            return [main, .. live.Where(s => s.Id != SpaceField.Main)];
+        }
+    }
+
+    /// <summary>Main in <see cref="ShownSpaces"/> while it has no record: no name ("Main"), no key, no clocks.</summary>
+    internal static readonly SpaceData MainStandIn = new(SpaceField.Main, "", "", false, new SpaceClocks(Stamp.Zero, Stamp.Zero, Stamp.Zero));
+
+    /// <summary>
+    /// Whether Main has a place among the spaces' keys: a live record whose order was stamped (Main was
+    /// moved, here or on another device). A record made by renaming alone has none, so renaming never
+    /// moves Main, on any device.
+    /// </summary>
+    private bool MainHasPlace => _spaces.TryGetValue(SpaceField.Main, out var main) && !main.Deleted && main.Clk.Order != Stamp.Zero;
 
     /// <summary>Any space with this id, deleted ones included.</summary>
     internal SpaceData? SpaceById(string id) => _spaces.GetValueOrDefault(id);
@@ -309,12 +367,63 @@ public sealed class Workspace : Observable, IImportTarget
         var space = new SpaceData(_newId(), SpaceField.CleanName(name), last != null ? OrderKey.After(last) : OrderKey.Mid, false, SpaceClocks.All(c));
         PutSpace(space);
         MarkChanged();
+        SpacesTouched();
         return space;
     }
 
     /// <summary>
+    /// Moves a space to <paramref name="index"/> in <see cref="ShownSpaces"/> (Main included): it gets a
+    /// key between its new neighbours, stamped on its order alone (neighbours that share a key with the
+    /// one above make room too, as tasks do: <see cref="OrderKey.KeysAt"/>). Main has no key until it
+    /// has a place: moving Main gives it one (making its record if it has none: name "" so it still
+    /// shows as Main, order stamped, name and deleted Zero; a Main renamed but never moved keeps its
+    /// name and has only its order stamped); a space going above a Main with no place first gives Main
+    /// one the same way, at the top.
+    /// </summary>
+    internal void MoveSpace(string id, int index)
+    {
+        var shown = ShownSpaces;
+        int from = -1;
+        for (int i = 0; i < shown.Count; i++) if (shown[i].Id == id) from = i;
+        if (from < 0) return;
+        index = Math.Clamp(index, 0, shown.Count - 1);
+        if (index == from) return;
+        var others = shown.Where(s => s.Id != id).ToList();
+
+        if (id != SpaceField.Main && !MainHasPlace)
+        {
+            // others[0] is Main, first whatever its key.
+            if (index > 0)
+            {
+                // Main stays first whatever the keys: place among the spaces after it.
+                others.RemoveAt(0);
+                index--;
+            }
+            else
+            {
+                // Going above Main: Main needs a key first, ahead of everything else.
+                if (_spaces.GetValueOrDefault(SpaceField.Main) is { Deleted: true }) return; // a deleted Main record (only a damaged file has one)
+                others[0] = PlaceMain(OrderKey.Between(null, others.Count > 1 ? others[1].Order : null));
+            }
+        }
+
+        var keys = OrderKey.KeysAt(others.Select(s => s.Order).ToList(), index);
+        if (id == SpaceField.Main) PlaceMain(keys[0]);
+        else PutSpace(_spaces[id] with { Order = keys[0], Clk = _spaces[id].Clk with { Order = Clock.Now() } });
+        for (int i = 1; i < keys.Length; i++)
+        {
+            var s = _spaces[others[index + i - 1].Id];
+            PutSpace(s with { Order = keys[i], Clk = s.Clk with { Order = Clock.Now() } });
+        }
+        MarkChanged();
+        SpacesTouched();
+    }
+
+    /// <summary>
     /// Renames a space (not a deleted one; the same name changes nothing). Main has no record until
-    /// it's first renamed; this makes it. Names are kept to 100 characters (<see cref="SpaceField.CleanName"/>).
+    /// it's first renamed; this makes it, with the name alone and no place (its order never stamped),
+    /// so Main stays where it was, here and on every device the name reaches.
+    /// Names are kept to 100 characters (<see cref="SpaceField.CleanName"/>).
     /// </summary>
     internal void RenameSpace(string id, string name)
     {
@@ -324,6 +433,7 @@ public sealed class Workspace : Observable, IImportTarget
             if (id != SpaceField.Main) return;
             PutSpace(new SpaceData(SpaceField.Main, text, OrderKey.Mid, false, new SpaceClocks(Clock.Now(), Stamp.Zero, Stamp.Zero)));
             MarkChanged();
+            SpacesTouched();
             return;
         }
         if (space.Deleted || space.Name == text) return;
@@ -351,6 +461,7 @@ public sealed class Workspace : Observable, IImportTarget
         task.Space = spaceId;
         task.Clk = task.Clk with { Space = Clock.Now() };
         MarkChanged();
+        SpacesTouched();
     }
 
     /// <summary>Puts a sheet in a space ("main" for Main). Nothing else about it changes.</summary>
@@ -360,6 +471,7 @@ public sealed class Workspace : Observable, IImportTarget
         sheet.Space = spaceId;
         sheet.Clk = sheet.Clk with { Space = Clock.Now() };
         MarkChanged();
+        SpacesTouched();
     }
 
     // ---- Housekeeping ----
@@ -672,6 +784,7 @@ public sealed class Workspace : Observable, IImportTarget
         if (Sheets.Count == 0) AddSheetAtEnd();
         if (_activeSheet == null || !Sheets.Contains(_activeSheet)) ActiveSheet = Sheets[Math.Min(activeIndex, Sheets.Count - 1)];
         RaiseSummary();
+        SpacesTouched(); // merged or restored records may have moved, and spaces come and go
     }
 
     // ---- Stamping (the order of Clock.Now() calls matches Tack Focus, so clocks come out identical) ----
@@ -715,19 +828,34 @@ public sealed class Workspace : Observable, IImportTarget
         MarkChanged();
     }
 
+    /// <summary>
+    /// Gives Main a place: its record's order, stamped (a name it was given stays). With no record yet,
+    /// one is made: no name (it shows as "Main"), only the order stamped. Returns the record.
+    /// </summary>
+    private SpaceData PlaceMain(string order)
+    {
+        var main = _spaces.TryGetValue(SpaceField.Main, out var existing)
+            ? existing with { Order = order, Clk = existing.Clk with { Order = Clock.Now() } }
+            : new SpaceData(SpaceField.Main, "", order, false, new SpaceClocks(Stamp.Zero, Clock.Now(), Stamp.Zero));
+        PutSpace(main);
+        return main;
+    }
+
     private void SetSpaceName(SpaceData space, string name)
     {
         PutSpace(space with { Name = name, Clk = space.Clk with { Name = Clock.Now() } });
         MarkChanged();
+        SpacesTouched();
     }
 
     private void SetSpaceDeleted(SpaceData space, bool deleted)
     {
         PutSpace(space with { Deleted = deleted, Clk = space.Clk with { Deleted = Clock.Now() } });
         MarkChanged();
+        SpacesTouched();
     }
 
-    /// <summary>Adds or replaces a space record (they're immutable; nothing on screen holds them yet).</summary>
+    /// <summary>Adds or replaces a space record (they're immutable: the screen asks for them again on <see cref="SpacesChanged"/>).</summary>
     private void PutSpace(SpaceData space)
     {
         if (!_spaces.ContainsKey(space.Id)) _spaceIds.Add(space.Id);
@@ -783,14 +911,20 @@ public sealed class Workspace : Observable, IImportTarget
         return sheet;
     }
 
-    private NoteSheet AddSheetAtEnd()
+    private NoteSheet AddSheetAtEnd(string? space = null, string text = "")
     {
         string? last = Sheets.Count > 0 ? Sheets[^1].Order : null;
         string c = Clock.Now();
-        var sheet = AddItem(new SheetData(_newId(), "", Today(), last != null ? OrderKey.After(last) : OrderKey.Mid, false, "", SheetClocks.All(c)));
+        string where = RealSpace(space);
+        var sheet = AddItem(new SheetData(_newId(), JsText.NoteText(text), Today(), last != null ? OrderKey.After(last) : OrderKey.Mid, false, where,
+            SheetClocks.All(c) with { Space = where.Length > 0 ? c : Stamp.Zero }));
         Sheets.Add(sheet);
         return sheet;
     }
+
+    /// <summary>What a new task or sheet records as its space: a live space other than Main, else "" (Main).</summary>
+    private string RealSpace(string? space) =>
+        space != null && Spaces.Effective(space, _spaces.Values) is var s && s != SpaceField.Main ? s : "";
 
     /// <summary>Any task with this id, deleted ones included.</summary>
     internal TaskItem? TaskById(string id) => _tasks.GetValueOrDefault(id);
@@ -887,6 +1021,8 @@ public sealed class Workspace : Observable, IImportTarget
     }
 
     private void MarkChanged() => Changed?.Invoke(this, EventArgs.Empty);
+
+    private void SpacesTouched() => SpacesChanged?.Invoke(this, EventArgs.Empty);
 
     // ---- What reading a file needs to know (see TackFile) ----
 

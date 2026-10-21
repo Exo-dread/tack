@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:v="clr-namespace:Tack.Views"
+        xmlns:c="clr-namespace:Tack.Controls"
         Title="Tack"
         Width="340" Height="480" MinWidth="280" MinHeight="200"
         WindowStyle="None" ResizeMode="CanResize" Background="Transparent"
@@ -16,6 +17,72 @@
                       CornerRadius="0" UseAeroCaptionButtons="False" NonClientFrameEdges="None" />
     </WindowChrome.WindowChrome>
 
+    <Window.Resources>
+        <!-- A space in the strip: plain text; the one on show in primary text over an accent underline
+             (as the Tasks/Notes tabs mark theirs), so it never rests on colour alone. -->
+        <Style x:Key="SpaceTab" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="6,3" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid>
+                            <Border x:Name="Bd" Background="Transparent" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter VerticalAlignment="Center" />
+                            </Border>
+                            <Border x:Name="Underline" Height="2" CornerRadius="1" Margin="6,0,6,0" VerticalAlignment="Bottom"
+                                    Background="{DynamicResource AccentBrush}" Visibility="Hidden" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                <Setter TargetName="Underline" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The strip's inline name entry for a new space. Placeholder text comes from Tag. -->
+        <Style x:Key="StripNameBox" TargetType="TextBox" BasedOn="{StaticResource GhostTextBox}">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border CornerRadius="5" BorderThickness="1" Background="{DynamicResource ControlFillFocusBrush}"
+                                BorderBrush="{DynamicResource AccentBorderBrush}">
+                            <Grid>
+                                <TextBlock x:Name="Placeholder" Text="{TemplateBinding Tag}" Margin="{TemplateBinding Padding}"
+                                           Foreground="{DynamicResource TextTertiaryBrush}" IsHitTestVisible="False"
+                                           VerticalAlignment="Center" Visibility="Collapsed" />
+                                <ScrollViewer x:Name="PART_ContentHost" Focusable="False" Padding="{TemplateBinding Padding}" VerticalAlignment="Center"
+                                              HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter TargetName="Placeholder" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <Grid x:Name="Root">
         <!-- Tint over the acrylic (or a solid surface when glass is off). -->
         <Border x:Name="Surface" Background="{DynamicResource GlassTintBrush}" />
@@ -23,6 +90,7 @@
         <Grid x:Name="Chrome">
             <Grid.RowDefinitions>
                 <RowDefinition Height="48" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -73,8 +141,31 @@
                 </StackPanel>
             </Grid>
 
+            <!-- ============ Spaces strip: only once a second space exists ============ -->
+            <!-- The spaces scroll sideways (the wheel too) and fade at an edge with more beyond it;
+                 + stays in sight at the end. -->
+            <Grid x:Name="Strip" Grid.Row="1" Height="28" Margin="10,0,10,2" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ScrollViewer x:Name="StripScroller" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Focusable="False"
+                              PreviewMouseWheel="StripScroller_PreviewMouseWheel" ScrollChanged="StripScroller_ScrollChanged">
+                    <c:GroupPanel x:Name="StripTabs" Orientation="Horizontal" AutomationProperties.Name="Spaces"
+                                  KeyboardNavigation.DirectionalNavigation="None"
+                                  PreviewKeyDown="StripTabs_PreviewKeyDown" />
+                </ScrollViewer>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="NewSpaceButton" Style="{StaticResource IconButton}" Width="24" Height="24" FontSize="10" Margin="2,0,0,0"
+                            Content="&#xE710;" Click="NewSpace_Click" ToolTip="New space" AutomationProperties.Name="New space" />
+                    <TextBox x:Name="NewSpaceBox" Style="{StaticResource StripNameBox}" Width="120" Height="24" Margin="4,0,0,0"
+                             Tag="Name, then Enter" Visibility="Collapsed" AutomationProperties.Name="New space name"
+                             PreviewKeyDown="NewSpaceBox_PreviewKeyDown" LostKeyboardFocus="NewSpaceBox_LostKeyboardFocus" />
+                </StackPanel>
+            </Grid>
+
             <!-- ============ Content ============ -->
-            <Grid Grid.Row="1" x:Name="ContentArea" ClipToBounds="True">
+            <Grid Grid.Row="2" x:Name="ContentArea" ClipToBounds="True">
                 <v:TasksView x:Name="TasksPage" />
                 <v:NotesView x:Name="NotesPage" Visibility="Collapsed" />
                 <v:SettingsView x:Name="SettingsPage" Visibility="Collapsed" />
@@ -86,10 +177,12 @@
                     <Border.Effect>
                         <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.4" Color="Black" />
                     </Border.Effect>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock x:Name="ToastText" VerticalAlignment="Center" FontSize="12.5" Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <Button x:Name="ToastUndo" Style="{StaticResource TextButton}" Margin="10,0,0,0" Content="Undo" Click="ToastUndo_Click" />
-                    </StackPanel>
+                    <!-- Undo first, so it keeps its room: a message too long for the panel ends in an ellipsis instead. -->
+                    <DockPanel>
+                        <Button x:Name="ToastUndo" DockPanel.Dock="Right" Style="{StaticResource TextButton}" Margin="10,0,0,0" Content="Undo" Click="ToastUndo_Click" />
+                        <TextBlock x:Name="ToastText" VerticalAlignment="Center" FontSize="12.5" Foreground="{DynamicResource TextPrimaryBrush}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
                 </Border>
             </Grid>
         </Grid>

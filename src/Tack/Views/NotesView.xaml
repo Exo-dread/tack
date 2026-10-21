@@ -34,7 +34,9 @@
             </Setter>
         </Style>
 
-        <ContextMenu x:Key="SheetMenu" x:Shared="False">
+        <!-- "Move to" lists the spaces when the menu opens (and shows only once there are spaces). -->
+        <ContextMenu x:Key="SheetMenu" x:Shared="False" Opened="SheetMenu_Opened">
+            <MenuItem Header="Move to" Tag="MoveTo" Visibility="Collapsed" />
             <MenuItem Header="Delete sheet" Click="DeleteSheet_Click" />
         </ContextMenu>
 
@@ -100,12 +102,13 @@
         <Border Grid.Row="1" CornerRadius="10" Background="{DynamicResource ControlFillBrush}"
                 BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1">
             <Grid>
+                <!-- A space with no sheets shows blank paper: the first keystroke makes its sheet. -->
                 <TextBox x:Name="Editor" Style="{StaticResource NotesBox}" AutomationProperties.Name="Note"
                          Text="{Binding ActiveSheet.Text, UpdateSourceTrigger=PropertyChanged}"
-                         PreviewKeyDown="Editor_PreviewKeyDown" />
+                         PreviewKeyDown="Editor_PreviewKeyDown" TextChanged="Editor_TextChanged" />
                 <TextBlock x:Name="Hint" Margin="16,12,16,12" IsHitTestVisible="False" TextWrapping="Wrap"
                            Foreground="{DynamicResource TextTertiaryBrush}" LineHeight="20"
-                           Visibility="{Binding ActiveSheet.IsEmpty, Converter={StaticResource Vis}}">
+                           Visibility="{Binding ActiveSheet.IsEmpty, Converter={StaticResource Vis}, FallbackValue=Visible}">
                     <Run Text="Jot anything. It saves as you type." />
                     <LineBreak /><LineBreak />
                     <Run Text="Ctrl+Enter" FontWeight="SemiBold" /><Run Text="  turns a line into a task" />

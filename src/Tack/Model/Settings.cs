@@ -25,6 +25,7 @@ public sealed class Settings : Observable
     private double _notesHeight = DefaultNotesHeight;
     private string? _activeSheet;
     private string? _syncFolder;
+    private string? _spaceOnShow;
 
     // ---- Preferences ----
     public bool LaunchAtStartup { get => _launchAtStartup; set => Set(ref _launchAtStartup, value); }
@@ -74,6 +75,16 @@ public sealed class Settings : Observable
     public double NotesHeight { get => _notesHeight; set => Set(ref _notesHeight, ClampHeight(value)); }
 
     public string? ActiveSheet { get => _activeSheet; set => Set(ref _activeSheet, value); }
+
+    /// <summary>
+    /// The space on show on this PC (never synced): "all", or a space's id; null is Main. A space
+    /// that no longer exists shows Main (see <see cref="SpaceView"/>) until it's back, say after an Undo.
+    /// </summary>
+    public string? SpaceOnShow
+    {
+        get => _spaceOnShow;
+        set => Set(ref _spaceOnShow, value == "all" || (value != Tack.Sync.SpaceField.Main && Tack.Sync.Ids.IsValid(value)) ? value : null);
+    }
 
     // ---- Tack 1.0 stored a single panel size; read it once so upgrades keep their size. ----
 

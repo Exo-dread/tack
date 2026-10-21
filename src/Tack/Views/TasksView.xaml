@@ -4,6 +4,7 @@
              xmlns:c="clr-namespace:Tack.Controls">
     <UserControl.Resources>
         <c:BoolToVisibility x:Key="Vis" />
+        <c:Share x:Key="Share" />
 
         <!-- Concentric "target": put this task in focus. -->
         <Geometry x:Key="TargetIcon">M 7,0.9 A 6.1,6.1 0 1 1 6.99,0.9 Z M 7,4.4 A 2.6,2.6 0 1 1 6.99,4.4 Z</Geometry>
@@ -95,6 +96,16 @@
             </Setter>
         </Style>
 
+        <!-- A task's space, small and muted at the end of its row (All, while there are spaces). -->
+        <Style x:Key="SpaceLabel" TargetType="TextBlock" BasedOn="{StaticResource Caption}">
+            <Setter Property="Text" Value="{Binding SpaceLabel}" />
+            <Setter Property="Visibility" Value="{Binding SpaceLabel, Converter={StaticResource Vis}}" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="Margin" Value="0,9,8,0" />
+            <Setter Property="MaxWidth" Value="90" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
         <Style x:Key="RowButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
             <Setter Property="Width" Value="26" />
             <Setter Property="Height" Value="26" />
@@ -111,10 +122,12 @@
             <Setter Property="BorderBrush" Value="Transparent" />
         </Style>
 
-        <ContextMenu x:Key="TaskMenu" x:Shared="False">
+        <!-- "Move to" lists the spaces when the menu opens (and shows only once there are spaces). -->
+        <ContextMenu x:Key="TaskMenu" x:Shared="False" Opened="TaskMenu_Opened">
             <MenuItem Header="Focus on this" Click="MenuFocus_Click" InputGestureText="Ctrl+Enter" />
             <MenuItem Header="Mark done" Click="MenuDone_Click" InputGestureText="Ctrl+D" />
             <MenuItem Header="Move to top" Click="MenuTop_Click" />
+            <MenuItem Header="Move to" Tag="MoveTo" InputGestureText="Ctrl+M" Visibility="Collapsed" />
             <Separator />
             <MenuItem Command="ApplicationCommands.Cut" />
             <MenuItem Command="ApplicationCommands.Copy" />
@@ -123,9 +136,10 @@
             <MenuItem Header="Delete task" Click="MenuDelete_Click" />
         </ContextMenu>
 
-        <ContextMenu x:Key="NowMenu" x:Shared="False">
+        <ContextMenu x:Key="NowMenu" x:Shared="False" Opened="TaskMenu_Opened">
             <MenuItem Header="Mark done" Click="MenuDone_Click" InputGestureText="Ctrl+D" />
             <MenuItem Header="Stop focusing" Click="Unfocus_Click" />
+            <MenuItem Header="Move to" Tag="MoveTo" InputGestureText="Ctrl+M" Visibility="Collapsed" />
             <Separator />
             <MenuItem Command="ApplicationCommands.Cut" />
             <MenuItem Command="ApplicationCommands.Copy" />
@@ -135,6 +149,7 @@
         <!-- Floating mini-toolbar shown over a row's top-right corner on hover. -->
         <Style x:Key="RowToolbar" TargetType="Border">
             <Setter Property="Grid.Column" Value="1" />
+            <Setter Property="Grid.ColumnSpan" Value="2" />
             <Setter Property="HorizontalAlignment" Value="Right" />
             <Setter Property="VerticalAlignment" Value="Top" />
             <Setter Property="Margin" Value="0,3,3,0" />
@@ -153,6 +168,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="30" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <!-- The grip lives in the gutter left of the row, so it costs no text width. -->
@@ -174,6 +190,8 @@
                              LostKeyboardFocus="Editor_LostKeyboardFocus" />
                     <TextBlock x:Name="Struck" Grid.Column="1" Margin="4,7,8,7" Text="{Binding Text}" TextWrapping="Wrap"
                                TextDecorations="Strikethrough" Foreground="{DynamicResource TextTertiaryBrush}" Visibility="Collapsed" />
+                    <!-- Its space, in All while there are spaces. -->
+                    <TextBlock Grid.Column="2" Style="{StaticResource SpaceLabel}" />
 
                     <Border x:Name="Actions" Style="{StaticResource RowToolbar}">
                         <StackPanel Orientation="Horizontal">
@@ -215,11 +233,13 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="30" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Button Style="{StaticResource DoneCheck}" AutomationProperties.Name="Mark as not done"
                             VerticalAlignment="Top" Margin="2,2,0,0" Click="Reopen_Click" />
                     <TextBlock Grid.Column="1" Margin="4,7,8,7" Text="{Binding Text}" TextWrapping="Wrap"
                                TextDecorations="Strikethrough" Foreground="{DynamicResource TextTertiaryBrush}" />
+                    <TextBlock Grid.Column="2" Style="{StaticResource SpaceLabel}" />
                     <Border x:Name="Actions" Style="{StaticResource RowToolbar}">
                         <Button Style="{StaticResource RowButton}" Click="Delete_Click" ToolTip="Delete" Content="&#xE711;"
                                 AutomationProperties.Name="Delete task" />
@@ -304,6 +324,7 @@
                 </Grid.ColumnDefinitions>
 
                 <TextBlock Grid.Column="1" Text="NOW" Style="{StaticResource Overline}" VerticalAlignment="Center" Margin="2,2,0,0" />
+                <TextBlock Grid.Column="1" Style="{StaticResource SpaceLabel}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="8,2,6,0" />
                 <Button Grid.Column="2" Style="{StaticResource RowButton}" Content="&#xE711;" Click="Unfocus_Click" AutomationProperties.Name="Stop focusing"
                         ToolTip="Stop focusing (back to the list)" />
 
@@ -318,9 +339,40 @@
             </Grid>
         </Border>
 
+        <!-- ================= The task in focus, when it's in another space: a line that goes there ================= -->
+        <Button x:Name="NowLine" Margin="2,0,2,8" Click="NowLine_Click" Cursor="Hand" FocusVisualStyle="{StaticResource FocusRing}"
+                HorizontalContentAlignment="Stretch" AutomationProperties.Name="{Binding NowLineName}"
+                Visibility="{Binding HasNowElsewhere, Converter={StaticResource Vis}}">
+            <Button.Template>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" CornerRadius="8" Padding="10,6" BorderThickness="1"
+                            Background="{DynamicResource AccentFaintBrush}" BorderBrush="{DynamicResource AccentSoftBrush}">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Button.Template>
+            <!-- A long space name gives way (with an ellipsis) before the task does: the name takes at most 55%. -->
+            <Grid x:Name="NowLineRow">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding NowElsewhereLabel, Mode=OneWay}" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}"
+                           TextTrimming="CharacterEllipsis" Margin="0,0,3,0"
+                           MaxWidth="{Binding ActualWidth, ElementName=NowLineRow, Converter={StaticResource Share}, ConverterParameter=0.55}" />
+                <TextBlock Grid.Column="1" Text="{Binding NowElsewhere.Text, Mode=OneWay}" FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                           TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </Button>
+
         <!-- ================= Quick add ================= -->
         <TextBox x:Name="AddBox" Grid.Row="1" Style="{StaticResource InputBox}" Margin="2,0,2,6"
-                 Tag="Add a task" PreviewKeyDown="AddBox_PreviewKeyDown" AutomationProperties.Name="Add a task"
+                 Tag="{Binding AddPlaceholder}" PreviewKeyDown="AddBox_PreviewKeyDown" AutomationProperties.Name="{Binding AddName}"
                  ToolTip="Enter adds · Ctrl+Enter adds and focuses · paste a list to add many" />
 
         <!-- ================= List ================= -->

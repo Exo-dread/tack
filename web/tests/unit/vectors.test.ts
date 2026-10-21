@@ -15,7 +15,7 @@ import { decode, encode, Hlc, isPlausibleStamp, isStamp, stampTime, ZERO, type S
 import { derivedId } from '../../src/model/ids';
 import { mergeFocus, mergeSheet, mergeSpace, mergeTask } from '../../src/model/merge';
 import { isOrderKey, keyAfter, keyBefore, keyBetween, keysAt } from '../../src/model/order';
-import { cleanSpaceName, effectiveSpace, MAIN } from '../../src/model/spaces';
+import { ALL, cleanSpaceName, effectiveSpace, MAIN } from '../../src/model/spaces';
 import { cleanTaskText, noteText } from '../../src/model/text';
 import { parseDate } from '../../src/model/time';
 import type { Focus, Sheet, Space, Task, WorkspaceData } from '../../src/model/types';
@@ -386,8 +386,17 @@ type Op = { op: string; wall: number; id?: string; text?: string; index?: number
  * move tasks and sheets between them. Ops: addSpace (id: the new space's, text: the name as typed),
  * renameSpace (id, text), deleteSpace (id; its undo goes on the undo stack), moveTaskToSpace and
  * moveSheetToSpace (id, space).
+ *
+ * With `ui`, also what the screens do: add, addNow and addSheet into a space (`space`: a live
+ * space, Main, a deleted space or none; only a live space other than Main is kept) and moveSpace
+ * (id, index: where in the list of spaces as it's shown, Main included).
+ *
+ * With `inView`, also what a space on show does with its own list (each app has its own code for
+ * it): moveIn (id, index among the open tasks `space` shows, as they'd be without it), the drag
+ * or Alt+arrow within a space, and clearDone with a `space` (Clear, only what that space shows).
+ * Merges tie keys now and then, which a move within a space has to step around.
  */
-function workspaceScript(seed: number, steps: number, merges: boolean, spaces = false, checkEvery = 30) {
+function workspaceScript(seed: number, steps: number, merges: boolean, spaces = false, checkEvery = 30, ui = false, inView = false) {
   const r = rng(seed);
   let wall = T0;
   const desk = new Workspace(new Hlc('desk', () => wall), () => new Date(wall));
@@ -430,6 +439,8 @@ function workspaceScript(seed: number, steps: number, merges: boolean, spaces = 
       choices.push('addSpace', 'renameSpace', 'moveTaskToSpace', 'moveTaskToSpace', 'moveSheetToSpace');
       if (ws.spaceList.some((s) => s.id !== MAIN)) choices.push('deleteSpace');
     }
+    if (ui) choices.push('addIn', 'addIn', 'addNowIn', 'addSheetIn', 'moveSpace', 'moveSpace');
+    if (inView && ws.hasSpaces) choices.push(...Array<string>(8).fill('moveIn'), 'clearIn', 'clearIn');
     const op = r.pick(choices);
     switch (op) {
       case 'add':
@@ -519,6 +530,43 @@ function workspaceScript(seed: number, steps: number, merges: boolean, spaces = 
         const s = r.pick(ws.spaceList.filter((x) => x.id !== MAIN));
         undos.push(ws.deleteSpace(s.id));
         return { op, wall, id: s.id };
+      }
+      case 'addIn':
+      case 'addNowIn':
+      case 'addSheetIn': {
+        // Where the screen says: the space on show, Main, or one deleted meanwhile (somewhere else).
+        const gone = [...ws.spaces.values()].filter((s) => s.deleted).map((s) => s.id);
+        const space = r.pick([MAIN, ...ws.spaceList.map((s) => s.id), ...gone.slice(0, 1)]);
+        if (op === 'addSheetIn') {
+          const s = ws.addSheet('', space);
+          return { op: 'addSheet', wall, id: s.id, space };
+        }
+        const t = ws.addTask(`task ${i} in ${space.slice(0, 4)}`, { asNow: op === 'addNowIn', space })!;
+        return { op: op === 'addNowIn' ? 'addNow' : 'add', wall, id: t.id, text: t.text, space };
+      }
+      case 'moveSpace': {
+        const tabs = ws.spaceTabs;
+        const id = r.pick(tabs).id;
+        // Sometimes past either end (the list clamps it).
+        const index = r.int(tabs.length + 2) - 1;
+        ws.moveSpace(id, index);
+        return { op, wall, id, index };
+      }
+      case 'moveIn': {
+        // Within the space on show (Main included), as dragging there or Alt+arrow does.
+        const shows = ws.spaceTabs.map((s) => s.id).filter((id) => ws.openIn(id).length >= 2);
+        if (!shows.length) return null;
+        const show = r.pick(shows);
+        const list = ws.openIn(show);
+        const t = r.pick(list);
+        const index = r.int(list.length);
+        ws.moveTaskIn(show, t.id, index);
+        return { op, wall, id: t.id, index, space: show };
+      }
+      case 'clearIn': {
+        const show = r.pick(ws.spaceTabs).id;
+        undos.push(ws.clearDone(show));
+        return { op: 'clearDone', wall, space: show };
       }
       case 'moveTaskToSpace':
       case 'moveSheetToSpace': {
@@ -1091,6 +1139,8 @@ function effectiveVectors() {
     { spaces: [], asked },
     // Main stays Main, even with a deleted record (only a hand edit makes one).
     { spaces: [space(MAIN, true), space('work', false)], asked: ['', MAIN, 'work'] },
+    // All's id is never a space, even with a live record (only a hand-made file has one).
+    { spaces: [space(ALL, false), space('work', false)], asked: ['', MAIN, ALL, 'work', 'All'] },
   ].map(({ spaces, asked }) => ({ spaces, cases: asked.map((s) => ({ space: s, value: effectiveSpace(s, spaces) })) }));
 }
 
@@ -1311,6 +1361,9 @@ function spaceNameVectors() {
     `${e99}${U(0xd83d, 0xde00)}`, `${'e'.repeat(98)}${U(0xd83d, 0xde00)}z`, `${e99}${U(0xd83d, 0xde00)} more`,
     `${e99} z`, `${e99}${U(0x3000)}z`, `${'e'.repeat(98)} ${U(0xa0)}z`, `${e99}${U(0xd83d)}zz`, `${e99}${U(0xde00)}zz`,
     `${e99}${U(0xe9)}z`, U(0xd83d, 0xde00).repeat(60),
+    // Control characters are spaces (U+0085 breaks a line on the desktop); zero-width and bidi marks stay.
+    `a${U(0)}b${U(1)}c${U(0x1b)}d${U(0x7f)}e${U(0x85)}f${U(0x200b)}g${U(0x2066)}h`, `${U(0x85)}Work${U(0x9f)}`, `Dev${U(0x85, 0x85)} ops`,
+    `${'x'.repeat(99)}${U(0x85)}y`, `${U(0x80)}${U(0x9f)}`, `${U(0xa0)}Site${U(0x7e)}`,
   ];
   return names.map((name) => ({ units: units(name), clean: units(cleanSpaceName(name)) }));
 }
@@ -1359,6 +1412,233 @@ function spaceNamesScript() {
   return { node: 'desk', ops, data: desk.toData(), section: { focus, tasks, sheets, spaces } };
 }
 
+/**
+ * What the screens add for spaces: tasks and sheets added into the space on show (a live space,
+ * Main, one deleted meanwhile, one never heard of), and spaces reordered (Settings → Spaces):
+ * below a Main that has no record, above it (Main then takes the top key first), Main itself (its
+ * record made then, nameless), past either end, and between spaces whose keys tie. `mainFirst`
+ * moves Main before anything else gives it a record.
+ */
+function spacesUiScript(mainFirst: boolean) {
+  let wall = T0 + (mainFirst ? 11_000_000 : 10_000_000);
+  const desk = new Workspace(new Hlc('desk', () => wall), () => new Date(wall));
+  const ops: (Op & { views: ReturnType<typeof views>; check: WorkspaceData })[] = [];
+  const record = (op: Omit<Op, 'wall'>) => ops.push({ ...op, wall, views: views(desk), check: desk.toData() });
+  const later = () => (wall += 1000);
+  const add = (text: string, space?: string, asNow = false) => {
+    later();
+    const t = desk.addTask(text, { space, asNow })!;
+    record({ op: asNow ? 'addNow' : 'add', id: t.id, text: t.text, ...(space === undefined ? {} : { space }) });
+    return t;
+  };
+  const addSheet = (space?: string) => {
+    later();
+    const s = desk.addSheet('', space);
+    record({ op: 'addSheet', id: s.id, ...(space === undefined ? {} : { space }) });
+    return s;
+  };
+  const move = (id: string, index: number) => {
+    later();
+    desk.moveSpace(id, index);
+    record({ op: 'moveSpace', id, index });
+  };
+  const addSpace = (name: string) => {
+    later();
+    const s = desk.addSpace(name);
+    record({ op: 'addSpace', id: s.id, text: name });
+    return s;
+  };
+
+  record({ op: 'start', ensured: desk.ensureSheet().id });
+  add('Before any space');
+  const work = addSpace('Work');
+  const dev = addSpace('Dev');
+  const home = addSpace('Home');
+  if (mainFirst) {
+    move(MAIN, 0); // already first: nothing
+    move(MAIN, 2); // between Dev and Home: Main's record, nameless
+    move(MAIN, 9); // past the end: last
+    move(MAIN, 0);
+  } else {
+    move(home.id, 1); // below Main, which has no record: Main stays first
+    move(home.id, 0); // above it: Main takes the top key first
+    move(work.id, -4); // before the start: first
+  }
+  add('Draft the report', work.id);
+  add('Fix the build', dev.id, true);
+  add('Buy milk', MAIN);
+  add('From a space not here yet', 'zzzzzzzzzzzz');
+  addSheet(work.id);
+  addSheet(MAIN);
+  later();
+  desk.renameSpace(MAIN, 'Inbox');
+  record({ op: 'renameSpace', id: MAIN, text: 'Inbox' });
+  move(dev.id, 0);
+  move(MAIN, 3);
+
+  // A deleted space takes nothing new; undone, it's back where it was.
+  const undos: Undo[] = [];
+  later();
+  undos.push(desk.deleteSpace(dev.id));
+  record({ op: 'deleteSpace', id: dev.id });
+  add('While Dev is gone', dev.id);
+  addSheet(dev.id);
+  move(dev.id, 0); // deleted: nothing
+  later();
+  undos.pop()!();
+  record({ op: 'undo' });
+  add('Dev is back', dev.id);
+
+  // Spaces from elsewhere with tied keys: moving between them gives the ones below new keys too.
+  later();
+  const w = encode(wall, 0, 'phone');
+  const tie = (id: string, name: string): Space => ({ id, name, order: 'V', deleted: false, clk: { name: w, order: w, deleted: w } });
+  const tied: WorkspaceData = { tasks: [], sheets: [], focus: { id: null, clk: ZERO }, spaces: [tie('aaaaaaaaaaaa', 'Tied A'), tie('bbbbbbbbbbbb', 'Tied B'), tie('cccccccccccc', 'Tied C')] };
+  desk.merge(tied, 'remote');
+  record({ op: 'merge', data: tied, base: null });
+  const at = (id: string) => desk.spaceTabs.findIndex((s) => s.id === id);
+  move('cccccccccccc', at('bbbbbbbbbbbb'));
+  move(work.id, at('aaaaaaaaaaaa') + 1);
+  add('In a tied space', 'bbbbbbbbbbbb');
+  return { node: 'desk', ops, data: desk.toData() };
+}
+
+/**
+ * Renaming Main never moves it, on any device. The phone renames Main while it has no spaces (Main's
+ * record then has a name but no place: its order clock is ZERO); meanwhile the PC made spaces, the
+ * first keyed 'V' like Main's record. Replayed from the renaming device (`renamer`) or from the PC:
+ * after the merge Main is still first on both (`tabs`: the spaces as listed, after every op). Then
+ * that device renames Main again, puts a space above it (Main gets its place, keeping its name),
+ * moves Main itself and adds a space.
+ */
+function mainRenameScript(renamer: boolean) {
+  let wall = T0 + (renamer ? 13_000_000 : 14_000_000);
+  const phone = new Workspace(new Hlc('phone', () => wall), () => new Date(wall));
+  const desk = new Workspace(new Hlc('desk', () => wall), () => new Date(wall));
+  const me = renamer ? phone : desk;
+  const other = renamer ? desk : phone;
+  const ops: (Op & { views: ReturnType<typeof views>; check: WorkspaceData; tabs: string[] })[] = [];
+  const record = (op: Omit<Op, 'wall'>) => ops.push({ ...op, wall, views: views(me), check: me.toData(), tabs: me.spaceTabs.map((s) => s.id) });
+  const later = () => (wall += 1000);
+
+  record({ op: 'start', ensured: me.ensureSheet().id });
+  other.ensureSheet();
+  // The PC makes two spaces while Main has no record anywhere.
+  const made: Space[] = [];
+  for (const name of ['Work', 'Dev']) {
+    later();
+    const s = desk.addSpace(name);
+    made.push(s);
+    if (me === desk) record({ op: 'addSpace', id: s.id, text: name });
+  }
+  const [, dev] = made;
+  // The phone, with no spaces, renames Main.
+  later();
+  phone.renameSpace(MAIN, 'Inbox');
+  if (me === phone) record({ op: 'renameSpace', id: MAIN, text: 'Inbox' });
+  // They sync, both ways.
+  later();
+  const theirs = other.toData();
+  other.merge(me.toData(), 'remote');
+  me.merge(theirs, 'remote');
+  record({ op: 'merge', data: theirs, base: null });
+
+  later();
+  me.renameSpace(MAIN, 'Today');
+  record({ op: 'renameSpace', id: MAIN, text: 'Today' });
+  later();
+  me.moveSpace(dev!.id, 0);
+  record({ op: 'moveSpace', id: dev!.id, index: 0 });
+  later();
+  me.moveSpace(MAIN, 2);
+  record({ op: 'moveSpace', id: MAIN, index: 2 });
+  later();
+  const home = me.addSpace('Home');
+  record({ op: 'addSpace', id: home.id, text: 'Home' });
+  return { node: me.hlc.node, ops, data: me.toData() };
+}
+
+/**
+ * Notes in a space with no sheets show blank paper; the first keystroke makes the sheet, with
+ * what was typed (addSheet(text, space)): in a live space, Main, a space never heard of, and
+ * none; the text cleaned as every edit is (line breaks).
+ */
+function blankPaperScript() {
+  let wall = T0 + 12_000_000;
+  const desk = new Workspace(new Hlc('desk', () => wall), () => new Date(wall));
+  const ops: (Op & { views: ReturnType<typeof views>; check: WorkspaceData })[] = [];
+  const record = (op: Omit<Op, 'wall'>) => ops.push({ ...op, wall, views: views(desk), check: desk.toData() });
+  const later = () => (wall += 1000);
+  const addSheet = (text: string, space?: string) => {
+    later();
+    const s = desk.addSheet(text, space);
+    record({ op: 'addSheet', id: s.id, text, ...(space === undefined ? {} : { space }) });
+    return s;
+  };
+
+  record({ op: 'start', ensured: desk.ensureSheet().id });
+  later();
+  const work = desk.addSpace('Work');
+  record({ op: 'addSpace', id: work.id, text: 'Work' });
+  addSheet('S', work.id);
+  addSheet('Site visit\r\n- rebar\r- cover', work.id);
+  addSheet('Inbox note', MAIN);
+  addSheet('Nowhere yet', 'zzzzzzzzzzzz');
+  addSheet('No space given');
+  return { node: 'desk', ops, data: desk.toData() };
+}
+
+/**
+ * A space whose id is All's ('all': no app makes one, only a hand-made file has it) is never a
+ * space: it isn't listed (`tabs`, after every op), what's in it is in Main, and nothing new goes
+ * in it. Its record still merges as it came. Spaces made or moved meanwhile take their keys from
+ * the spaces as listed.
+ */
+function reservedAllScript() {
+  let wall = T0 + 15_000_000;
+  const desk = new Workspace(new Hlc('desk', () => wall), () => new Date(wall));
+  const ops: (Op & { views: ReturnType<typeof views>; check: WorkspaceData; tabs: string[] })[] = [];
+  const record = (op: Omit<Op, 'wall'>) => ops.push({ ...op, wall, views: views(desk), check: desk.toData(), tabs: desk.spaceTabs.map((s) => s.id) });
+  const later = () => (wall += 1000);
+
+  record({ op: 'start', ensured: desk.ensureSheet().id });
+  later();
+  const work = desk.addSpace('Work');
+  record({ op: 'addSpace', id: work.id, text: 'Work' });
+  // From a hand-made file: a space 'all', last in order, with a task and a note in it.
+  later();
+  const w = encode(wall, 0, 'phone');
+  const at = '2026-10-17T20:00:00.000+00:00';
+  const crafted: WorkspaceData = {
+    tasks: [{ id: 'craftedtask1', text: 'In the space called all', created: at, completed: null, order: 'A', deleted: false, space: ALL, clk: { text: w, completed: w, order: w, deleted: w, space: w } }],
+    sheets: [{ id: 'craftedsheet', text: 'A note in it', updated: at, order: 'z', deleted: false, space: ALL, clk: { text: w, order: w, deleted: w, space: w } }],
+    focus: { id: null, clk: ZERO },
+    spaces: [{ id: ALL, name: 'Everything', order: 'y', deleted: false, clk: { name: w, order: w, deleted: w } }],
+  };
+  desk.merge(crafted, 'remote');
+  record({ op: 'merge', data: crafted, base: null });
+  later();
+  const home = desk.addSpace('Home');
+  record({ op: 'addSpace', id: home.id, text: 'Home' });
+  // Added "into" it: Main.
+  later();
+  const t = desk.addTask('Added into all', { space: ALL })!;
+  record({ op: 'add', id: t.id, text: t.text, space: ALL });
+  later();
+  const s = desk.addSheet('Written into all', ALL);
+  record({ op: 'addSheet', id: s.id, text: 'Written into all', space: ALL });
+  later();
+  desk.moveSpace(home.id, 0);
+  record({ op: 'moveSpace', id: home.id, index: 0 });
+  later();
+  desk.moveSpace(work.id, 9);
+  record({ op: 'moveSpace', id: work.id, index: 9 });
+  later();
+  desk.moveSpace(ALL, 0); // not listed: nothing
+  record({ op: 'moveSpace', id: ALL, index: 0 });
+  return { node: 'desk', ops, data: desk.toData() };
+}
+
 /** tack.json with space names over 100 characters: cut to 100 on the way in, like everywhere else. */
 function spaceNameFiles() {
   const { cases, add } = importCases();
@@ -1404,6 +1684,16 @@ function buildVectors() {
     const named = { ...vectors, spaceNames: spaceNameVectors() };
     named.workspaces.push(spaceNamesScript());
     named.files.push(...spaceNameFiles());
+    // The screens for spaces: adding into one, reordering them.
+    named.workspaces.push(spacesUiScript(false), spacesUiScript(true), workspaceScript(5, 240, true, true, 5, true));
+    // A space's blank paper: its sheet comes with the first keystroke.
+    named.workspaces.push(blankPaperScript());
+    // Renaming Main never moves it, wherever the name goes.
+    named.workspaces.push(mainRenameScript(true), mainRenameScript(false));
+    // Within a space on show: moves (where keys tie too) and Clear, each app's own code for them.
+    named.workspaces.push(workspaceScript(6, 320, true, true, 5, true, true));
+    // All's id is never a space, even with a record.
+    named.workspaces.push(reservedAllScript());
     return named;
   } finally {
     spy.mockRestore();
@@ -1429,6 +1719,31 @@ function format(value: unknown, depth = 0): string {
 describe('shared test vectors (tests/vectors/sync.json)', () => {
   it('are computed in UTC, so they come out the same on every machine', () => {
     expect(new Date(T0).getTimezoneOffset()).toBe(0);
+  });
+
+  it('keep Main first when a rename arrives from a device that had no spaces', () => {
+    const scripts = vectors.workspaces.filter((w) => w.ops.some((op) => 'tabs' in op) && w.ops.some((op) => op.text === 'Today'));
+    expect(scripts).toHaveLength(2);
+    for (const script of scripts) {
+      const ops = script.ops as unknown as { op: string; text?: string; tabs: string[] }[];
+      const merged = ops.find((op) => op.op === 'merge')!;
+      expect(merged.tabs).toHaveLength(3);
+      expect(merged.tabs[0]).toBe(MAIN);
+      expect(ops.find((op) => op.text === 'Today')!.tabs[0]).toBe(MAIN);
+    }
+  });
+
+  it('move within a space and clear what one shows, while keys tie now and then', () => {
+    const scripts = vectors.workspaces.filter((w) => w.ops.some((op) => op.op === 'moveIn'));
+    expect(scripts).toHaveLength(1);
+    const ops = scripts[0]!.ops as unknown as (Op & { check?: WorkspaceData })[];
+    expect(ops.filter((op) => op.op === 'moveIn').length).toBeGreaterThan(30);
+    expect(ops.filter((op) => op.op === 'clearDone' && op.space).length).toBeGreaterThan(3);
+    const tied = ops.filter((op) => {
+      const keys = (op.check?.tasks ?? []).filter((t) => !t.deleted && !t.completed).map((t) => t.order);
+      return new Set(keys).size < keys.length;
+    });
+    expect(tied.length).toBeGreaterThan(0);
   });
 
   it('are up to date with src/model', async () => {

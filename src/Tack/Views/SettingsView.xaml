@@ -47,6 +47,46 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- A space's name in Settings: reads as text, edits in place (Enter keeps it, Esc puts it back). -->
+        <Style x:Key="SpaceNameBox" TargetType="TextBox" BasedOn="{StaticResource GhostTextBox}">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="MaxLength" Value="100" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Bd" CornerRadius="5" BorderThickness="1" Background="Transparent" BorderBrush="Transparent">
+                            <Grid>
+                                <TextBlock x:Name="Placeholder" Text="{TemplateBinding Tag}" Margin="{TemplateBinding Padding}"
+                                           Foreground="{DynamicResource TextTertiaryBrush}" IsHitTestVisible="False"
+                                           VerticalAlignment="Center" Visibility="Collapsed" />
+                                <ScrollViewer x:Name="PART_ContentHost" Focusable="False" Padding="{TemplateBinding Padding}" VerticalAlignment="Center"
+                                              HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter TargetName="Placeholder" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource StrokeBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillFocusBrush}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SpaceButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
         <!-- One option of a segmented choice (System / Light / Dark). -->
         <Style x:Key="Segment" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
@@ -133,6 +173,22 @@
                 </Border>
                 <TextBlock Style="{StaticResource Hint}" Margin="2,8,8,0"
                            Text="Each tab remembers its own size. Drag the panel's edges to set it; double-click the header to go back to automatic sizing." />
+
+                <TextBlock Text="Spaces" Style="{StaticResource SectionLabel}" />
+                <Border Style="{StaticResource Card}" Padding="8,4,6,4">
+                    <StackPanel>
+                        <!-- Main, then each space: rename in place; spaces also move and go. Built in code. -->
+                        <StackPanel x:Name="SpaceRows" />
+                        <Border Height="1" Margin="6,0,0,0" Background="{DynamicResource DividerBrush}" />
+                        <Button x:Name="NewSpaceButton" Style="{StaticResource TextButton}" HorizontalAlignment="Left" Margin="0,5,0,4"
+                                Content="+ New space" Click="NewSpace_Click" ToolTip="Work, development, personal: keep each apart" />
+                        <TextBox x:Name="NewSpaceBox" Style="{StaticResource SpaceNameBox}" Margin="0,5,0,4" Tag="Name, then Enter"
+                                 Visibility="Collapsed" AutomationProperties.Name="New space name"
+                                 PreviewKeyDown="NewSpaceBox_PreviewKeyDown" LostKeyboardFocus="NewSpaceBox_LostKeyboardFocus" />
+                    </StackPanel>
+                </Border>
+                <TextBlock x:Name="SpacesHint" Style="{StaticResource Hint}" Margin="2,8,8,0"
+                           Text="Spaces keep work, development and personal tasks apart. Everything starts in Main; click a name to rename it. Once there's a second space, a strip under the header switches between them (Alt+1 to Alt+9, Alt+0 for All)." />
 
                 <TextBlock Text="Sync" Style="{StaticResource SectionLabel}" />
                 <Border Style="{StaticResource Card}" Padding="14,10">

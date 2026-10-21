@@ -1,4 +1,5 @@
 import { encode } from '../model/hlc';
+import { ALL } from '../model/spaces';
 import { pastedLines } from '../model/text';
 import { dayKey, msUntilMidnight } from '../model/time';
 import { untouchedWelcome } from '../model/welcome';
@@ -10,16 +11,21 @@ import { coarsePointer, h, isEditable, isIOS, isStandalone, svg } from './dom';
 import { haptics, setHaptics } from './haptics';
 import { icons } from './icons';
 import { installKind, onInstallChange, promptInstall, watchInstall } from './install';
-import { animate, POP } from './motion';
+import { animate, EASE_OUT, POP } from './motion';
 import { NotesView } from './notes';
 import { Orb } from './orb';
 import { Settings } from './settings';
+import { openMenu, type MenuItem } from './sheet';
+import { SpaceUi } from './spaces';
 import { TasksView } from './tasks';
 import { watchTheme } from './theme';
 import { Toasts } from './toast';
 import { trackViewport } from './viewport';
 
 const WIDE = matchMedia('(min-width: 900px)');
+
+/** Macs type characters with Option+digit (¡ ™ £ ¢ …): there, Option+digit switches spaces only outside text fields. */
+const APPLE = /Mac|iPhone|iPad/.test(navigator.platform) || /Mac OS X/.test(navigator.userAgent);
 
 /**
  * The app shell. On a phone: a slim header (the orb, where you are, and Settings), one page
@@ -43,6 +49,11 @@ export class App {
   private readonly tabs: Record<Mode, HTMLButtonElement>;
   private readonly glow: HTMLElement;
   private readonly gear = h('button.icon-button.settings-open', { type: 'button', 'aria-label': 'Settings', title: 'Settings (,)', onclick: () => this.settings.open() }, svg(icons.gear));
+  private readonly spaces: SpaceUi;
+  /** Once there's a space besides Main: the title shows the space on show and switches it. */
+  private readonly spaceTitle: HTMLButtonElement;
+  /** Notes ⋯: Move sheet to… */
+  private readonly sheetMore: HTMLButtonElement;
   private mode: Mode = prefs().mode;
   private midnight: ReturnType<typeof setTimeout> | null = null;
 
@@ -55,16 +66,21 @@ export class App {
     watchInstall();
     setHaptics(prefs().haptics);
 
+    this.spaces = new SpaceUi(ws, this.toasts);
     this.tasks = new TasksView(ws, {
       toasts: this.toasts,
       celebrate: () => this.celebrate(),
       dockInset: () => this.dockInset(),
+      spaces: this.spaces,
+      focusComposer: () => this.focusComposer(),
     });
     this.notes = new NotesView(ws, {
       toasts: this.toasts,
       sentToTasks: () => this.nudgeTasksTab(),
+      spaces: this.spaces,
+      activeChanged: () => this.renderSheetActions(),
     });
-    this.settings = new Settings(ws, store, this.toasts, sync);
+    this.settings = new Settings(ws, store, this.toasts, sync, this.spaces);
 
     // ---- composer: the fastest way into Tack
     this.input = h('input.composer-input', {
@@ -101,7 +117,8 @@ export class App {
       if (lines.length <= 1) return;
       e.preventDefault();
       this.tasks.primeEnter(this.input.getBoundingClientRect());
-      const { added, undo } = this.ws.addTasks(lines);
+      // Into the space on show (from All, Main).
+      const { added, undo } = this.ws.addTasks(lines, this.spaces.here);
       this.toasts.show(`Added ${added.length} tasks`, undo);
       haptics.tick();
     });
@@ -111,6 +128,25 @@ export class App {
     // ---- header
     this.subtitle = h('p.subtitle');
     this.sheetDelete = h('button.icon-button.sheet-delete', { type: 'button', 'aria-label': 'Delete this sheet', title: 'Delete this sheet', onclick: () => this.notes.deleteActive() }, svg(icons.trash));
+    this.sheetMore = h('button.icon-button.sheet-more', { type: 'button', 'aria-label': 'More for this sheet', title: 'More', 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, svg(icons.more));
+    this.sheetMore.addEventListener('click', () => {
+      const items: MenuItem[] = [{ label: 'Move sheet to…', icon: svg(icons.move), disabled: !this.notes.active, run: () => this.spaces.moveSheet(this.notes.active, () => this.sheetMenuDone()) }];
+      // On a phone the ⋯ holds Delete too, leaving the header room for the space's name.
+      if (!this.sheetDelete.isConnected) {
+        items.push({
+          label: 'Delete sheet',
+          icon: svg(icons.trash),
+          danger: true,
+          disabled: !this.notes.active,
+          run: () => {
+            this.notes.deleteActive();
+            this.sheetMenuDone();
+          },
+        });
+      }
+      openMenu(this.sheetMore, items);
+    });
+    this.spaceTitle = h('button.space-title', { type: 'button', 'aria-haspopup': 'dialog', onclick: () => this.spaces.openSwitcher() }, h('span.space-title-name'), svg(icons.chevron));
     const header = h(
       'header.top',
       {},
@@ -165,13 +201,17 @@ export class App {
 
     // ---- wiring
     ws.subscribe((change) => {
-      const tasksChanged = change.tasks.size > 0 || change.focus;
+      // Spaces coming, going or renamed change what every list shows.
+      const spaces = change.spaces.size > 0;
+      if (spaces) this.renderSpaces();
+      const tasksChanged = change.tasks.size > 0 || change.focus || spaces;
       if (tasksChanged) this.tasks.render(change.origin !== 'storage' || !document.hidden);
-      if (change.sheets.size) this.notes.render(change.origin);
+      if (change.sheets.size || spaces) this.notes.render(change.origin);
       // Typing in notes touches only sheets: skip the task summary on every keystroke.
       if (tasksChanged) this.renderSummary();
       else this.renderSubtitle();
     });
+    this.spaces.onShow(() => this.showChanged());
     store.onStatus(() => this.renderSubtitle());
     store.onBeforeFlush(() => this.tasks.commitPending());
     trackViewport(() => this.onViewport());
@@ -188,6 +228,7 @@ export class App {
       if (document.activeElement === this.input && !(e.target as HTMLElement).closest('input, textarea, button')) this.input.blur();
     });
 
+    this.renderSpaces();
     this.layout();
     this.setMode(this.mode, false);
     this.tasks.render(false);
@@ -214,6 +255,7 @@ export class App {
       this.dockMain.replaceChildren(this.composer, this.notes.sheetBar, this.notes.tools);
       this.root.querySelector('.actions')!.prepend(this.sheetDelete);
     }
+    this.placeSheetActions();
     this.applyInert();
   }
 
@@ -266,7 +308,8 @@ export class App {
     if (this.mode !== 'tasks' && !WIDE.matches) this.setMode('tasks');
     if (this.tasks.el.scrollTop > 0) this.tasks.el.scrollTo({ top: 0 });
     this.tasks.primeEnter(this.input.getBoundingClientRect());
-    const task = this.ws.addTask(text, { asNow });
+    // Into the space on show (from All, Main).
+    const task = this.ws.addTask(text, { asNow, space: this.spaces.here });
     this.input.value = '';
     saveDraft('');
     this.composer.classList.remove('has-text');
@@ -274,6 +317,88 @@ export class App {
       haptics.tick();
       this.toasts.announce(asNow ? `Added and focused: ${task.text}` : `Added: ${task.text}`);
     }
+  }
+
+  // ================================================================== spaces
+
+  /** Spaces came, went or were renamed (or the space on show changed): the header and the task box. */
+  private renderSpaces(): void {
+    const on = this.spaces.on;
+    this.root.classList.toggle('spaces', on);
+    const title = this.root.querySelector('.title')!;
+    if (on) {
+      const label = this.spaces.label(this.spaces.show);
+      const name = this.spaceTitle.querySelector('span')!;
+      if (name.textContent !== label) name.textContent = label;
+      this.spaceTitle.setAttribute('aria-label', `Space: ${label}. Switch space`);
+      this.spaceTitle.title = 'Switch space (Alt+0 to Alt+9)';
+      if (!this.spaceTitle.isConnected) title.append(this.spaceTitle);
+    } else {
+      this.spaceTitle.remove();
+    }
+    this.placeSheetActions();
+    this.renderComposer();
+    this.renderSubtitle();
+  }
+
+  /**
+   * The sheet's own buttons: Delete (beside the sheets on wide screens, in the header on a phone)
+   * and, once there are spaces to move it to, ⋯ (Move sheet to…) beside it. On a phone ⋯ takes
+   * Delete in, leaving the header room for the name of the space on show.
+   */
+  private placeSheetActions(): void {
+    const on = this.spaces.on;
+    if (WIDE.matches) {
+      if (on) this.sheetDelete.before(this.sheetMore);
+      else this.sheetMore.remove();
+    } else {
+      const actions = this.root.querySelector('.actions')!;
+      const shown = on ? this.sheetMore : this.sheetDelete;
+      (on ? this.sheetDelete : this.sheetMore).remove();
+      if (shown.parentElement !== actions) actions.prepend(shown);
+    }
+    this.renderSheetActions();
+  }
+
+  /** A space's blank paper has no sheet yet: nothing to delete or move until the first keystroke makes one. */
+  private renderSheetActions(): void {
+    if (!this.sheetDelete || !this.sheetMore) return; // still being built
+    const blank = !this.notes.active;
+    this.sheetDelete.hidden = blank;
+    this.sheetMore.hidden = blank;
+  }
+
+  /** After the ⋯ menu's Move or Delete: the focus goes back to ⋯ (or to the page, if it's gone). */
+  private sheetMenuDone(): void {
+    if (this.sheetMore.isConnected && !this.sheetMore.hidden) this.sheetMore.focus();
+    else this.notes.el.focus({ preventScroll: true });
+  }
+
+  /** The task box says where a task goes: "Add to Work" (in All, or with no spaces: as always). */
+  private renderComposer(): void {
+    const show = this.spaces.show;
+    const space = this.spaces.on && show !== ALL ? this.spaces.label(show) : '';
+    const placeholder = space ? `Add to ${space}` : 'Add a task';
+    const label = space ? `Add a task to ${space}` : 'Add a task';
+    if (this.input.placeholder !== placeholder) this.input.placeholder = placeholder;
+    if (this.input.getAttribute('aria-label') !== label) this.input.setAttribute('aria-label', label);
+  }
+
+  /** Another space is on show: its tasks, its sheets, its counts. */
+  private showChanged(): void {
+    // An edit in progress ends, keeping what was typed (Alt+1…9 work while typing).
+    const edited = this.tasks.endEditing();
+    this.tasks.render(false);
+    this.notes.render();
+    this.renderSummary();
+    this.renderSpaces();
+    // The focus stays with that task while it's on show; else typing goes on in the task box.
+    if (edited && !this.tasks.focusRow(edited)) this.input.focus();
+    // A quick fade, so the switch reads as one.
+    for (const el of [this.tasks.el.querySelector('.page-inner'), this.notes.el.querySelector('.paper')]) {
+      if (el) animate(el, [{ opacity: 0.25, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: EASE_OUT });
+    }
+    this.toasts.announce(`Showing ${this.spaces.label(this.spaces.show)}`);
   }
 
   focusComposer(): void {
@@ -284,8 +409,9 @@ export class App {
   // ================================================================== summary
 
   private renderSummary(): void {
-    const s = this.ws.summary();
-    this.orb.update(s.open, s.doneToday, s.progress);
+    // The space on show (All: everything).
+    const s = this.ws.summary(this.spaces.show);
+    this.orb.update(s.open, s.doneToday, s.progress, this.spaces.on ? this.spaces.label(this.spaces.show) : '');
     this.taskLine =
       s.open === 0 && s.doneToday === 0
         ? 'Nothing open'
@@ -314,6 +440,8 @@ export class App {
     } else if (this.mode === 'notes') {
       text = status === 'saving' ? 'Saving…' : status === 'retrying' ? 'Saving… (retrying)' : this.editedLine();
     }
+    // With spaces the title names the space, so the line under it says which page this is.
+    if (this.spaces.on && !WIDE.matches && status !== 'unsaved') text = `${this.mode === 'notes' ? 'Notes' : 'Tasks'} · ${text}`;
     if (this.subtitle.textContent !== text) this.subtitle.textContent = text;
     this.subtitle.classList.toggle('warn', status === 'unsaved');
   }
@@ -420,6 +548,18 @@ export class App {
     if (e.defaultPrevented || document.querySelector('dialog[open]')) return;
     const typing = isEditable(document.activeElement);
     const mod = e.ctrlKey || e.metaKey;
+    // Alt+0: All; Alt+1…9: the spaces in order. Even while typing (the draft stays). Only the
+    // digits above the letters: Alt with the number pad types characters on Windows.
+    const digit = /^Digit(\d)$/.exec(e.code)?.[1];
+    if (digit && e.altKey && !mod && !e.shiftKey && this.spaces.on && !(APPLE && typing)) {
+      const n = Number(digit);
+      const id = n === 0 ? ALL : this.ws.spaceTabs[n - 1]?.id;
+      if (id) {
+        e.preventDefault();
+        this.spaces.setShow(id);
+      }
+      return;
+    }
     if (mod && !e.shiftKey && (e.key === 'z' || e.key === 'Z') && !typing) {
       if (this.toasts.undo()) e.preventDefault();
       return;

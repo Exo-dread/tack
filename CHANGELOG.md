@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.5.0 (2026-10-22)
+
+Spaces arrive on screen: keep work, development and personal tasks apart, or ignore them and
+nothing changes.
+
+- **Spaces** (Work, Dev, Personal). Make one in **Settings → Spaces → + New space**, where Main can
+  be renamed too. Until there's a second space, Tack looks and behaves exactly as before. Then a slim
+  strip under the header lists **All · Main · Work · …** and **+** for a new one; click a space, or
+  press **Alt+1** to **Alt+9** (the spaces in order) and **Alt+0** (All), even while typing a task.
+  With more spaces than fit, the strip scrolls (the mouse wheel too) and fades at the edge, and **+**
+  stays in sight.
+- A space shows its own tasks and sheets in the one order you set, and new ones go into it ("Add to
+  Work"; from All, into Main). Reordering within a space never moves tasks in the others.
+- **Move to ▸** on a task's menu (after Move to top; on the Now card after Stop focusing), **Ctrl+M** on
+  a task, and on a sheet's menu: "Moved to Personal · Undo".
+- Still one task in focus: in other spaces it shows as "Now in Work: …", which takes you there.
+  **All** shows everything, each task with its space.
+- Done and Clear, the orb's count and ring, the Tasks badge and the peek ("Work · 3 open · 2 done
+  today") go by the space on show. Each PC remembers which space it shows; it isn't synced.
+- Notes: a space with no sheets shows blank paper, and its sheet is made when you start writing.
+  Ctrl+Enter makes the task in the sheet's own space.
+- **Settings → Spaces** renames spaces in place, moves them up and down, and deletes them: "Deleted Dev
+  · Undo", and meanwhile their tasks and notes show in Main. Main can't be deleted.
+- Fixed, with or without spaces: a toast too long for the panel (say "Added to tasks: …" from a long
+  line) ends in an ellipsis, and Undo stays in the panel where you can click it. It used to be pushed
+  past the edge.
+- Nothing about files, merging or sync changes: spaces sync as they did in 1.4.0, and the new ways of
+  adding and reordering stamp exactly as Tack Focus does (shared test vectors).
+
 ## 1.4.0 (2026-10-21)
 
 The groundwork for spaces, so every device understands them before the screens for them arrive.

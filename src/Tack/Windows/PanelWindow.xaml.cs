@@ -1,14 +1,18 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using Tack.Controls;
 using Tack.Interop;
 using Tack.Model;
 using Tack.Services;
+using Tack.Sync;
 
 namespace Tack.Windows;
 
@@ -26,6 +30,7 @@ public partial class PanelWindow : Window
     private const double SettingsMinHeight = 470; // settings never open in a cramped panel
 
     private readonly Workspace _ws;
+    private readonly SpaceView _view;
     private readonly AppShell _shell;
     private readonly DispatcherTimer _toastTimer;
     private IntPtr _hwnd;
@@ -33,6 +38,15 @@ public partial class PanelWindow : Window
     private bool _settingsOpen;
     private bool _userResized;
     private bool _sizeChangePending;
+    private IReadOnlyList<SpaceTab> _stripTabs = [];
+    private bool _syncingStrip; // the strip is being brought in line with the space on show, not clicked
+    private double _heldHeight; // > 0: Tasks keeps this height after a space switch, until the panel next opens
+
+    /// <summary>
+    /// Set by the shell: the panel grows and shrinks upward from its bottom edge (the orb is in the
+    /// lower half of the screen), so a change of height moves the strip.
+    /// </summary>
+    internal bool AnchoredBottom { get; set; }
 
     /// <summary>Raised when the user starts dragging or resizing the panel.</summary>
     public event Action? SizeMoveStarted;
@@ -43,9 +57,10 @@ public partial class PanelWindow : Window
     /// <summary>Raised when the panel would like a different size: tab switch, settings, or the task list grew or shrank.</summary>
     public event Action? PreferredSizeChanged;
 
-    internal PanelWindow(Workspace ws, AppShell shell)
+    internal PanelWindow(Workspace ws, SpaceView view, AppShell shell)
     {
         _ws = ws;
+        _view = view;
         _shell = shell;
         InitializeComponent();
         DataContext = ws;
@@ -54,21 +69,32 @@ public partial class PanelWindow : Window
         Width = notes ? ws.Settings.NotesWidth : ws.Settings.TasksWidth;
         Height = notes ? ws.Settings.NotesHeight : ws.Settings.TasksHeight ?? 360;
 
-        TasksPage.Initialize(ws, this);
+        TasksPage.Initialize(ws, view, this);
         TasksPage.ContentHeightChanged += () => { if (IsTasksAutoSized) RequestPreferredSize(); };
-        NotesPage.Initialize(ws, this);
-        SettingsPage.Initialize(ws, shell, this);
+        NotesPage.Initialize(ws, view, this);
+        SettingsPage.Initialize(ws, view, shell, this);
 
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
         _toastTimer.Tick += (_, _) => HideToast();
 
-        ws.SummaryChanged += (_, _) => UpdateBadge();
+        view.SummaryChanged += (_, _) => UpdateBadge();
+        view.PropertyChanged += OnViewChanged;
         ws.Settings.PropertyChanged += OnSettingChanged;
         UpdateBadge();
         UpdatePin();
+        UpdateStrip();
 
         SelectTab(ws.Settings.Tab, animate: false);
-        Loaded += (_, _) => MoveIndicator(animate: false);
+        Loaded += (_, _) =>
+        {
+            MoveIndicator(animate: false);
+            RevealShownSpace();
+        };
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible) RevealShownSpace();
+            else _heldHeight = 0; // folded away: it fits its list again next time
+        };
     }
 
     public IntPtr Handle => _hwnd;
@@ -104,7 +130,11 @@ public partial class PanelWindow : Window
                 break;
             case WM_EXITSIZEMOVE:
                 IsInSizeMove = false;
-                if (_userResized) RememberManualSize();
+                if (_userResized)
+                {
+                    _heldHeight = 0;
+                    RememberManualSize();
+                }
                 UserMovedOrResized?.Invoke();
                 break;
         }
@@ -132,7 +162,7 @@ public partial class PanelWindow : Window
         var s = _ws.Settings;
         var size = s.Tab == "notes"
             ? new Size(s.NotesWidth, s.NotesHeight)
-            : new Size(s.TasksWidth, s.TasksHeight ?? FitTasksHeight(s.TasksWidth, maxAutoHeight));
+            : new Size(s.TasksWidth, s.TasksHeight ?? (_heldHeight > 0 ? Math.Min(_heldHeight, Math.Max(Settings.MinHeight, maxAutoHeight)) : FitTasksHeight(s.TasksWidth, maxAutoHeight)));
         if (_settingsOpen && size.Height < SettingsMinHeight) size.Height = SettingsMinHeight;
         return size;
     }
@@ -141,7 +171,8 @@ public partial class PanelWindow : Window
     private double FitTasksHeight(double width, double maxHeight)
     {
         TasksPage.Measure(new Size(width, double.PositiveInfinity));
-        double natural = Math.Ceiling(HeaderHeight + TasksPage.DesiredSize.Height);
+        double strip = Strip.Visibility == Visibility.Visible ? Strip.Height + Strip.Margin.Top + Strip.Margin.Bottom : 0;
+        double natural = Math.Ceiling(HeaderHeight + strip + TasksPage.DesiredSize.Height);
         TasksPage.InvalidateMeasure(); // hand layout back to the window
         return Math.Clamp(natural, Settings.MinHeight, Math.Max(Settings.MinHeight, maxHeight));
     }
@@ -176,6 +207,7 @@ public partial class PanelWindow : Window
             s.TasksWidth = Settings.DefaultWidth;
             s.TasksHeight = null;
         }
+        _heldHeight = 0;
         RequestPreferredSize();
     }
 
@@ -224,6 +256,7 @@ public partial class PanelWindow : Window
     public void SelectTab(string tab, bool animate = true)
     {
         CloseSettings(animate: false);
+        if (tab != _ws.Settings.Tab) _heldHeight = 0; // the panel takes the other tab's size anyway
         _ws.Settings.Tab = tab;
         bool notes = tab == "notes";
         (notes ? NotesTab : TasksTab).IsChecked = true;
@@ -264,7 +297,7 @@ public partial class PanelWindow : Window
 
     private void UpdateBadge()
     {
-        int n = _ws.OpenCount;
+        int n = _view.OpenCount;
         TasksBadge.Text = n > 0 ? n.ToString() : "";
         if (IsLoaded) Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => MoveIndicator(animate: true));
     }
@@ -295,6 +328,7 @@ public partial class PanelWindow : Window
         Anim.Slide(SettingsPage, 24, 0, 220);
         TabIndicator.Opacity = 0;
         TasksTab.IsChecked = NotesTab.IsChecked = false;
+        UpdateStrip();
         SettingsPage.Focus();
         RequestPreferredSize();
     }
@@ -320,9 +354,235 @@ public partial class PanelWindow : Window
             Anim.Set(page, OpacityProperty, 1);
         }
         (_ws.Settings.Tab == "notes" ? NotesTab : TasksTab).IsChecked = true;
+        UpdateStrip();
         MoveIndicator(animate);
         RequestPreferredSize();
         if (animate) FocusDefault();
+    }
+
+    // ---- Spaces strip ----
+
+    /// <summary>
+    /// Shows a space (or All) in the panel and the orb, and remembers it on this PC. What counts is
+    /// the choice remembered, not what's on show: while a space that's gone shows Main, choosing Main
+    /// is a choice of its own (kept when the space comes back), as in Tack Focus.
+    /// </summary>
+    public void ShowSpace(string id)
+    {
+        if ((id == SpaceField.Main ? null : id) == _ws.Settings.SpaceOnShow) return;
+        // A Tasks panel that fits its list and grows up from its bottom edge would move the strip
+        // out from under the mouse: it keeps its height until it next opens (the list scrolls).
+        if (IsVisible && AnchoredBottom && IsTasksAutoSized && !_settingsOpen && _heldHeight <= 0) _heldHeight = ActualHeight;
+        _view.Show(id);
+        Announce($"Showing {_view.ShownName}");
+    }
+
+    /// <summary>Tells screen readers something that changed out of their sight (a space switched by a key, a task moved).</summary>
+    internal void Announce(string text)
+    {
+        if ((UIElementAutomationPeer.FromElement(this) ?? UIElementAutomationPeer.CreatePeerForElement(this)) is { } peer)
+            peer.RaiseNotificationEvent(AutomationNotificationKind.ActionCompleted, AutomationNotificationProcessing.ImportantMostRecent, text, "Tack.Spaces");
+    }
+
+    private void OnViewChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(SpaceView.Tabs):
+                UpdateStrip();
+                break;
+            case nameof(SpaceView.Shown):
+                _syncingStrip = true;
+                try
+                {
+                    foreach (var tab in StripTabs.Children.OfType<RadioButton>())
+                    {
+                        bool on = (string)tab.Tag == _view.Shown;
+                        if (tab.IsChecked != on) tab.IsChecked = on;
+                        tab.IsTabStop = on; // Tab stops at the space on show; arrows move along
+                    }
+                }
+                finally
+                {
+                    _syncingStrip = false;
+                }
+                RevealShownSpace();
+                break;
+        }
+    }
+
+    /// <summary>Scrolls the strip so the space on show is in sight (after it's built, and whenever the panel opens).</summary>
+    private void RevealShownSpace()
+    {
+        if (Strip.Visibility != Visibility.Visible) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            // Clear of the fades at either edge too.
+            if (StripTabs.Children.OfType<RadioButton>().FirstOrDefault(t => t.IsChecked == true) is { } tab)
+                tab.BringIntoView(new Rect(-StripFade, 0, tab.ActualWidth + 2 * StripFade, tab.ActualHeight));
+            UpdateStripFade();
+        });
+    }
+
+    private const double StripFade = 20;
+
+    /// <summary>The strip fades out at an edge with more spaces beyond it, so it's plain there's more.</summary>
+    private void UpdateStripFade()
+    {
+        double width = StripScroller.ActualWidth;
+        bool left = StripScroller.HorizontalOffset > 0.5;
+        bool right = StripScroller.HorizontalOffset < StripScroller.ScrollableWidth - 0.5;
+        if (width <= 0 || (!left && !right))
+        {
+            StripScroller.OpacityMask = null;
+            return;
+        }
+        double f = Math.Min(0.3, StripFade / width);
+        var mask = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
+        mask.GradientStops.Add(new GradientStop(left ? Colors.Transparent : Colors.Black, 0));
+        mask.GradientStops.Add(new GradientStop(Colors.Black, f));
+        mask.GradientStops.Add(new GradientStop(Colors.Black, 1 - f));
+        mask.GradientStops.Add(new GradientStop(right ? Colors.Transparent : Colors.Black, 1));
+        mask.Freeze();
+        StripScroller.OpacityMask = mask;
+    }
+
+    private void StripScroller_ScrollChanged(object sender, ScrollChangedEventArgs e) => UpdateStripFade();
+
+    /// <summary>The mouse wheel scrolls the strip sideways (it has nothing to scroll up and down).</summary>
+    private void StripScroller_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (StripScroller.ScrollableWidth <= 0) return;
+        StripScroller.ScrollToHorizontalOffset(StripScroller.HorizontalOffset - e.Delta * 0.4);
+        e.Handled = true;
+    }
+
+    /// <summary>The strip shows once a second space exists (not over Settings): All, then each space, then +.</summary>
+    private void UpdateStrip()
+    {
+        var visibility = _view.HasSpaces && !_settingsOpen ? Visibility.Visible : Visibility.Collapsed;
+        if (Strip.Visibility != visibility)
+        {
+            Strip.Visibility = visibility;
+            RequestPreferredSize();
+            RevealShownSpace();
+        }
+        if (!_view.HasSpaces || _stripTabs.SequenceEqual(_view.Tabs)) return;
+        _stripTabs = _view.Tabs;
+
+        StripTabs.Children.Clear();
+        var entries = new List<SpaceTab> { new(SpaceView.All, "All") };
+        entries.AddRange(_view.Tabs);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var (id, name) = entries[i];
+            if (i > 0)
+            {
+                var dot = new Ellipse { Width = 2.5, Height = 2.5, Margin = new Thickness(1, 1, 1, 0), VerticalAlignment = VerticalAlignment.Center };
+                dot.SetResourceReference(Shape.FillProperty, "TextTertiaryBrush");
+                StripTabs.Children.Add(dot);
+            }
+            var tab = new RadioButton
+            {
+                Style = (Style)FindResource("SpaceTab"),
+                GroupName = "Spaces",
+                Tag = id,
+                Content = new TextBlock { Text = name, MaxWidth = 96, TextTrimming = TextTrimming.CharacterEllipsis },
+                IsChecked = id == _view.Shown,
+                IsTabStop = id == _view.Shown,
+                ToolTip = i <= 9 ? $"{name} (Alt+{i})" : name,
+            };
+            AutomationProperties.SetName(tab, name);
+            if (i <= 9) AutomationProperties.SetAcceleratorKey(tab, $"Alt+{i}");
+            tab.Checked += SpaceTab_Checked;
+            tab.Click += SpaceTab_Click;
+            StripTabs.Children.Add(tab);
+        }
+        RevealShownSpace();
+    }
+
+    private void SpaceTab_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_syncingStrip || sender is not RadioButton { Tag: string id }) return;
+        bool byMouse = InputManager.Current.MostRecentInputDevice is MouseDevice;
+        ShowSpace(id);
+        if (byMouse) FocusDefault();
+    }
+
+    /// <summary>
+    /// A click on the space already checked: Main, standing in for a space that's gone, is chosen
+    /// for itself then, and kept when that space comes back (a click that checks a tab has been
+    /// handled by <see cref="SpaceTab_Checked"/> already, so this changes nothing more).
+    /// </summary>
+    private void SpaceTab_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton { Tag: string id }) ShowSpace(id);
+    }
+
+    /// <summary>Arrow keys move along the strip and show what they land on, as in a tab list.</summary>
+    private void StripTabs_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var tabs = StripTabs.Children.OfType<RadioButton>().ToList();
+        int i = Keyboard.FocusedElement is RadioButton focused ? tabs.IndexOf(focused) : -1;
+        if (i < 0 || Keyboard.Modifiers != ModifierKeys.None) return;
+        int next = e.Key switch
+        {
+            Key.Left or Key.Up => (i + tabs.Count - 1) % tabs.Count,
+            Key.Right or Key.Down => (i + 1) % tabs.Count,
+            Key.Home => 0,
+            Key.End => tabs.Count - 1,
+            _ => -1,
+        };
+        if (next < 0) return;
+        tabs[next].Focus();
+        tabs[next].IsChecked = true;
+        e.Handled = true;
+    }
+
+    private void NewSpace_Click(object sender, RoutedEventArgs e)
+    {
+        NewSpaceButton.Visibility = Visibility.Collapsed;
+        NewSpaceBox.Clear();
+        NewSpaceBox.Visibility = Visibility.Visible;
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () => NewSpaceBox.Focus());
+    }
+
+    private void NewSpaceBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Enter:
+                string name = NewSpaceBox.Text;
+                EndNewSpace();
+                if (SpaceField.CleanName(name).Length > 0) ShowSpace(_ws.AddSpace(name).Id);
+                FocusDefault();
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                EndNewSpace();
+                FocusDefault();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Clicking elsewhere keeps a name that was typed: the space is made (Esc is the way to drop it).
+    /// The space on show stays as it is, since the click was about something else.
+    /// </summary>
+    private void NewSpaceBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (NewSpaceBox.Visibility != Visibility.Visible) return;
+        string name = NewSpaceBox.Text;
+        EndNewSpace();
+        if (SpaceField.CleanName(name).Length > 0) _ws.AddSpace(name);
+    }
+
+    private void EndNewSpace()
+    {
+        if (NewSpaceBox.Visibility != Visibility.Visible) return;
+        NewSpaceBox.Visibility = Visibility.Collapsed;
+        NewSpaceButton.Visibility = Visibility.Visible;
     }
 
     // ---- Pin ----
@@ -409,6 +669,15 @@ public partial class PanelWindow : Window
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
+        // Alt+0 shows All, Alt+1..9 the first nine spaces, wherever the caret is (a draft stays as it is).
+        // Only once there are spaces: until then Alt+digits do what they always did.
+        if (Keyboard.Modifiers == ModifierKeys.Alt && e.Key == Key.System && e.SystemKey is >= Key.D0 and <= Key.D9
+            && _view.HasSpaces && !_settingsOpen)
+        {
+            if (_view.SpaceForKey(e.SystemKey - Key.D0) is { } id) ShowSpace(id);
+            e.Handled = true;
+            return;
+        }
         if (Keyboard.Modifiers == ModifierKeys.Control)
         {
             switch (e.Key)

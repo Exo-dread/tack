@@ -275,6 +275,14 @@ internal static class VectorTests
             () => DateTimeOffset.FromUnixTimeMilliseconds(wall), ids.Dequeue);
         var undos = new Stack<Action>();
         WorkspaceData? snapshot = null;
+        // What the panel shows of a space, for ops done there (moveIn, clearDone with a "space").
+        SpaceView? view = null;
+        SpaceView Showing(string space)
+        {
+            view ??= new SpaceView(ws);
+            view.Show(space);
+            return view;
+        }
 
         for (int i = 0; i < ops.Count; i++)
         {
@@ -286,8 +294,9 @@ internal static class VectorTests
             switch (name)
             {
                 case "start": break;
-                case "add": ws.AddTask(op.Str("text")!); break;
-                case "addNow": ws.AddTask(op.Str("text")!, asNow: true); break;
+                // "space": the space on show the screen adds into (none: Main).
+                case "add": ws.AddTask(op.Str("text")!, space: op.Str("space")); break;
+                case "addNow": ws.AddTask(op.Str("text")!, asNow: true, space: op.Str("space")); break;
                 case "edit": Task().Text = op.Str("text")!; break;
                 case "complete": ws.Complete(Task()); break;
                 case "reopen": ws.Reopen(Task()); break;
@@ -295,9 +304,18 @@ internal static class VectorTests
                 case "clearNow": ws.ClearNow(); break;
                 case "move": ws.MoveOpen(ws.Open.IndexOf(Task()), op.GetProperty("index").GetInt32()); break;
                 case "delete": undos.Push(ws.Delete(Task())); break;
-                case "clearDone": undos.Push(ws.ClearDone()); break;
+                // With "space": Clear in that space, only what it shows.
+                case "clearDone": undos.Push(op.Str("space") is { } shown ? Showing(shown).ClearDone() : ws.ClearDone()); break;
+                // Within the space on show: index among the open tasks it shows.
+                case "moveIn":
+                {
+                    var v = Showing(op.Str("space")!);
+                    v.MoveOpen(v.Open.IndexOf(Task()), op.GetProperty("index").GetInt32());
+                    break;
+                }
                 case "undo": undos.Pop()(); break;
-                case "addSheet": ws.AddSheet(); break;
+                // "text": what was typed on a space's blank paper, which makes the sheet.
+                case "addSheet": ws.AddSheet(op.Str("space"), op.Str("text") ?? ""); break;
                 case "editSheet": Sheet().Text = op.Str("text")!; break;
                 case "deleteSheet": undos.Push(ws.DeleteSheet(Sheet())); break;
                 case "addSpace": ws.AddSpace(SpaceName(op)); break;
@@ -306,6 +324,7 @@ internal static class VectorTests
                 // No "space": a move to no space at all, which changes nothing.
                 case "moveTaskToSpace": ws.MoveTaskToSpace(op.Str("id")!, op.Str("space") ?? ""); break;
                 case "moveSheetToSpace": ws.MoveSheetToSpace(op.Str("id")!, op.Str("space") ?? ""); break;
+                case "moveSpace": ws.MoveSpace(op.Str("id")!, op.GetProperty("index").GetInt32()); break;
                 case "snapshot": snapshot = ws.ToData(); break;
                 case "restore": ws.Restore(snapshot!); break;
                 case "merge": ws.MergeFrom(Json.Data(op.GetProperty("data")), op.Str("base")); break;
@@ -313,6 +332,9 @@ internal static class VectorTests
             }
             Check.Equal(Json.Views(op.GetProperty("views")), Json.Views(ws), $"op {i} ({name}): lists");
             if (op.TryGetProperty("check", out var check)) Check.Data(Json.Data(check), ws.ToData(), $"op {i} ({name}): records");
+            // The spaces as every list shows them (Main included), where the script gives them.
+            if (op.TryGetProperty("tabs", out var tabs))
+                Check.Sequence(tabs.EnumerateArray().Select(t => t.GetString()!).ToList(), ws.ShownSpaces.Select(s => s.Id).ToList(), $"op {i} ({name}): spaces as listed");
         }
         Check.True(ids.Count == 0, "every id was used");
         Check.Data(Json.Data(script.GetProperty("data")), ws.ToData(), "final records");

@@ -326,6 +326,50 @@
         </Setter>
     </Style>
 
+    <!-- A menu item with items of its own ("Move to ▸"): the same row, a chevron, and its items in a flyout beside it. -->
+    <ControlTemplate x:Key="SubmenuHeaderTemplate" TargetType="MenuItem">
+        <Grid>
+            <Border x:Name="Bd" Height="32" CornerRadius="5" Background="Transparent" Padding="10,0,8,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="26" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ContentPresenter ContentSource="Icon" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                      TextElement.Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <ContentPresenter Grid.Column="1" ContentSource="Header" VerticalAlignment="Center" RecognizesAccessKey="True" />
+                    <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}" Margin="16,0,0,0"
+                               VerticalAlignment="Center" Style="{StaticResource Caption}" />
+                    <TextBlock Grid.Column="3" Text="&#xE76C;" FontFamily="{StaticResource IconFont}" FontSize="9" Margin="10,1,0,0"
+                               VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </Grid>
+            </Border>
+            <Popup x:Name="PART_Popup" Placement="Right" HorizontalOffset="-3" VerticalOffset="-15" AllowsTransparency="True"
+                   Focusable="False" PopupAnimation="None" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}">
+                <Border Margin="10" Padding="4" CornerRadius="8" Background="{DynamicResource FlyoutBrush}"
+                        BorderBrush="{DynamicResource StrokeStrongBrush}" BorderThickness="1" MinWidth="150">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="16" ShadowDepth="3" Direction="270" Opacity="0.45" Color="Black" />
+                    </Border.Effect>
+                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                </Border>
+            </Popup>
+        </Grid>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsHighlighted" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillBrush}" />
+            </Trigger>
+            <Trigger Property="IsSubmenuOpen" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45" />
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
     <Style TargetType="MenuItem">
         <Setter Property="OverridesDefaultStyle" Value="True" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -357,6 +401,11 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <Style.Triggers>
+            <Trigger Property="Role" Value="SubmenuHeader">
+                <Setter Property="Template" Value="{StaticResource SubmenuHeaderTemplate}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">

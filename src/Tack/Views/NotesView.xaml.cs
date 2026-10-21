@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Tack.Model;
+using Tack.Sync;
 using Tack.Windows;
 
 namespace Tack.Views;
@@ -12,6 +13,8 @@ namespace Tack.Views;
 /// <summary>
 /// Notes: a stack of scratch-paper sheets. Plain text, saved as you type,
 /// with a couple of quiet helpers (list continuation, timestamps, line-to-task).
+/// It shows the sheets of the space on show (<see cref="SpaceView"/>); a space without
+/// any shows blank paper until you write on it.
 /// </summary>
 public partial class NotesView : UserControl
 {
@@ -20,6 +23,7 @@ public partial class NotesView : UserControl
 
     private readonly Dictionary<NoteSheet, (int Caret, double Scroll)> _positions = new();
     private Workspace _ws = null!;
+    private SpaceView _view = null!;
     private PanelWindow _panel = null!;
     private NoteSheet? _shown;
 
@@ -28,11 +32,13 @@ public partial class NotesView : UserControl
         InitializeComponent();
     }
 
-    internal void Initialize(Workspace ws, PanelWindow panel)
+    internal void Initialize(Workspace ws, SpaceView view, PanelWindow panel)
     {
         _ws = ws;
+        _view = view;
         _panel = panel;
-        _shown = ws.ActiveSheet;
+        DataContext = view;
+        _shown = view.ActiveSheet;
     }
 
     public void FocusEditor()
@@ -47,15 +53,30 @@ public partial class NotesView : UserControl
     {
         if (_ws == null) return;
         if (_shown != null) _positions[_shown] = (Editor.CaretIndex, Editor.VerticalOffset);
-        _shown = _ws.ActiveSheet;
-        SheetList.ScrollIntoView(_shown);
+        _shown = _view.ActiveSheet;
+        if (_shown != null) SheetList.ScrollIntoView(_shown);
+
+        // The sheet just made from what was typed on blank paper: the text on the paper is its
+        // text, and what was typed stays undoable (the history held nothing else: landing on the
+        // blank paper cleared it).
+        bool madeOnPaper = _makingFromPaper;
 
         // A sheet switch replaces the text wholesale; it must not become an undo step.
-        Editor.IsUndoEnabled = false;
-        Editor.IsUndoEnabled = true;
+        if (!madeOnPaper)
+        {
+            Editor.IsUndoEnabled = false;
+            Editor.IsUndoEnabled = true;
+        }
 
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
+            // With spaces, a switch can land on blank paper, where Undo bringing back the text it
+            // replaced would make a sheet of it: clear again, now that the new text is in.
+            if (_view.HasSpaces && !madeOnPaper)
+            {
+                Editor.IsUndoEnabled = false;
+                Editor.IsUndoEnabled = true;
+            }
             if (_shown != null && _positions.TryGetValue(_shown, out var p))
             {
                 Editor.CaretIndex = Math.Min(p.Caret, Editor.Text.Length);
@@ -73,9 +94,40 @@ public partial class NotesView : UserControl
 
     private void AddSheet()
     {
-        _ws.AddSheet();
+        _ws.AddSheet(_view.NewItemSpace);
         FocusEditor();
     }
+
+    /// <summary>
+    /// The first keystroke on a space's blank paper makes its sheet, with what was typed. Not here
+    /// and now: the editor is still inside its change, where switching to the new sheet (which
+    /// resets the undo history) isn't allowed, so the sheet is made as soon as the change is done
+    /// (before the next keystroke is handled).
+    /// </summary>
+    private void Editor_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_ws == null || _makingSheet || _view.ActiveSheet != null || Editor.Text.Length == 0) return;
+        _makingSheet = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
+        {
+            _makingSheet = false;
+            if (_view.ActiveSheet != null || Editor.Text.Length == 0) return;
+            _makingFromPaper = true;
+            try
+            {
+                _ws.AddSheet(_view.NewItemSpace, Editor.Text);
+            }
+            finally
+            {
+                _makingFromPaper = false;
+            }
+        });
+    }
+
+    private bool _makingSheet;
+
+    /// <summary>True while the blank paper's sheet is being made (and switched to).</summary>
+    private bool _makingFromPaper;
 
     private void DeleteSheet_Click(object sender, RoutedEventArgs e)
     {
@@ -86,12 +138,49 @@ public partial class NotesView : UserControl
         if (!wasEmpty) _panel.ShowToast("Sheet deleted", undo);
     }
 
+    /// <summary>"Move to" shows once there are spaces, listing them all; the sheet's own is greyed out.</summary>
+    private void SheetMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ContextMenu menu || (menu.PlacementTarget as FrameworkElement)?.DataContext is not NoteSheet sheet) return;
+        if (menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Tag is "MoveTo") is not { } moveTo) return;
+        moveTo.Visibility = _view.HasSpaces ? Visibility.Visible : Visibility.Collapsed;
+        moveTo.Items.Clear();
+        if (!_view.HasSpaces) return;
+        string current = _view.SpaceOf(sheet);
+        foreach (var space in _view.Tabs)
+        {
+            var item = new MenuItem
+            {
+                Header = new TextBlock { Text = space.Name, MaxWidth = 220, TextTrimming = TextTrimming.CharacterEllipsis },
+                IsEnabled = space.Id != current,
+            };
+            System.Windows.Automation.AutomationProperties.SetName(item, space.Name);
+            item.Click += (_, _) => MoveToSpace(sheet, space.Id);
+            moveTo.Items.Add(item);
+        }
+    }
+
+    /// <summary>Puts a sheet in another space; only its space changes. Undo puts it back.</summary>
+    private void MoveToSpace(NoteSheet sheet, string space)
+    {
+        string before = sheet.Space.Length > 0 ? sheet.Space : SpaceField.Main;
+        _ws.MoveSheetToSpace(sheet.Id, space);
+        _panel.Announce($"Moved to {_view.NameOf(space)}");
+        _panel.ShowToast($"Moved to {SpaceView.ToastName(_view.NameOf(space))}", () =>
+        {
+            _ws.MoveSheetToSpace(sheet.Id, before);
+            if (_view.Sheets.Contains(sheet)) _ws.ActiveSheet = sheet;
+        });
+        if (IsVisible) FocusEditor();
+    }
+
     private void CycleSheet(int delta)
     {
-        int n = _ws.Sheets.Count;
-        if (n < 2) return;
-        int i = _ws.Sheets.IndexOf(_ws.ActiveSheet);
-        _ws.ActiveSheet = _ws.Sheets[((i + delta) % n + n) % n];
+        var sheets = _view.Sheets;
+        int n = sheets.Count;
+        if (n < 2 || _view.ActiveSheet is not { } active) return;
+        int i = sheets.IndexOf(active);
+        _ws.ActiveSheet = sheets[((i + delta) % n + n) % n];
     }
 
     // ---- Editor helpers ----
@@ -154,8 +243,10 @@ public partial class NotesView : UserControl
             .ToList();
         if (lines.Count == 0) return;
 
+        // The tasks go in the sheet's own space.
+        string space = _view.ActiveSheet is { } sheet ? _view.SpaceOf(sheet) : _view.NewItemSpace;
         var added = new List<TaskItem>();
-        for (int i = lines.Count - 1; i >= 0; i--) added.Add(_ws.AddTask(lines[i]));
+        for (int i = lines.Count - 1; i >= 0; i--) added.Add(_ws.AddTask(lines[i], space: space));
         string label = lines.Count == 1 ? $"Added to tasks: {Shorten(lines[0])}" : $"Added {lines.Count} tasks";
         _panel.ShowToast(label, () => { foreach (var t in added) _ws.Delete(t); });
     }

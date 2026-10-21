@@ -17,6 +17,23 @@ export class Toasts {
     document.body.append(this.live);
   }
 
+  /**
+   * Shows toasts inside `host` (an open dialog, which would otherwise cover them) until it's
+   * called with null, which puts them back where they were.
+   */
+  mount(host: HTMLElement | null): void {
+    if (host) {
+      if (this.el.parentElement === host) return;
+      this.home ??= this.el.parentElement;
+      host.append(this.el);
+    } else if (this.home) {
+      this.home.append(this.el);
+      this.home = null;
+    }
+  }
+
+  private home: HTMLElement | null = null;
+
   /** Says something to screen readers only. */
   announce(message: string): void {
     this.live.textContent = '';
@@ -94,6 +111,8 @@ export class Toasts {
     if (!c) return;
     this.current = null;
     clearTimeout(c.timer);
+    // While it fades, its Undo would run the next toast's undo: take it out of reach at once.
+    c.node.inert = true;
     const a = animated
       ? animate(c.node, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px) scale(.97)' }], {
           duration: 160,
