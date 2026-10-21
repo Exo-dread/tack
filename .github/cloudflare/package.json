@@ -1,0 +1,8 @@
+{
+  "name": "tack-cloudflare-deploy",
+  "private": true,
+  "description": "Cloudflare's wrangler, pinned and locked for the deploy job in .github/workflows/web.yml (nothing else).",
+  "devDependencies": {
+    "wrangler": "4.151.2"
+  }
+}

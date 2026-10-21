@@ -24,17 +24,29 @@ for a public repository.
 
 ## How it deploys
 
-[`.github/workflows/web.yml`](../.github/workflows/web.yml): the `test` job runs on every pull
-request and on every push to `main` that touches the web app. When it passes, the `deploy` job builds
-with the real Microsoft app ID and runs `wrangler pages deploy`:
+[`.github/workflows/web.yml`](../.github/workflows/web.yml), in three jobs:
 
-- a push to `main` (a merged pull request) goes to production, https://tackfocus.app;
-- a pull request from this repository gets a preview at `<branch>.tack-6kt.pages.dev`.
+1. `test` runs on every pull request and on every push to `main` that touches the web app.
+2. `build-site`, once the tests pass, builds with the real Microsoft app ID (checking the app ID
+   made it into the build) and keeps `dist` as an artifact.
+3. `deploy` uploads that artifact with `wrangler pages deploy`:
+   - a push to `main` (a merged pull request) goes to production, https://tackfocus.app;
+   - a pull request from this repository gets a preview at `<branch>.tack-6kt.pages.dev`.
+
+The Cloudflare token reaches only `deploy`, which runs none of the repository's code: it checks out
+just [`.github/cloudflare`](../.github/cloudflare), where wrangler is pinned and locked (exact
+versions and integrity hashes), and installs it without install scripts. A compromised npm package
+published later can't slip into a deploy, and a branch's build can't tamper with the job that
+holds the token. To update wrangler: change the version in `.github/cloudflare/package.json`, then
+`npm install --package-lock-only --ignore-scripts` there.
 
 **Why GitHub and not Cloudflare's own builds:** from October 2026, the builds Cloudflare started from
 Git kept stalling "Idle" in its build queue, and only a manual retry ran them. Those are paused
 (project → Settings → Build → **Branch control**: automatic production deployments off, preview
 deployments *None*). The repository stays connected, which Cloudflare allows alongside uploads.
+Even paused, Cloudflare still queues an idle build of its own for every push; `deploy`'s last step
+cancels any still waiting, so none can ever start late and put an older version back live (it
+warns, and never fails the deploy, if it can't).
 
 GitHub needs these (repository → Settings → **Secrets and variables → Actions**):
 
