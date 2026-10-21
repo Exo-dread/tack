@@ -1,6 +1,6 @@
 # Tack Focus changelog
 
-## Unreleased
+## 0.2.1 (21 October 2026)
 
 - **Sync shrugs off bad files.** Text that only half spells a character is cleaned up when read
   and never written out, so it can't reach Tack for Windows. A device id such as "constructor" no

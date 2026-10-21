@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.3.1 (2026-10-21)
+
+Sync is sturdier: a damaged or crafted file in the sync folder can't stop it any more. From a
+security review of Tack and Tack Focus.
 
 - **Sync shrugs off bad files.** A damaged or crafted file in the sync folder can no longer stop
   sync: unreadable text (half an emoji, invalid UTF-8) sets that one file aside instead of stopping
