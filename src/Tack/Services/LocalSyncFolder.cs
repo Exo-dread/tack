@@ -55,7 +55,7 @@ internal sealed class LocalSyncFolder(string root) : ISyncFolder
             foreach (var file in new DirectoryInfo(Devices).EnumerateFiles("*.json"))
             {
                 // Size and time stand in for a content tag; reading the metadata never downloads a file.
-                entries.Add(new FolderEntry(file.Name, $"{file.LastWriteTimeUtc.Ticks:x}-{file.Length:x}"));
+                entries.Add(new FolderEntry(file.Name, $"{file.LastWriteTimeUtc.Ticks:x}-{file.Length:x}", file.Length));
             }
             return Task.FromResult<IReadOnlyList<FolderEntry>>(entries);
         }

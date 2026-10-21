@@ -258,8 +258,12 @@ describe('interruptions and recovery', () => {
     phone.view.faults = { write: ['server'] };
     expect(await phone.trySync()).toBeNull();
     await phone.sync();
+    // A download that fails costs only that file, this time: the cycle carries on (the desk
+    // still writes its own file) and the phone's file is fetched again next time.
     desk.view.faults = { read: ['offline'] };
-    expect(await desk.trySync()).toBeNull();
+    const first = await desk.trySync();
+    expect(first?.wrote).toBe(true);
+    expect(first?.merged).toEqual([]);
     expect(visible(desk.ws).open).toEqual([]);
     await desk.sync();
     expect(visible(desk.ws).open).toEqual(['one']);

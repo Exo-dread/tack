@@ -12,10 +12,13 @@ const DIGITS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 const BASE = DIGITS.length;
 const MID = 'V';
 
+/** Longer keys can only come from a damaged or crafted file (adding at one end grows a key by a character per ~60). */
+export const MAX_ORDER_KEY = 10_000;
+
 const digit = (c: string | undefined): number => (c === undefined ? -1 : DIGITS.indexOf(c));
 
 export function isOrderKey(value: unknown): value is string {
-  return typeof value === 'string' && /^[0-9A-Za-z]*[1-9A-Za-z]$/.test(value);
+  return typeof value === 'string' && value.length <= MAX_ORDER_KEY && /^[0-9A-Za-z]*[1-9A-Za-z]$/.test(value);
 }
 
 /** A key that sorts after `a`. */

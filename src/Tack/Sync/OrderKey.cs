@@ -18,7 +18,10 @@ internal static partial class OrderKey
     private const string Digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     private const int Base = 62;
 
-    public static bool IsOrderKey(string? value) => value != null && KeyPattern().IsMatch(value);
+    /// <summary>Longer keys can only come from a damaged or crafted file (adding at one end grows a key by a character per ~60).</summary>
+    public const int MaxLength = 10_000;
+
+    public static bool IsOrderKey(string? value) => value != null && value.Length <= MaxLength && KeyPattern().IsMatch(value);
 
     /// <summary>Ordinal "a sorts before b", the comparison every key operation uses.</summary>
     public static bool Less(string a, string b) => string.CompareOrdinal(a, b) < 0;

@@ -38,6 +38,7 @@ interface DriveItem {
   cTag?: string;
   folder?: unknown;
   file?: unknown;
+  size?: number;
   parentReference?: { driveId?: string };
   '@microsoft.graph.downloadUrl'?: string;
 }
@@ -92,7 +93,7 @@ export class OneDriveFolder implements SyncFolder {
   async list(): Promise<OneDriveEntry[]> {
     const id = await this.devicesId();
     const items = await this.children(id);
-    return items.filter((i) => i.file).map((i) => ({ name: i.name, tag: i.cTag ?? i.eTag ?? '', id: i.id, url: i['@microsoft.graph.downloadUrl'] }));
+    return items.filter((i) => i.file).map((i) => ({ name: i.name, tag: i.cTag ?? i.eTag ?? '', id: i.id, url: i['@microsoft.graph.downloadUrl'], size: i.size }));
   }
 
   async read(entry: FolderEntry): Promise<string> {

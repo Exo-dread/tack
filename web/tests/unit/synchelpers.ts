@@ -5,6 +5,9 @@ import { DeviceCollision, emptyMeta, SyncEngine, SyncError, type CycleResult, ty
 
 export const DAY = 86_400_000;
 
+/** A file's size in bytes, as a listing reports it. */
+const bytes = (text: string): number => new TextEncoder().encode(text).length;
+
 /** The shared folder in the cloud (OneDrive's app folder, say). */
 export class Cloud {
   readonly files = new Map<string, { text: string; tag: string }>();
@@ -17,7 +20,7 @@ export class Cloud {
   }
 
   list(): FolderEntry[] {
-    return [...this.files].map(([name, f]) => ({ name, tag: f.tag }));
+    return [...this.files].map(([name, f]) => ({ name, tag: f.tag, size: bytes(f.text) }));
   }
 }
 
@@ -61,7 +64,7 @@ export class FolderView implements SyncFolder {
   async list(): Promise<FolderEntry[]> {
     const f = this.fault('list');
     if (f) this.throwFor(f);
-    if (this.lag) return [...this.local].map(([name, x]) => ({ name, tag: x.tag }));
+    if (this.lag) return [...this.local].map(([name, x]) => ({ name, tag: x.tag, size: bytes(x.text) }));
     return this.cloud.list();
   }
 

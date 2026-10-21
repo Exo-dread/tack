@@ -1,7 +1,7 @@
 import { decode, encode, isPlausibleStamp, ZERO, type Stamp } from './hlc';
 import { derivedId } from './ids';
 import { isOrderKey, keyAfter, keyBefore } from './order';
-import { cleanTaskText, noteText } from './text';
+import { cleanTaskText, noteText, wellFormedValues } from './text';
 import { isoLocal, parseDate } from './time';
 import type { Focus, Sheet, Task, WorkspaceData } from './types';
 import type { Workspace } from './workspace';
@@ -101,7 +101,7 @@ export function readFile(text: string, ws: Workspace, options: ReadOptions = {})
 function parseFile(text: string, ws: Workspace, options: ReadOptions): { data: WorkspaceData; withClocks: boolean } {
   let doc: unknown;
   try {
-    doc = JSON.parse(stripJsonComments(text.replace(/^﻿/, '')));
+    doc = JSON.parse(stripJsonComments(text.replace(/^﻿/, '')), wellFormedValues);
   } catch {
     throw new FileError("This file isn't valid JSON.");
   }
@@ -241,6 +241,14 @@ function validId(raw: unknown, used: Set<string>, seed: string): string {
 /** Ids from files: the shape Tack itself makes (and nothing that could upset a selector or object key). */
 const ID = /^[\w-]{1,64}$/;
 
+/**
+ * Dates in records: ISO 8601 as both apps write them, and short. Anything else (a hand edit, a
+ * crafted file) counts as missing: an odd "created" would otherwise win every merge for good,
+ * since the earliest creation date wins. Tack for Windows checks with the same pattern.
+ */
+const FILE_DATE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}(?::[0-9]{2})?(?:[.,][0-9]+)?(?:[Zz]|[+-][0-9]{2}:?[0-9]{2})?$/;
+export const isFileDate = (v: unknown): v is string => typeof v === 'string' && v.length <= 40 && FILE_DATE.test(v);
+
 export function readTaskRecord(r: unknown, now = Date.now()): Task | null {
   if (!isObject(r) || typeof r.id !== 'string' || !ID.test(r.id) || !isObject(r.clk)) return null;
   const clk = r.clk;
@@ -250,8 +258,9 @@ export function readTaskRecord(r: unknown, now = Date.now()): Task | null {
   return {
     id: r.id,
     text,
-    created: typeof r.created === 'string' ? r.created : isoLocal(new Date(0)),
-    completed: typeof r.completed === 'string' ? r.completed : null,
+    created: isFileDate(r.created) ? r.created : isoLocal(new Date(0)),
+    // Anything but a date (an empty string included) means not done, as in Tack for Windows.
+    completed: isFileDate(r.completed) ? r.completed : null,
     order: isOrderKey(r.order) ? r.order : 'V',
     deleted: r.deleted === true,
     clk: { text: clk.text as Stamp, completed: clk.completed as Stamp, order: clk.order as Stamp, deleted: clk.deleted as Stamp },
@@ -265,7 +274,7 @@ export function readSheetRecord(r: unknown, now = Date.now()): Sheet | null {
   return {
     id: r.id,
     text: noteText(typeof r.text === 'string' ? r.text : ''),
-    updated: typeof r.updated === 'string' ? r.updated : isoLocal(new Date(0)),
+    updated: isFileDate(r.updated) ? r.updated : isoLocal(new Date(0)),
     order: isOrderKey(r.order) ? r.order : 'V',
     deleted: r.deleted === true,
     clk: { text: clk.text as Stamp, order: clk.order as Stamp, deleted: clk.deleted as Stamp },

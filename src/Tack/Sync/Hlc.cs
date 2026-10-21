@@ -9,10 +9,12 @@ namespace Tack.Sync;
 internal sealed class Hlc
 {
     /// <summary>
-    /// Stamps further ahead than this can only be corrupt; they aren't adopted. Anything nearer is,
-    /// even if another device's clock is wrong: whatever you do next must win over what you've seen.
+    /// Stamps further ahead than this (a year and a day, as for files: see Stamp.IsPlausible) can
+    /// only be corrupt; they aren't adopted. Anything nearer is, even if another device's clock is
+    /// wrong: whatever you do next must win over what you've seen. Files and clocks use the same
+    /// window, so a device whose clock once ran far ahead isn't left stamping what no one accepts.
     /// </summary>
-    private const long MaxAheadMs = 10L * 365 * 24 * 60 * 60 * 1000;
+    private const long MaxAheadMs = Stamp.MaxAheadMs;
 
     private readonly Func<long> _wallClock;
     private long _ms;

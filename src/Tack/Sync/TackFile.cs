@@ -31,7 +31,7 @@ internal interface IImportTarget
 /// multi-device merging needs (clocks, sort keys, deletions, the focus register). Imports accept
 /// either flavour.
 /// </summary>
-internal static class TackFile
+internal static partial class TackFile
 {
     public const int Format = 1;
 
@@ -64,17 +64,30 @@ internal static class TackFile
     public static (WorkspaceData Data, string? Base) Read(JsonElement doc, IImportTarget ws, long? lastModified, long nowMs)
     {
         if (doc.ValueKind != JsonValueKind.Object) throw new TackFileException("This doesn't look like a Tack file.");
-
-        if (doc.TryGetProperty("tackFocus", out var extra) && ReadSection(extra, nowMs, clean: true) is { } data)
+        try
         {
-            // Files with clocks merge field by field; for notes, a differing text is kept as a copy
-            // beside the newer one (base Zero: treat every difference as concurrent).
-            return (data, Stamp.Zero);
-        }
+            if (doc.TryGetProperty("tackFocus", out var extra) && ReadSection(extra, nowMs, clean: true) is { } data)
+            {
+                // Files with clocks merge field by field; for notes, a differing text is kept as a copy
+                // beside the newer one (base Zero: treat every difference as concurrent).
+                return (data, Stamp.Zero);
+            }
 
-        if (!IsArray(doc, "tasks") && !IsArray(doc, "sheets")) throw new TackFileException("This doesn't look like a Tack file.");
-        return (ReadDesktop(doc, ws, lastModified), null);
+            if (!IsArray(doc, "tasks") && !IsArray(doc, "sheets")) throw new TackFileException("This doesn't look like a Tack file.");
+            return (ReadDesktop(doc, ws, lastModified), null);
+        }
+        catch (Exception ex) when (IsUnreadableText(ex))
+        {
+            throw new TackFileException("This file has text Tack can't read.");
+        }
     }
+
+    /// <summary>
+    /// What reading valid JSON can still throw: invalid UTF-8 inside a string, or a lone surrogate
+    /// ("\ud800"), which JSON allows but .NET strings can't be read from. Such a file is unreadable,
+    /// never a reason to stop.
+    /// </summary>
+    public static bool IsUnreadableText(Exception ex) => ex is InvalidOperationException or FormatException or ArgumentException;
 
     // ------------------------------------------------------------------ the tackFocus section
 
@@ -111,11 +124,13 @@ internal static class TackFile
         bool deleted = IsTrue(r, "deleted");
         if (text.Length == 0 && !deleted) return null;
         string? order = Str(r, "order");
+        string? created = Str(r, "created"), completed = Str(r, "completed");
         return new TaskData(
             id,
             text,
-            Str(r, "created") ?? EpochText(),
-            Str(r, "completed"),
+            IsFileDate(created) ? created! : EpochText(),
+            // Anything but a date (an empty string included) means not done, as in Tack Focus.
+            IsFileDate(completed) ? completed : null,
             OrderKey.IsOrderKey(order) ? order! : OrderKey.Mid,
             deleted,
             new TaskClocks(ct!, cc!, co!, cd!));
@@ -127,11 +142,11 @@ internal static class TackFile
         if (!r.TryGetProperty("clk", out var clk) || clk.ValueKind != JsonValueKind.Object) return null;
         string? ct = Str(clk, "text"), co = Str(clk, "order"), cd = Str(clk, "deleted");
         if (!Stamp.IsPlausible(ct, nowMs) || !Stamp.IsPlausible(co, nowMs) || !Stamp.IsPlausible(cd, nowMs)) return null;
-        string? order = Str(r, "order");
+        string? order = Str(r, "order"), updated = Str(r, "updated");
         return new SheetData(
             id,
             JsText.NoteText(Str(r, "text") ?? ""),
-            Str(r, "updated") ?? EpochText(),
+            IsFileDate(updated) ? updated! : EpochText(),
             OrderKey.IsOrderKey(order) ? order! : OrderKey.Mid,
             IsTrue(r, "deleted"),
             new SheetClocks(ct!, co!, cd!));
@@ -323,6 +338,16 @@ internal static class TackFile
     public static string LocalText(long ms) => IsoTime.Format(TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeMilliseconds(ms), IsoTime.Zone));
 
     private static string EpochText() => LocalText(0);
+
+    /// <summary>
+    /// Dates in records: ISO 8601 as both apps write them, and short (isFileDate in file.ts, same
+    /// pattern). Anything else counts as missing: an odd "created" would otherwise win every merge
+    /// for good, since the earliest creation date wins.
+    /// </summary>
+    public static bool IsFileDate(string? value) => value is { Length: <= 40 } && FileDatePattern().IsMatch(value);
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}(?::[0-9]{2})?(?:[.,][0-9]+)?(?:[Zz]|[+-][0-9]{2}:?[0-9]{2})?\z")]
+    private static partial System.Text.RegularExpressions.Regex FileDatePattern();
 
     private static bool IsDeviceId(string id) => id.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or '_' or '-');
 

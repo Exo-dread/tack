@@ -66,9 +66,12 @@ Everything one device knows, written as one file, replaced whole (`web/src/sync/
 The same in both apps (`web/src/sync/engine.ts`, `src/Tack/Sync/SyncEngine.cs`):
 
 1. List the folder. Read every device file whose content changed since last time (a damaged file,
-   or one from a newer Tack, is reported and skipped; the rest still sync).
+   one too big to be Tack's, or one from a newer Tack, is reported and set aside; a file that
+   fails to download is simply tried again next time; the rest still sync).
 2. Check this device's own file is still its own (see "Recovery" below).
-3. Merge each new file into the workspace, field by field by clock.
+3. Merge each changed file into the workspace, field by field by clock. Every changed file is
+   merged, even one this device seems to have had through another device's file already: merges
+   are idempotent, so that costs nothing, and it means no file can hide another device's changes.
 4. Write this device's file if it now knows anything its file doesn't say: its own edits, or news
    merged from others (so files keep up with what their devices know).
 
@@ -113,6 +116,31 @@ Without sync, deletions are still forgotten after 90 days, as before.
   a new id; both devices' data survive and merge.
 - **Joining** a folder your other devices use: what's on the device and what's in the folder are
   combined, except a new device's untouched welcome tasks and blank sheet, which stay behind.
+
+### Damaged and hostile files
+
+Anyone who can write the folder (your Microsoft account, or an app you gave your whole OneDrive)
+can edit your tasks, by design: every device in the folder is trusted, until end-to-end
+encryption arrives. What a bad file can't do is stop sync, swell everyone's files for good, or
+hide a device's changes after it's gone. Both apps apply the same rules (`devicefile.ts`,
+`DeviceFile.cs`), checked by `web/tests/unit/synchostile.test.ts` and `tests/Tack.Tests/HostileFileTests.cs`:
+
+- **Unreadable text** (invalid UTF-8, or half an emoji spelled `"\ud83d"`, which JSON allows):
+  Tack Focus reads it as U+FFFD and never writes it out; Tack for Windows sets such a file aside.
+  Either way the rest syncs.
+- **Limits** far beyond real use: 20 MB per file, checked from the listing before downloading;
+  200,000 records (tasks, sheets and deletions together) and 1,000 devices seen per file; 100,000
+  characters per task and 1,000,000 per note; clock device ids of at most 32 characters; order
+  keys of at most 10,000. A file over a limit is set aside; an over-long record is skipped.
+- **Dates** must be ISO 8601 dates of at most 40 characters; anything else counts as missing (an
+  empty `completed` means not done, in both apps).
+- **Clocks** more than a year and a day ahead are refused in files and not adopted by clocks.
+- **Ids** such as `constructor` or `toString` are ordinary device ids (Tack Focus never reads
+  them from what every JavaScript object inherits).
+- **"Seen" claims** are believed no further than the claiming file's own `written`, and never
+  stop a changed file from being merged.
+- **Its own file:** a device whose file would be over 20 MB doesn't write it (every device
+  would refuse it) and says so in Settings.
 
 ## OneDrive
 

@@ -17,7 +17,8 @@ internal static partial class Stamp
     internal const long MaxCounter = 36L * 36 * 36 * 36 - 1;
     private const int MsWidth = 9;
     private const int CounterWidth = 4;
-    private const long YearAndADayMs = 366L * 24 * 60 * 60 * 1000;
+    /// <summary>A year and a day: stamps further ahead are refused in files and not adopted by clocks.</summary>
+    internal const long MaxAheadMs = 366L * 24 * 60 * 60 * 1000;
     private const string Digits36 = "0123456789abcdefghijklmnopqrstuvwxyz";
 
     public static string Encode(long ms, long counter, string node) =>
@@ -46,7 +47,7 @@ internal static partial class Stamp
     public static bool IsStamp(string? value) => value != null && StampPattern().IsMatch(value);
 
     /// <summary>A stamp from a file that's plausible: well-formed and not more than a year in the future.</summary>
-    public static bool IsPlausible(string? value, long nowMs) => IsStamp(value) && Time(value!) <= nowMs + YearAndADayMs;
+    public static bool IsPlausible(string? value, long nowMs) => IsStamp(value) && Time(value!) <= nowMs + MaxAheadMs;
 
     /// <summary>A clock for a record that has only a date (from a file without clocks): from a pseudo-device that loses ties.</summary>
     public static string FromTime(double ms) => Encode((long)Math.Max(0, Math.Floor(ms)), 0, "");
@@ -71,6 +72,6 @@ internal static partial class Stamp
         return new string(buffer[i..]).PadLeft(width, '0');
     }
 
-    [GeneratedRegex(@"^[0-9a-z]{9}\.[0-9a-z]{4}\.[0-9a-zA-Z_-]*\z")]
+    [GeneratedRegex(@"^[0-9a-z]{9}\.[0-9a-z]{4}\.[0-9a-zA-Z_-]{0,32}\z")]
     private static partial Regex StampPattern();
 }
