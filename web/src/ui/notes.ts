@@ -90,8 +90,8 @@ export class NotesView {
       if (pill) this.select(pill.dataset.id!);
     });
     this.strip.addEventListener('keydown', this.onStripKey);
-    // The strip narrows when writing ends (the dock gives the mode switch its room back): the
-    // sheet just written on stays in sight.
+    // The strip narrows when writing ends (the dock gives the mode switch its room back): with
+    // spaces, the sheet just written on stays in sight.
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => this.revealActive()).observe(this.strip);
   }
 
@@ -120,7 +120,9 @@ export class NotesView {
       this.ws.editSheet(this.activeId, this.editor.value);
       return;
     }
-    // A space with no sheets shows blank paper: the first keystroke makes its sheet.
+    // A space with no sheets shows blank paper: the first keystroke makes its sheet. Input that
+    // leaves it blank (Undo bringing back the empty paper) makes nothing, as on the desktop.
+    if (!this.editor.value) return;
     const sheet = this.ws.addSheet(this.editor.value, this.ctx.spaces.here);
     this.activeId = sheet.id;
     setPrefs({ activeSheet: sheet.id });
@@ -209,8 +211,12 @@ export class NotesView {
     this.ctx.activeChanged();
   }
 
-  /** Brings the active sheet's tab into sight in the strip (only the strip scrolls, at once). */
+  /**
+   * Brings the active sheet's tab into sight in the strip (only the strip scrolls, at once).
+   * Only once there are spaces: with Main alone the strip stays where it always has.
+   */
   private revealActive(): void {
+    if (!this.ctx.spaces.on) return;
     const pill = this.strip.querySelector<HTMLElement>('.sheet-pill[aria-selected="true"]');
     if (!pill) return;
     const strip = this.strip.getBoundingClientRect();

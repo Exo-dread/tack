@@ -409,6 +409,76 @@ test.describe('spaces', () => {
     await expect(editor).toHaveValue('Second');
   });
 
+  test('Undo on a space\'s blank paper makes no sheet (it stays blank, as on the desktop)', async ({ page }) => {
+    await open(page);
+    await makeSpaces(page, 'Work', 'Personal');
+    await show(page, 'Work');
+    await toNotes(page);
+    const editor = page.getByRole('textbox', { name: 'Note' });
+    await editor.click();
+    await editor.pressSequentially('Clash list');
+    await expect(page.locator('.sheet-pill')).toHaveText(['Clash list']);
+    if (!desktop()) await button(page, 'Done').click();
+    await show(page, 'Personal');
+    await expect(page.locator('.sheet-pill')).toHaveCount(0);
+    await editor.click();
+    await editor.press('Control+z');
+    await expect(editor).toHaveValue('');
+    await expect(page.locator('.sheet-pill')).toHaveCount(0);
+    await flushed(page);
+    await page.reload();
+    await expect(page.locator('html.ready')).toHaveCount(1);
+    await expect(title(page)).toHaveText('Personal');
+    await toNotes(page);
+    await expect(page.locator('.sheet-pill')).toHaveCount(0);
+    // Writing there still makes its sheet.
+    await editor.click();
+    await editor.pressSequentially('Dentist');
+    await expect(page.locator('.sheet-pill')).toHaveText(['Dentist']);
+  });
+
+  test('with Main alone the sheet strip stays where it always did; with spaces it keeps the sheet on show in sight', async ({ page }) => {
+    await open(page);
+    await toNotes(page);
+    const editor = page.getByRole('textbox', { name: 'Note' });
+    const strip = page.locator('.sheet-strip');
+    const titles = ['Coordination meeting agenda', 'Clash detection follow-up', 'Site visit checklist north', 'Model audit for the client', 'Last sheet on the far right'];
+    for (const text of titles) {
+      await button(page, 'New sheet').click();
+      await editor.pressSequentially(text);
+      // Writing ends (on a phone the sheets come back into the dock in place of the tools).
+      await editor.press('Escape');
+    }
+    await expect(page.locator('.sheet-pill[aria-selected="true"]')).toHaveText(titles[titles.length - 1]);
+    // More sheets than fit: the strip scrolls.
+    expect(await strip.evaluate((s) => s.scrollWidth > s.clientWidth)).toBe(true);
+    await flushed(page);
+    await page.reload();
+    await expect(page.locator('html.ready')).toHaveCount(1);
+    await toNotes(page);
+    await expect(page.locator('.sheet-pill[aria-selected="true"]')).toHaveText(titles[titles.length - 1]);
+    await settled(page);
+    // Main alone: as before spaces, the strip opens at its start.
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    expect(await strip.evaluate((s) => s.scrollLeft)).toBe(0);
+
+    // With spaces, the sheet on show is brought into sight.
+    await makeSpaces(page, 'Work');
+    await page.reload();
+    await expect(page.locator('html.ready')).toHaveCount(1);
+    await toNotes(page);
+    await expect(page.locator('.sheet-pill[aria-selected="true"]')).toHaveText(titles[titles.length - 1]);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const s = document.querySelector('.sheet-strip')!.getBoundingClientRect();
+          const p = document.querySelector('.sheet-pill[aria-selected="true"]')!.getBoundingClientRect();
+          return p.left >= s.left - 1 && p.right <= s.right + 1;
+        }),
+      )
+      .toBe(true);
+  });
+
   test('delete a space in Settings: its tasks show in Main, and Undo puts them back', async ({ page }) => {
     await open(page);
     await makeSpaces(page, 'Work', 'Dev');

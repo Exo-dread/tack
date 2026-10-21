@@ -177,10 +177,12 @@
                     <Border.Effect>
                         <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.4" Color="Black" />
                     </Border.Effect>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock x:Name="ToastText" VerticalAlignment="Center" FontSize="12.5" Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <Button x:Name="ToastUndo" Style="{StaticResource TextButton}" Margin="10,0,0,0" Content="Undo" Click="ToastUndo_Click" />
-                    </StackPanel>
+                    <!-- Undo first, so it keeps its room: a message too long for the panel ends in an ellipsis instead. -->
+                    <DockPanel>
+                        <Button x:Name="ToastUndo" DockPanel.Dock="Right" Style="{StaticResource TextButton}" Margin="10,0,0,0" Content="Undo" Click="ToastUndo_Click" />
+                        <TextBlock x:Name="ToastText" VerticalAlignment="Center" FontSize="12.5" Foreground="{DynamicResource TextPrimaryBrush}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
                 </Border>
             </Grid>
         </Grid>

@@ -56,15 +56,23 @@ public partial class NotesView : UserControl
         _shown = _view.ActiveSheet;
         if (_shown != null) SheetList.ScrollIntoView(_shown);
 
+        // The sheet just made from what was typed on blank paper: the text on the paper is its
+        // text, and what was typed stays undoable (the history held nothing else: landing on the
+        // blank paper cleared it).
+        bool madeOnPaper = _makingFromPaper;
+
         // A sheet switch replaces the text wholesale; it must not become an undo step.
-        Editor.IsUndoEnabled = false;
-        Editor.IsUndoEnabled = true;
+        if (!madeOnPaper)
+        {
+            Editor.IsUndoEnabled = false;
+            Editor.IsUndoEnabled = true;
+        }
 
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             // With spaces, a switch can land on blank paper, where Undo bringing back the text it
             // replaced would make a sheet of it: clear again, now that the new text is in.
-            if (_view.HasSpaces)
+            if (_view.HasSpaces && !madeOnPaper)
             {
                 Editor.IsUndoEnabled = false;
                 Editor.IsUndoEnabled = true;
@@ -103,11 +111,23 @@ public partial class NotesView : UserControl
         Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
         {
             _makingSheet = false;
-            if (_view.ActiveSheet == null && Editor.Text.Length > 0) _ws.AddSheet(_view.NewItemSpace, Editor.Text);
+            if (_view.ActiveSheet != null || Editor.Text.Length == 0) return;
+            _makingFromPaper = true;
+            try
+            {
+                _ws.AddSheet(_view.NewItemSpace, Editor.Text);
+            }
+            finally
+            {
+                _makingFromPaper = false;
+            }
         });
     }
 
     private bool _makingSheet;
+
+    /// <summary>True while the blank paper's sheet is being made (and switched to).</summary>
+    private bool _makingFromPaper;
 
     private void DeleteSheet_Click(object sender, RoutedEventArgs e)
     {
@@ -146,7 +166,7 @@ public partial class NotesView : UserControl
         string before = sheet.Space.Length > 0 ? sheet.Space : SpaceField.Main;
         _ws.MoveSheetToSpace(sheet.Id, space);
         _panel.Announce($"Moved to {_view.NameOf(space)}");
-        _panel.ShowToast($"Moved to {_view.NameOf(space)}", () =>
+        _panel.ShowToast($"Moved to {SpaceView.ToastName(_view.NameOf(space))}", () =>
         {
             _ws.MoveSheetToSpace(sheet.Id, before);
             if (_view.Sheets.Contains(sheet)) _ws.ActiveSheet = sheet;

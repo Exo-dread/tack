@@ -76,8 +76,12 @@ public partial class PeekWindow : Window
     }
 
     /// <summary>What's on show: a space's (or everything's) focus task and counts, and, once there are spaces, which one.</summary>
-    private void Fill(SpaceView view, string hotkey)
+    internal void Fill(SpaceView view, string hotkey)
     {
+        // The bubble's room for a line of text; a long space name gives way (with an ellipsis).
+        double room = Bubble.MaxWidth - Bubble.Padding.Left - Bubble.Padding.Right - Bubble.BorderThickness.Left - Bubble.BorderThickness.Right;
+        Label.MaxWidth = Math.Max(0, room - Dot.Width - Dot.Margin.Left - Dot.Margin.Right);
+
         var focus = view.FocusTask;
         if (view.Now != null)
         {
@@ -105,7 +109,24 @@ public partial class PeekWindow : Window
         if (open > 0) parts.Add($"{open} open");
         if (done > 0) parts.Add($"{done} done today");
         if (parts.Count == 0 && !string.IsNullOrEmpty(hotkey)) parts.Add($"Click or press {hotkey} to add a task");
-        if (view.HasSpaces) parts.Insert(0, view.ShownName); // "Work  ·  3 open  ·  2 done today"
+        if (view.HasSpaces)
+        {
+            // "Work  ·  3 open  ·  2 done today": the counts keep their room, and the name takes
+            // what's left (at least a third of the line), cut with an ellipsis when it's long.
+            Summary.Text = "";
+            Summary.Visibility = Visibility.Collapsed;
+            SpaceName.Text = view.ShownName;
+            SpaceCounts.Text = parts.Count > 0 ? "  ·  " + string.Join("  ·  ", parts) : "";
+            var any = new Size(double.PositiveInfinity, double.PositiveInfinity);
+            SpaceCounts.MaxWidth = double.PositiveInfinity;
+            SpaceCounts.Measure(any);
+            SpaceName.MaxWidth = Math.Max(room - SpaceCounts.DesiredSize.Width, Math.Round(room / 3));
+            SpaceName.Measure(any);
+            SpaceCounts.MaxWidth = Math.Max(0, room - SpaceName.DesiredSize.Width);
+            SpaceSummary.Visibility = Visibility.Visible;
+            return;
+        }
+        SpaceSummary.Visibility = Visibility.Collapsed;
         Summary.Text = string.Join("  ·  ", parts);
         Summary.Visibility = Summary.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }

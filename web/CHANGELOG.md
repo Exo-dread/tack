@@ -1,6 +1,6 @@
 # Tack Focus changelog
 
-## Unreleased
+## 0.4.0 (22 October 2026)
 
 - **Spaces** (Work, Dev, Personal), now on screen. Make one in Settings → Spaces → *New space*,
   where Main can be renamed too; until there's a second space, Tack Focus looks and behaves
@@ -21,6 +21,9 @@
   *Make task* puts the task in the sheet's own space.
 - **Settings → Spaces** renames spaces in place, moves them up and down, and deletes them: "Deleted
   Dev · Undo", and meanwhile their tasks and notes show in Main. Main can't be deleted.
+- Fixed, with or without spaces: on a phone, a toast too long for the screen (say "Added to Tasks:
+  …" from a long line) ends in an ellipsis, and Undo stays on screen. It used to run past the right
+  edge.
 - Nothing about files, merging or sync changes; the new ways of adding and reordering stamp exactly
   as Tack for Windows does (shared test vectors).
 

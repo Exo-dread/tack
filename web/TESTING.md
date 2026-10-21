@@ -37,7 +37,7 @@ spaces.
 reproduce exactly (`tests/Tack.Tests`), and reads back the file the desktop saved for its round-trip
 export to check nothing was lost on the way.
 
-**End-to-end tests (183 across three projects, 18 skipped where they don't apply)** run against `vite build` + `vite preview`, so the real
+**End-to-end tests (189 across three projects, 18 skipped where they don't apply)** run against `vite build` + `vite preview`, so the real
 service worker and bundle are tested:
 
 | Project | Engine | Emulates |
@@ -61,7 +61,8 @@ suggestion; a toast that waits while you hold it; a speed guard (500 pasted task
 nothing new on screen with Main alone, making and switching spaces (the title's switcher, Alt+0…9
 while typing), adding into the space on show, moving tasks and sheets with Undo, All with each
 task's space, the "Now in …" line, Done and Clear per space, notes per space (blank paper until you
-write), deleting a space with Undo, renaming and reordering, the space on show surviving a reload,
+write, and Undo there making no sheet), the sheet strip left as it always was with Main alone,
+deleting a space with Undo, renaming and reordering, the space on show surviving a reload,
 and axe scans with spaces on screen in light and dark.
 
 Gestures are driven with synthetic pointer events (Playwright can only tap), so they test the

@@ -232,7 +232,7 @@ public partial class SettingsView : UserControl
     private void DeleteSpace(string id, string name)
     {
         var undo = _ws.DeleteSpace(id);
-        _panel.ShowToast($"Deleted {name}", undo);
+        _panel.ShowToast($"Deleted {SpaceView.ToastName(name)}", undo);
     }
 
     private void NewSpace_Click(object sender, RoutedEventArgs e)

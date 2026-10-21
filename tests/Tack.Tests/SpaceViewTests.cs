@@ -33,6 +33,7 @@ internal static class SpaceViewTests
         yield return ("spaces on screen: listed Main first while it has no record, then by order; names as shown", TabsAndNames);
         yield return ("spaces on screen: a record with All's id is never a space (only a hand-made file has one); what's in it is in Main", ReservedAllId);
         yield return ("spaces on screen: names are one line, control characters made spaces", NamesWithoutControls);
+        yield return ("spaces on screen: a toast cuts a space's name at 24 characters, as Tack Focus does", ToastNames);
         yield return ("spaces on screen: a space shows its own tasks, finished tasks and sheets; Main what's in no live space", Filtering);
         yield return ("spaces on screen: lists follow moves, merges and new spaces as they happen", LiveUpdates);
         yield return ("spaces on screen: counts, progress and the focus task are the space's; All counts everything", Counts);
@@ -325,6 +326,17 @@ internal static class SpaceViewTests
         ws.RenameSpace(work.Id, "\u0085Work\u0085\u0085");
         Check.Equal("Work", ws.SpaceById(work.Id)!.Name, "none at either end");
         Check.Equal("Work", SpaceField.CleanName(ws.SpaceById(work.Id)!.Name), "clean already: no change");
+    }
+
+    private static void ToastNames()
+    {
+        Check.Equal("Work", SpaceView.ToastName("Work"), "a short name as it is");
+        Check.Equal("Structural coordination!", SpaceView.ToastName("Structural coordination!"), "24 characters: as it is");
+        // Tack Focus: shorten(name, 24) = name.slice(0, 23).trimEnd() + '…'
+        Check.Equal("Coordination with the M…", SpaceView.ToastName("Coordination with the MEP and structural teams north tower L"), "cut, with an ellipsis");
+        Check.Equal("Coordination with the…", SpaceView.ToastName("Coordination with the   MEP team"), "no space before the ellipsis");
+        Check.Equal("Clash detection, block…", SpaceView.ToastName("Clash detection, block\U0001F3D7 north"), "never half a character");
+        Check.True(SpaceView.ToastName(new string('W', 100)).Length == 24, "24 at most");
     }
 
     private static void Filtering()

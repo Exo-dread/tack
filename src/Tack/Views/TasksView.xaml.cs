@@ -293,7 +293,7 @@ public partial class TasksView : UserControl
             // Out of the list on show (anywhere but All): typing goes on in the add box.
             if (!_view.IsAll) Dispatcher.BeginInvoke(DispatcherPriority.Input, FocusInput);
             _panel.Announce($"Moved to {_view.NameOf(space)}");
-            _panel.ShowToast($"Moved to {_view.NameOf(space)}", () =>
+            _panel.ShowToast($"Moved to {SpaceView.ToastName(_view.NameOf(space))}", () =>
             {
                 _ws.MoveTaskToSpace(task.Id, before);
                 if (task == _ws.Now) AnimateNowCard(); else AnimateIn(task);

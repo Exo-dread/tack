@@ -86,6 +86,18 @@ public sealed class SpaceView : Observable
 
     private string MainName => _ws.SpaceById(SpaceField.Main) is { Deleted: false, Name.Length: > 0 } main ? main.Name : "Main";
 
+    /// <summary>A space's name in a toast ("Moved to …", "Deleted …"): at most 24 characters, as Tack Focus shows it, so Undo keeps its room.</summary>
+    public static string ToastName(string name) => Shorten(name, 24);
+
+    /// <summary>At most <paramref name="max"/> characters, ending in "…" when cut (Tack Focus's <c>shorten</c>).</summary>
+    public static string Shorten(string text, int max)
+    {
+        if (text.Length <= max) return text;
+        int cut = max - 1;
+        if (char.IsHighSurrogate(text[cut - 1])) cut--; // never half a character
+        return text[..cut].TrimEnd() + "…";
+    }
+
     /// <summary>The space a new task or sheet goes in: the one on show (in All: Main).</summary>
     public string NewItemSpace => _filtered ? _shown : SpaceField.Main;
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.0 (2026-10-22)
 
 Spaces arrive on screen: keep work, development and personal tasks apart, or ignore them and
 nothing changes.
@@ -23,6 +23,9 @@ nothing changes.
   Ctrl+Enter makes the task in the sheet's own space.
 - **Settings → Spaces** renames spaces in place, moves them up and down, and deletes them: "Deleted Dev
   · Undo", and meanwhile their tasks and notes show in Main. Main can't be deleted.
+- Fixed, with or without spaces: a toast too long for the panel (say "Added to tasks: …" from a long
+  line) ends in an ellipsis, and Undo stays in the panel where you can click it. It used to be pushed
+  past the edge.
 - Nothing about files, merging or sync changes: spaces sync as they did in 1.4.0, and the new ways of
   adding and reordering stamp exactly as Tack Focus does (shared test vectors).
 
