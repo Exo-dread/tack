@@ -1,3 +1,4 @@
+import { ALL } from '../model/spaces';
 import { cleanTaskText, shorten } from '../model/text';
 import type { Task } from '../model/types';
 import type { Workspace } from '../model/workspace';
@@ -8,6 +9,7 @@ import { haptics } from './haptics';
 import { checkMark, icons } from './icons';
 import { animate, EASE_OUT, exitInPlace, measure, playFlip, POP, reducedMotion, SPRING } from './motion';
 import { Orb } from './orb';
+import type { SpaceUi } from './spaces';
 import type { Toasts } from './toast';
 
 /** Ticking a task plays its animation, then it waits this long (a second tap un-ticks it) before moving to Done. */
@@ -20,6 +22,10 @@ export interface TasksContext {
   toasts: Toasts;
   celebrate(): void;
   dockInset(): number;
+  /** The space on show (the lists show its tasks; All shows all, with their spaces). */
+  spaces: SpaceUi;
+  /** Puts the caret in the task box (where the focus goes when no task is left to take it). */
+  focusComposer(): void;
 }
 
 type Where = 'now' | 'open' | 'done';
@@ -50,6 +56,8 @@ export class TasksView {
   private readonly openRows = new Map<string, HTMLElement>();
   private readonly doneRows = new Map<string, HTMLElement>();
   private nowCard: HTMLElement | null = null;
+  /** "Now in Work: …", in place of the card while another space is on show. */
+  private nowLine: HTMLElement | null = null;
   private readonly checking = new Map<string, ReturnType<typeof setTimeout>>();
   private editing: Editing | null = null;
   private readonly gestures: RowGestures;
@@ -120,8 +128,8 @@ export class TasksView {
         else if (row.parentElement === this.doneList) this.ws.reopen(id);
         else this.focusTask(id);
       },
-      canDrag: (row) => row.parentElement === this.openList && this.ws.open.length > 1,
-      onDrop: (row, index) => this.ws.moveTask(row.dataset.id!, index),
+      canDrag: (row) => row.parentElement === this.openList && this.ws.openIn(this.show).length > 1,
+      onDrop: (row, index) => this.ws.moveTaskIn(this.show, row.dataset.id!, index),
       bottomInset: () => this.ctx.dockInset(),
       isBusy: () => this.editing !== null,
       onIdle: () => {
@@ -156,9 +164,11 @@ export class TasksView {
     this.gestures.release();
 
     const removed: HTMLElement[] = [];
+    const show = this.show;
 
-    // --- focus card
-    const now = this.ws.now;
+    // --- focus card (in its own space and in All; elsewhere, a line saying where it is)
+    const focus = this.ws.now;
+    const now = focus && this.ws.shows(focus, show) ? focus : null;
     if (this.nowCard && (!now || this.nowCard.dataset.id !== now.id)) {
       removed.push(this.nowCard);
       this.nowCard = null;
@@ -171,16 +181,18 @@ export class TasksView {
         this.updateText(this.nowCard, now);
       }
     }
+    this.renderNowLine(focus && !now ? focus : null);
 
     // --- open and done lists
-    removed.push(...this.reconcile(this.openList, this.openRows, this.ws.open, 'open'));
+    removed.push(...this.reconcile(this.openList, this.openRows, this.ws.openIn(show), 'open'));
     // Long lists skip layout for rows off screen (see .long in the CSS).
     this.openList.classList.toggle('long', this.openRows.size > LONG_LIST);
     const showDone = prefs().doneExpanded;
-    removed.push(...this.reconcile(this.doneList, this.doneRows, showDone ? this.ws.done : [], 'done'));
+    const done = this.ws.doneIn(show);
+    removed.push(...this.reconcile(this.doneList, this.doneRows, showDone ? done : [], 'done'));
     this.doneList.classList.toggle('long', this.doneRows.size > LONG_LIST);
 
-    const doneCount = this.ws.done.length;
+    const doneCount = done.length;
     this.doneSection.hidden = doneCount === 0;
     this.doneSection.classList.toggle('expanded', showDone);
     this.doneToggle.setAttribute('aria-expanded', String(showDone));
@@ -264,8 +276,52 @@ export class TasksView {
     return removed;
   }
 
+  /** The space on show ('all' while there are no spaces besides Main). */
+  private get show(): string {
+    return this.ctx.spaces.show;
+  }
+
+  /** In All (once there are spaces), each task says which space it's in. */
+  private tag(t: Task): string {
+    const sp = this.ctx.spaces;
+    return sp.on && sp.show === ALL ? sp.label(this.ws.spaceOf(t)) : '';
+  }
+
+  private renderNowLine(task: Task | null): void {
+    if (!task) {
+      this.nowLine?.remove();
+      this.nowLine = null;
+      return;
+    }
+    const sp = this.ctx.spaces;
+    const space = this.ws.spaceOf(task);
+    const where = `Now in ${sp.label(space)}:`;
+    if (!this.nowLine) {
+      const line = h(
+        'button.now-line',
+        {
+          type: 'button',
+          onclick: () => {
+            sp.setShow(line.dataset.space!);
+            // The line goes with the switch: the focus moves to the card it pointed to.
+            this.nowCard?.querySelector<HTMLElement>('.text')?.focus({ preventScroll: true });
+          },
+        },
+        h('span.now-dot', { 'aria-hidden': 'true' }),
+        h('span.now-line-where'),
+        h('span.now-line-text'),
+      );
+      this.nowLine = line;
+      this.nowSlot.prepend(line);
+    }
+    this.nowLine.dataset.space = space;
+    this.nowLine.querySelector('.now-line-where')!.textContent = where;
+    this.nowLine.querySelector('.now-line-text')!.textContent = task.text;
+    this.nowLine.setAttribute('aria-label', `${where} ${task.text}. Show ${sp.label(space)}`);
+  }
+
   private renderEmpty(): void {
-    const { open, doneToday } = this.ws.summary();
+    const { open, doneToday } = this.ws.summary(this.show);
     const isEmpty = open === 0;
     this.empty.hidden = !isEmpty;
     this.el.classList.toggle('is-empty', isEmpty);
@@ -294,6 +350,8 @@ export class TasksView {
     });
     check.append(svg(checkMark));
     const label = h('button.text', { type: 'button', 'aria-label': `${t.text}. Edit` }, h('span.label', { text: t.text }));
+    const tag = this.tag(t);
+    if (tag) setLabel(label, t.text, tag);
     const actions = h(
       'div.hover-actions',
       {},
@@ -304,13 +362,14 @@ export class TasksView {
     );
     const li = h('li.row', { 'data-id': t.id, 'data-flip': `t:${t.id}` }, h('div.row-body', {}, check, label, actions));
     if (done) li.classList.add('is-done');
+    if (tag) shownText.set(li, shownKey(t.text, tag));
     return li;
   }
 
   private createNowCard(t: Task): HTMLElement {
     const check = h('button.check.big', { type: 'button', role: 'checkbox', 'aria-checked': 'false', 'aria-label': 'Mark as done' });
     check.append(svg(checkMark));
-    return h(
+    const card = h(
       'div.now-card',
       { 'data-id': t.id, 'data-flip': `t:${t.id}`, role: 'group', 'aria-label': 'Now' },
       h(
@@ -321,13 +380,31 @@ export class TasksView {
       ),
       h('div.row-body', {}, check, h('button.text.display', { type: 'button', 'aria-label': `${t.text}. Edit` }, h('span.label', { text: t.text }))),
     );
+    if (this.tag(t)) this.updateText(card, t);
+    return card;
   }
 
   private updateText(el: HTMLElement, t: Task): void {
     // Most renders change nothing about most rows; skip the DOM entirely for those.
-    if (shownText.get(el) === t.text) return;
-    shownText.set(el, t.text);
-    setLabel(el.querySelector<HTMLElement>(':scope > .row-body > .text'), t.text);
+    const tag = this.tag(t);
+    const key = shownKey(t.text, tag);
+    if (shownText.get(el) === key) return;
+    shownText.set(el, key);
+    const text = el.querySelector<HTMLElement>(':scope > .row-body > .text');
+    if (!el.classList.contains('now-card')) {
+      setLabel(text, t.text, tag);
+      return;
+    }
+    // The card says its space in its heading: "Now · Work".
+    setLabel(text, t.text);
+    const head = el.querySelector('.overline')!;
+    let where = head.querySelector('.now-space');
+    if (tag) {
+      if (!where) head.append((where = h('span.now-space')));
+      where.textContent = `· ${tag}`;
+    } else {
+      where?.remove();
+    }
   }
 
   // ================================================================== interaction
@@ -388,9 +465,9 @@ export class TasksView {
 
   private complete(id: string): void {
     const task = this.ws.tasks.get(id);
-    const before = this.ws.summary();
+    const before = this.ws.summary(this.show);
     this.ws.complete(id);
-    const after = this.ws.summary();
+    const after = this.ws.summary(this.show);
     if (task) this.ctx.toasts.announce(`Done: ${task.text}`);
     if (before.open > 0 && after.open === 0) {
       haptics.success();
@@ -438,8 +515,8 @@ export class TasksView {
   }
 
   private clearDone(): void {
-    const n = this.ws.done.length;
-    const undo = this.ws.clearDone();
+    const n = this.ws.doneIn(this.show).length;
+    const undo = this.ws.clearDone(this.show);
     this.ctx.toasts.show(n === 1 ? 'Cleared 1 done task' : `Cleared ${n} done tasks`, undo);
   }
 
@@ -481,6 +558,8 @@ export class TasksView {
       where === 'open' ? tool('t-up', 'Move up', icons.up, () => this.nudge(id, -1), true) : null,
       where === 'open' ? tool('t-down', 'Move down', icons.down, () => this.nudge(id, 1), true) : null,
       where === 'done' ? tool('t-reopen', 'Reopen', icons.reopen, () => this.editAction(() => this.ws.reopen(id))) : null,
+      // To another space: open tasks and the one in focus, as on the desktop (finished ones stay put).
+      this.ctx.spaces.on && where !== 'done' ? tool('t-move', 'Move', icons.move, () => this.editAction(() => this.moveToSpace(id)), true) : null,
       tool('t-delete', 'Delete', icons.trash, () => this.editAction(() => this.remove(id))),
     );
     // Tapping a tool mustn't take focus from the text (that would close the keyboard).
@@ -547,12 +626,13 @@ export class TasksView {
   }
 
   private nudge(id: string, delta: number): void {
-    const index = this.ws.open.findIndex((t) => t.id === id);
+    const show = this.show;
+    const index = this.ws.openIn(show).findIndex((t) => t.id === id);
     if (index < 0) return;
     const e = this.editing;
     if (e) this.ws.editTask(id, e.input.value);
     this.keepFocus = true;
-    this.ws.moveTask(id, index + delta);
+    this.ws.moveTaskIn(show, id, index + delta);
     this.keepFocus = false;
     if (e && document.activeElement !== e.input) e.input.focus({ preventScroll: true });
     this.revealEditing();
@@ -564,7 +644,7 @@ export class TasksView {
     this.editing = null;
     const text = cleanTaskText(e.input.value);
     const task = this.ws.tasks.get(e.id);
-    if (task) setLabel(e.label, text || task.text);
+    if (task) setLabel(e.label, text || task.text, e.row.classList.contains('now-card') ? '' : this.tag(task));
     const hadFocus = document.activeElement === e.input;
     e.input.replaceWith(e.label);
     e.row.classList.remove('editing');
@@ -590,8 +670,9 @@ export class TasksView {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (e.altKey && where === 'open') {
-        const index = this.ws.open.findIndex((t) => t.id === id);
-        this.ws.moveTask(id, index + (e.key === 'ArrowDown' ? 1 : -1));
+        const show = this.show;
+        const index = this.ws.openIn(show).findIndex((t) => t.id === id);
+        this.ws.moveTaskIn(show, id, index + (e.key === 'ArrowDown' ? 1 : -1));
         this.openRows.get(id)?.querySelector<HTMLElement>('.text')?.focus();
       } else {
         this.moveFocus(target, e.key === 'ArrowDown' ? 1 : -1);
@@ -616,6 +697,36 @@ export class TasksView {
     return !!next;
   }
 
+  /** Every task's text you can focus, top to bottom (the card in focus first). */
+  private texts(): HTMLElement[] {
+    return [...this.el.querySelectorAll<HTMLElement>('.now-card:not(.exiting) .text, li.row:not(.exiting) .text')];
+  }
+
+  /** Focuses a task's text, if it's on show. */
+  focusRow(id: string): boolean {
+    const el = this.texts().find((x) => this.where(x)?.id === id);
+    el?.focus({ preventScroll: true });
+    return !!el;
+  }
+
+  /**
+   * Tools → Move. Once the sheet has closed, the focus goes back to the task (still on show, or
+   * not moved after all), else to the task that took its place, else to the task box (on touch,
+   * the page, so no keyboard springs up): never lost to the top of the page.
+   */
+  private moveToSpace(id: string): void {
+    const before = this.texts();
+    const at = before.findIndex((el) => this.where(el)?.id === id);
+    this.ctx.spaces.moveTask(id, () => {
+      if (this.focusRow(id)) return;
+      const live = (el: HTMLElement) => el.isConnected && this.where(el) !== null;
+      const next = before.slice(at + 1).find(live) ?? before.slice(0, Math.max(0, at)).reverse().find(live);
+      if (next) next.focus({ preventScroll: true });
+      else if (coarsePointer()) this.el.focus({ preventScroll: true });
+      else this.ctx.focusComposer();
+    });
+  }
+
   /** The first task's text, for keyboard users arriving on the page. */
   focusFirst(): void {
     this.el.querySelector<HTMLElement>('.now-card .text, li.row .text')?.focus();
@@ -624,16 +735,39 @@ export class TasksView {
   get isEditing(): boolean {
     return this.editing !== null;
   }
+
+  /**
+   * Ends an edit in progress, keeping what was typed (e.g. before another space shows). Returns
+   * the task's id if the edit had the focus (so the caller can put it somewhere sensible).
+   */
+  endEditing(): string | null {
+    const e = this.editing;
+    if (!e) return null;
+    const hadFocus = document.activeElement === e.input;
+    this.finishEdit(false);
+    return hadFocus ? e.id : null;
+  }
 }
 
-/** The text each row last showed. */
+/** The text each row last showed (and its space, in All). */
 const shownText = new WeakMap<HTMLElement, string>();
 
-function setLabel(button: HTMLElement | null, text: string): void {
+const shownKey = (text: string, tag: string) => (tag ? `${text}\u0000${tag}` : text);
+
+/** A task's text on its row, and (in All) the space it's in, beneath it. */
+function setLabel(button: HTMLElement | null, text: string, tag = ''): void {
   const label = button?.querySelector('.label');
-  if (!button || !label || label.textContent === text) return;
+  if (!button || !label) return;
+  let where = button.querySelector<HTMLElement>(':scope > .row-space');
+  if (label.textContent === text && (where?.textContent ?? '') === tag) return;
   label.textContent = text;
-  button.setAttribute('aria-label', `${text}. Edit`);
+  if (tag) {
+    if (!where) button.append((where = h('span.row-space')));
+    where.textContent = tag;
+  } else {
+    where?.remove();
+  }
+  button.setAttribute('aria-label', tag ? `${text} (${tag}). Edit` : `${text}. Edit`);
 }
 
 function previousLive(el: Element): Element | null {

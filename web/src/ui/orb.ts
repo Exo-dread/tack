@@ -42,7 +42,8 @@ export class Orb {
     this.count = this.el.querySelector('.orb-count')!;
   }
 
-  update(open: number, doneToday: number, progress: number): void {
+  /** `scope` names what's counted (the space on show), once there are spaces. */
+  update(open: number, doneToday: number, progress: number, scope = ''): void {
     const allDone = open === 0 && doneToday > 0;
     const p = allDone ? 1 : Math.max(0, Math.min(1, progress));
     this.el.classList.toggle('is-empty', open === 0 && doneToday === 0);
@@ -65,7 +66,7 @@ export class Orb {
       open === 0 && doneToday === 0
         ? 'No tasks'
         : `${open} open${doneToday ? `, ${doneToday} done today` : ''}`;
-    this.el.setAttribute('aria-label', label);
+    this.el.setAttribute('aria-label', scope ? `${scope}: ${label}` : label);
     this.shown = { open, progress: p, allDone };
   }
 

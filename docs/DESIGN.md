@@ -41,6 +41,31 @@ Instead of priorities, tags or due dates, a task can be **Now**. There's exactly
 accent card at the top, and it's what the orb's hover peek shows. That's the whole "active task" model.
 If nothing is in focus, the peek shows the top of the list as *Up next*.
 
+### Spaces: apart when you want, invisible when you don't
+Work, development and personal tasks pile into one list for people who do all three, so Tack has
+optional **spaces**. They're deliberately thin: a space is a name, not a project with its own settings,
+colours, priorities or due dates, and there are still no tags.
+
+- **Nothing until you ask.** Everything starts in **Main**. Until there's a second space, Tack looks and
+  behaves exactly as it did before spaces; the only sign of them is Settings → Spaces, where you make
+  one (and can rename Main, say to "Work").
+- **One importance order.** A space shows the one global order, filtered. Reordering inside a space moves
+  a task past the neighbours you can see and never re-keys tasks in other spaces, so switching to All
+  shows the order you'd expect.
+- **Switching is one keystroke.** A slim strip under the header (`All · Main · Work · +`, plain text, the
+  space on show in the primary text colour with an accent underline, no colour per space) and
+  **Alt+1..9 / Alt+0** that work even while you're typing a task (the draft stays). On the phone, the
+  title becomes the switcher ("Work ▾").
+- **New things land where you're looking.** The add box says "Add to Work", and a new task or sheet goes
+  into the space on show (from All, Main). Moving one elsewhere is a menu (Move to ▸, Ctrl+M) with Undo,
+  and changes nothing else about it.
+- **Still one Now.** The focus task keeps its card in its own space and in All; elsewhere it's a slim
+  line, "Now in Work: …", that takes you there. Done, Clear, the orb's count and ring and the peek go by
+  the space on show.
+- **Each device chooses what it shows** (kept in its own settings, never synced), so the PC can stay on
+  Work while the phone shows Personal. A space deleted on another device just shows Main.
+- **Deleting a space loses nothing.** Its tasks and notes fall back to Main, and Undo restores it all.
+
 ### Progress that resets itself
 The orb's ring is *today's* finished share of work: done today ÷ (done today + still open). It needs no
 reset button, no streaks, no stats screen. Each morning it starts empty again.
@@ -103,7 +128,7 @@ white documents.
 src/Tack
 ├── App.xaml(.cs)          Startup: single instance, data folder, first-run seeding, crash safety
 ├── AppShell.cs            The coordinator: orb ⇄ panel, placement, shortcut, full-screen, housekeeping
-├── Model/                 Workspace (all user state), TaskItem, NoteSheet, Settings
+├── Model/                 Workspace (all user state), SpaceView (what the space on show shows), TaskItem, NoteSheet, Settings
 ├── Services/              StateStore (JSON persistence), FolderSync (sync through a folder), accent colour, startup, log, single instance
 ├── Sync/                  The data model shared with Tack Focus: clocks, sort keys, merges, device files, the sync engine
 ├── Interop/               Win32/DWM: glass, monitors & DPI, global hotkey, shell watcher
@@ -116,6 +141,10 @@ src/Tack
 The model is plain `INotifyPropertyChanged` classes; views bind to them directly and keep interaction
 logic in code-behind. For an app this size that's easier to follow than a full MVVM framework, and it
 adds no dependencies. The project references **nothing** beyond .NET 8 and WPF.
+
+Spaces sit between the two: `SpaceView` filters the workspace's lists for the space on show and
+keeps them in step, and with no space besides Main (or in All) it hands the views the workspace's own
+collections, which is what keeps the panel exactly as it was until a second space exists.
 
 ### Windows
 Three top-level windows, each doing one job:
@@ -201,7 +230,8 @@ at a few MB of working set and zero CPU.
 - **Localisation** isn't wired up; strings are in XAML and code.
 - **Keyboard access to row actions** goes through shortcuts (Ctrl+Enter, Ctrl+D, Backspace) and the context
   menu (Shift+F10), not Tab, because the hover toolbar isn't in the tab order.
-- Deliberately **not** planned: reminders, due dates, projects, tags, collaboration.
+- Deliberately **not** planned: reminders, due dates, priorities, tags, collaboration. Spaces (above) are as
+  far as grouping goes: a name to keep work, development and personal apart, not projects with settings.
 - **Sync** with Tack Focus is opt-in and serverless: through a folder in your own OneDrive that the
   OneDrive app keeps in step, never a Tack server, and no network code in Tack. See [SYNC.md](SYNC.md).
   Google Drive and end-to-end encryption are for later.

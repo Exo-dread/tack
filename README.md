@@ -36,7 +36,10 @@ and gets out of the way the moment you're done.
 - **Open in a click or a keystroke.** Click the orb or press **Ctrl+Alt+Space** from any app. Type a task,
   press Enter, press Esc, and you're back at work.
 - **One task in focus.** Mark one task as *Now* and it gets pride of place at the top (and in the peek).
-  No projects, tags, priorities or due dates.
+  No tags, priorities or due dates.
+- **Spaces, if you want them.** Keep work, development and personal tasks apart: make a space in
+  Settings and a slim strip under the header switches between them (Alt+1 to Alt+9, Alt+0 for all).
+  Until you make one, there's nothing extra on screen.
 - **Notes like scrap paper.** Plain-text sheets that save as you type. Lists continue themselves,
   F5 stamps the time, and Ctrl+Enter turns a line into a task.
 - **Windows 11 glass, light or dark.** Native acrylic, rounded corners, your accent colour, smooth and
@@ -86,10 +89,30 @@ Win+Alt+N) and the welcome tasks tell you which. You can change it in **Settings
 - Drag the dots at a task's left edge to reorder.
 - Deleting is undoable: every delete shows an **Undo** button.
 
+### Spaces
+
+Everything starts in **Main**. To keep work, development and personal tasks apart, add a space in
+**Settings → Spaces → + New space** (rename Main there too, say to "Work"). Spaces are optional:
+until there's a second one, Tack looks exactly as it always has.
+
+- Once there's a second space, a slim strip under the header lists **All · Main · Work · …**. Click one
+  (or press **Alt+1** to **Alt+9** for the spaces in order, **Alt+0** for All) to show it. The keys work
+  even while you're typing a task, and the draft stays. **+** at the end of the strip makes a space.
+- A space shows its own tasks and sheets, in the one order you set. New tasks and sheets go into the
+  space on show ("Add to Work"); from All, into Main. **All** shows everything, each task with its space.
+- Right-click a task (or a sheet's name) → **Move to ▸** to put it in another space, or press **Ctrl+M**
+  on a task. Undo moves it back.
+- There's still one task in focus. In other spaces it shows as a slim line, "Now in Work: …"; click it
+  to go there.
+- Done, Clear, the orb's count and ring, and the peek ("Work · 3 open · 2 done today") are per space.
+- **Settings → Spaces** renames, reorders and deletes spaces. Deleting one puts its tasks and notes
+  back in Main (Undo brings the space back). Main can be renamed, never deleted.
+- Each device remembers which space it shows; spaces themselves sync with Tack Focus.
+
 ### Notes
 
 - Sheets are plain text; a sheet's title is its first line. **+** (or **Ctrl+N**) adds a sheet;
-  right-click a sheet's name to delete it.
+  right-click a sheet's name to delete it (or, with spaces, move it to another).
 - Start a line with `- `, `* `, `1. ` or `[ ] ` and Enter continues the list.
 
 ### Keyboard
@@ -106,10 +129,12 @@ Win+Alt+N) and the welcome tasks tell you which. You can change it in **Settings
 | Ctrl+Enter | A task | Make it the focus |
 | Ctrl+D | A task | Mark done |
 | Alt+↑ / Alt+↓ | A task | Move it up or down |
+| Ctrl+M | A task | Move it to another space (once there are spaces) |
 | Backspace | An empty task | Delete it |
 | Ctrl+Enter | Notes | Send the current line (or selection) to Tasks |
 | F5 | Notes | Insert the date and time |
 | Ctrl+Tab | Notes | Next sheet |
+| Alt+1 … Alt+9 / Alt+0 | Panel | Show the 1st … 9th space / All (once there are spaces) |
 
 ## Your data
 

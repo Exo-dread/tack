@@ -1,11 +1,14 @@
 using System.Reflection;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Tack.Interop;
 using Tack.Model;
 using Tack.Services;
+using Tack.Sync;
 using Tack.Windows;
 
 namespace Tack.Views;
@@ -14,18 +17,26 @@ namespace Tack.Views;
 public partial class SettingsView : UserControl
 {
     private Workspace _ws = null!;
+    private SpaceView _view = null!;
     private AppShell _shell = null!;
+    private PanelWindow _panel = null!;
     private bool _capturing;
+    private bool _rebuilding;
+    private readonly Dictionary<UIElement, (string Id, string Part)> _spaceParts = new();
 
     public SettingsView()
     {
         InitializeComponent();
     }
 
-    internal void Initialize(Workspace ws, AppShell shell, PanelWindow panel)
+    internal void Initialize(Workspace ws, SpaceView view, AppShell shell, PanelWindow panel)
     {
         _ws = ws;
+        _view = view;
         _shell = shell;
+        _panel = panel;
+        view.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(SpaceView.Tabs)) BuildSpaceRows(); };
+        BuildSpaceRows();
 
         var version = Assembly.GetExecutingAssembly().GetName().Version;
         VersionText.Text = $"Tack {version?.Major}.{version?.Minor}.{version?.Build}";
@@ -65,6 +76,208 @@ public partial class SettingsView : UserControl
     private void Theme_Checked(object sender, RoutedEventArgs e)
     {
         if (_ws != null && sender is RadioButton { Tag: string theme }) _ws.Settings.Theme = theme;
+    }
+
+    // ---- Spaces ----
+
+    /// <summary>
+    /// A row per space, in their order: Main (its name), then each space (its name, up, down,
+    /// delete). Rebuilt whenever spaces change; the control you were on keeps the focus, and a
+    /// name being typed keeps what's typed so far.
+    /// </summary>
+    private void BuildSpaceRows()
+    {
+        (string Id, string Part)? focused = null;
+        string? draft = null;
+        int caret = 0;
+        if (Keyboard.FocusedElement is UIElement f && _spaceParts.TryGetValue(f, out var part))
+        {
+            focused = part;
+            if (f is TextBox box)
+            {
+                draft = box.Text;
+                caret = box.CaretIndex;
+            }
+        }
+
+        _rebuilding = true;
+        try
+        {
+            SpaceRows.Children.Clear();
+            _spaceParts.Clear();
+            var tabs = _view.Tabs;
+            UIElement? refocus = null;
+            for (int i = 0; i < tabs.Count; i++)
+            {
+                int index = i;
+                var (id, name) = tabs[i];
+                bool main = id == SpaceField.Main;
+                if (i > 0)
+                {
+                    var line = new Border { Height = 1, Margin = new Thickness(6, 0, 0, 0) };
+                    line.SetResourceReference(Border.BackgroundProperty, "DividerBrush");
+                    SpaceRows.Children.Add(line);
+                }
+                var row = new Grid { Margin = new Thickness(0, 4, 0, 4) };
+                row.ColumnDefinitions.Add(new ColumnDefinition());
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var nameBox = new TextBox
+                {
+                    Style = (Style)FindResource("SpaceNameBox"),
+                    Text = focused == (id, "name") && draft != null ? draft : name,
+                    Tag = main ? "Main" : "Untitled",
+                    ToolTip = main ? "Main holds everything not put in a space. Rename it if you like." : null,
+                };
+                AutomationProperties.SetName(nameBox, $"Name of {name}");
+                nameBox.PreviewKeyDown += (_, e) => SpaceName_PreviewKeyDown(id, nameBox, e);
+                nameBox.LostKeyboardFocus += (_, _) => CommitSpaceName(id, nameBox);
+                _spaceParts[nameBox] = (id, "name");
+                row.Children.Add(nameBox);
+                if (focused == (id, "name")) refocus = nameBox;
+
+                if (!main)
+                {
+                    var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+                    Grid.SetColumn(buttons, 1);
+                    var up = SpaceButton("", $"Move {name} up", index > 0, () => _ws.MoveSpace(id, index - 1));
+                    var down = SpaceButton("", $"Move {name} down", index < tabs.Count - 1, () => _ws.MoveSpace(id, index + 1));
+                    var delete = SpaceButton("", $"Delete {name}", true, () => DeleteSpace(id, name));
+                    _spaceParts[up] = (id, "up");
+                    _spaceParts[down] = (id, "down");
+                    _spaceParts[delete] = (id, "delete");
+                    buttons.Children.Add(up);
+                    buttons.Children.Add(down);
+                    buttons.Children.Add(delete);
+                    row.Children.Add(buttons);
+                    // A move button that can't go further hands the focus to the other one.
+                    if (focused is { } p && p.Id == id && p.Part is "up" or "down")
+                        refocus = (p.Part == "up" ? up : down).IsEnabled ? (p.Part == "up" ? up : down) : p.Part == "up" ? down : up;
+                }
+                SpaceRows.Children.Add(row);
+            }
+
+            if (refocus != null)
+            {
+                refocus.Focus();
+                if (refocus is TextBox box) box.CaretIndex = Math.Min(caret, box.Text.Length);
+            }
+            else if (focused != null)
+            {
+                NewSpaceButton.Focus(); // its row is gone
+            }
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+    }
+
+    private Button SpaceButton(string glyph, string name, bool enabled, Action click)
+    {
+        var button = new Button { Style = (Style)FindResource("SpaceButton"), Content = glyph, ToolTip = name, IsEnabled = enabled };
+        AutomationProperties.SetName(button, name);
+        button.Click += (_, _) => click();
+        return button;
+    }
+
+    private void SpaceName_PreviewKeyDown(string id, TextBox box, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Enter:
+                CommitSpaceName(id, box);
+                (Keyboard.FocusedElement as TextBox)?.SelectAll(); // the row may have been rebuilt
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                // Esc puts back a name being changed; with nothing to put back, it leaves Settings as always.
+                if (box.Text == _view.NameOf(id)) break;
+                box.Text = _view.NameOf(id);
+                box.SelectAll();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Keeps a new name (cleaned to one line, as every device keeps it). Main called "Main", or
+    /// nothing, is simply Main again; another space can't be left without a name.
+    /// </summary>
+    private void CommitSpaceName(string id, TextBox box)
+    {
+        if (_rebuilding) return;
+        string text = SpaceField.CleanName(box.Text);
+        // The box shows the name as kept before the rename rebuilds the rows (which keep what's in it).
+        if (id == SpaceField.Main)
+        {
+            var record = _ws.SpaceById(SpaceField.Main);
+            string own = record is { Deleted: false } ? record.Name : "";
+            string want = text == "Main" ? "" : text;
+            box.Text = want.Length > 0 ? want : "Main";
+            // Renaming never moves a space (Main's first name gives it a record without a place).
+            if (want != own && (want.Length > 0 || record != null)) _ws.RenameSpace(SpaceField.Main, want);
+        }
+        else if (text.Length > 0 && _ws.SpaceById(id) is { Deleted: false } space)
+        {
+            box.Text = text;
+            if (space.Name != text) _ws.RenameSpace(id, text);
+        }
+        else
+        {
+            box.Text = _view.NameOf(id);
+        }
+    }
+
+    private void DeleteSpace(string id, string name)
+    {
+        var undo = _ws.DeleteSpace(id);
+        _panel.ShowToast($"Deleted {name}", undo);
+    }
+
+    private void NewSpace_Click(object sender, RoutedEventArgs e)
+    {
+        NewSpaceButton.Visibility = Visibility.Collapsed;
+        NewSpaceBox.Clear();
+        NewSpaceBox.Visibility = Visibility.Visible;
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () => NewSpaceBox.Focus());
+    }
+
+    private void NewSpaceBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Enter:
+                string name = NewSpaceBox.Text;
+                if (SpaceField.CleanName(name).Length > 0) _ws.AddSpace(name);
+                EndNewSpace();
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                EndNewSpace();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    /// <summary>Clicking elsewhere keeps a name that was typed: the space is made (Esc is the way to drop it).</summary>
+    private void NewSpaceBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (NewSpaceBox.Visibility != Visibility.Visible) return;
+        NewSpaceBox.Visibility = Visibility.Collapsed;
+        NewSpaceButton.Visibility = Visibility.Visible;
+        string name = NewSpaceBox.Text;
+        NewSpaceBox.Clear();
+        if (SpaceField.CleanName(name).Length > 0) _ws.AddSpace(name);
+    }
+
+    private void EndNewSpace()
+    {
+        // The box goes first, so moving the focus away from it doesn't count as leaving a name behind.
+        NewSpaceBox.Visibility = Visibility.Collapsed;
+        NewSpaceBox.Clear();
+        NewSpaceButton.Visibility = Visibility.Visible;
+        NewSpaceButton.Focus();
     }
 
     // ---- Accent swatches ----

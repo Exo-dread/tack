@@ -25,6 +25,7 @@ internal sealed class AppShell : IDisposable
     private const double MaxAutoScreenShare = 0.75; // ...or at this share of the screen's height, if smaller
 
     private readonly Workspace _ws;
+    private readonly SpaceView _view;
     private readonly StateStore _store;
     private readonly FolderSync _sync;
     private readonly OrbWindow _orb;
@@ -51,9 +52,11 @@ internal sealed class AppShell : IDisposable
         _store = store;
         _sync = sync;
 
+        // What's on show (a space, or everything): the panel, the orb's count and ring, and the peek.
+        _view = new SpaceView(ws);
         _orb = new OrbWindow();
         _peek = new PeekWindow();
-        _panel = new PanelWindow(ws, this);
+        _panel = new PanelWindow(ws, _view, this);
         _hotkey = new HotkeyManager();
         _watcher = new ShellWatcher();
 
@@ -87,7 +90,7 @@ internal sealed class AppShell : IDisposable
         _watcher.ForegroundChanged += OnForegroundChanged;
         _watcher.FullscreenChanged += EvaluateFullscreen;
 
-        _ws.SummaryChanged += (_, _) => RefreshOrb();
+        _view.SummaryChanged += (_, _) => RefreshOrb();
         _ws.Settings.PropertyChanged += OnSettingChanged;
     }
 
@@ -203,6 +206,7 @@ internal sealed class AppShell : IDisposable
         _sync.SyncNow(); // a cheap look at the folder, in case a change slipped past the watcher
 
         var rect = ComputePanelRect(out _anchorRight, out _anchorBottom);
+        _panel.AnchoredBottom = _anchorBottom;
         // Move while hidden (so it opens on the right monitor), then pin the exact size once
         // WPF has picked up that monitor's DPI.
         ScreenGeometry.Place(_panel.Handle, rect.X, rect.Y, rect.Width, rect.Height);
@@ -348,12 +352,13 @@ internal sealed class AppShell : IDisposable
         _ws.Settings.OrbY = bottom ? r.Y + r.Height - half : r.Y + half;
         _anchorRight = right;
         _anchorBottom = bottom;
+        _panel.AnchoredBottom = bottom;
     }
 
     // ================= Orb and peek =================
 
     private void RefreshOrb() =>
-        _orb.Refresh(_ws.OpenCount, _ws.Progress, allDone: _ws.OpenCount == 0 && _ws.DoneToday > 0);
+        _orb.Refresh(_view.OpenCount, _view.Progress, allDone: _view.OpenCount == 0 && _view.DoneToday > 0);
 
     private void OnOrbHover(bool hot)
     {
@@ -369,7 +374,7 @@ internal sealed class AppShell : IDisposable
     {
         if (_expanded || !_orb.IsVisible || _orb.IsDragging) return;
         _ws.RefreshDay();
-        _peek.ShowFor(_orb, _ws, HotkeyActive ? _ws.Settings.Hotkey : "");
+        _peek.ShowFor(_orb, _view, HotkeyActive ? _ws.Settings.Hotkey : "");
     }
 
     // ================= Desktop awareness =================

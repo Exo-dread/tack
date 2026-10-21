@@ -1,5 +1,29 @@
 # Tack Focus changelog
 
+## Unreleased
+
+- **Spaces** (Work, Dev, Personal), now on screen. Make one in Settings → Spaces → *New space*,
+  where Main can be renamed too; until there's a second space, Tack Focus looks and behaves
+  exactly as before. Then the title shows the space on show ("Work ▾"): tap it for All, each space
+  with its open tasks, and *New space*. With a keyboard, **Alt+1** to **Alt+9** show the spaces in
+  order and **Alt+0** shows All, even while you type a task (the draft stays; on a Mac, outside text
+  fields, since Option+digit types characters there).
+- A space shows its own tasks and sheets in the one order you set, and new ones go into it ("Add to
+  Work"; from All, into Main). Reordering within a space never moves tasks in the others.
+- Tap a task → **Move** to put it in another space, or Notes ⋯ → **Move sheet to…**: "Moved to
+  Personal · Undo". On a phone, ⋯ holds *Delete sheet* too, so the header keeps room for the
+  space's name.
+- Still one task in focus: in other spaces it shows as "Now in Work: …", which takes you there.
+  **All** shows everything, each task with its space.
+- Done and Clear, the count under the title, the orb and the app badge go by the space on show,
+  which each device remembers for itself (it isn't synced).
+- Notes: a space with no sheets shows blank paper, and its sheet is made when you start writing.
+  *Make task* puts the task in the sheet's own space.
+- **Settings → Spaces** renames spaces in place, moves them up and down, and deletes them: "Deleted
+  Dev · Undo", and meanwhile their tasks and notes show in Main. Main can't be deleted.
+- Nothing about files, merging or sync changes; the new ways of adding and reordering stamp exactly
+  as Tack for Windows does (shared test vectors).
+
 ## 0.3.0 (21 October 2026)
 
 - **Groundwork for spaces** (Work, Dev, Personal), with nothing visible yet: tasks and notes can

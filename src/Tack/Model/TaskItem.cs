@@ -12,6 +12,7 @@ public sealed class TaskItem : Observable
     private string _text;
     private string? _completedIso;
     private bool _isChecking;
+    private string? _spaceLabel;
 
     internal TaskItem(TaskData data)
     {
@@ -42,6 +43,13 @@ public sealed class TaskItem : Observable
     {
         get => _isChecking;
         set => Set(ref _isChecking, value);
+    }
+
+    /// <summary>UI-only: the name of its space, shown on its row in All while there are spaces; else null.</summary>
+    public string? SpaceLabel
+    {
+        get => _spaceLabel;
+        set => Set(ref _spaceLabel, value);
     }
 
     public bool CompletedToday => CompletedAt is { } c && c.LocalDateTime.Date == DateTime.Today;

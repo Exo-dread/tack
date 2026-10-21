@@ -47,7 +47,8 @@ internal sealed record SheetClocks(string Text, string Order, string Deleted, st
 
 /// <summary>
 /// A space (Work, Dev, Personal...) that tasks and sheets can be put in. Main, where everything
-/// starts, needs no record; it gets one (id "main") only once it's renamed.
+/// starts, needs no record; it gets one (id "main") only once it's renamed or moved. A record from a
+/// rename alone has no place among the spaces (its order clock is Zero): Main stays first.
 /// </summary>
 internal sealed record SpaceData(string Id, string Name, string Order, bool Deleted, SpaceClocks Clk);
 
@@ -77,20 +78,38 @@ internal static class SpaceField
     /// <summary>Main's id, reserved: an explicit move back to Main, and Main's own record once it's renamed.</summary>
     public const string Main = "main";
 
+    /// <summary>
+    /// All's id, reserved for the view of everything (ALL in Tack Focus): never a space, even with a
+    /// record (only a hand-made file has one). It isn't listed, and what's in it is in Main.
+    /// </summary>
+    public const string All = "all";
+
     /// <summary>The longest space name, in UTF-16 units (MAX_SPACE_NAME in Tack Focus, which counts the same).</summary>
     public const int MaxName = 100;
 
     /// <summary>
     /// A space name as every device keeps it, wherever it comes from (typed, a file, a snapshot):
-    /// one line, and no longer than <see cref="MaxName"/>, cut where a character ends (an emoji is
-    /// never halved) and tidied again (cleanSpaceName in Tack Focus). Cleaning a clean name changes
+    /// one line, with no control characters (each is a space: U+0085 would break the line here),
+    /// and no longer than <see cref="MaxName"/>, cut where a character ends (an emoji is never
+    /// halved) and tidied again (cleanSpaceName in Tack Focus). Cleaning a clean name changes
     /// nothing, so devices that read the same name hold the same name.
     /// </summary>
     public static string CleanName(string raw)
     {
-        string name = JsText.CleanTaskText(raw);
+        string name = JsText.CleanTaskText(NoControls(raw));
         if (name.Length <= MaxName) return name;
         return JsText.CleanTaskText(name[..(char.IsHighSurrogate(name[MaxName - 1]) ? MaxName - 1 : MaxName)]);
+    }
+
+    /// <summary>C0 controls, DEL and C1 controls (U+0000–U+001F, U+007F–U+009F), each made a space.</summary>
+    private static string NoControls(string text)
+    {
+        static bool IsControl(char c) => c <= '\u001f' || (c >= '\u007f' && c <= '\u009f');
+        if (!text.Any(IsControl)) return text;
+        return string.Create(text.Length, text, (span, s) =>
+        {
+            for (int i = 0; i < s.Length; i++) span[i] = IsControl(s[i]) ? ' ' : s[i];
+        });
     }
 
     /// <summary>
@@ -127,7 +146,7 @@ internal static class Spaces
     /// </summary>
     public static string Effective(string space, IEnumerable<SpaceData> spaces)
     {
-        if (string.IsNullOrEmpty(space) || space == SpaceField.Main) return SpaceField.Main;
+        if (string.IsNullOrEmpty(space) || space == SpaceField.Main || space == SpaceField.All) return SpaceField.Main;
         foreach (var s in spaces)
         {
             if (s.Id == space && !s.Deleted) return space;

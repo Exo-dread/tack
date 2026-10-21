@@ -1,6 +1,8 @@
 import { exportFile, FileError, importFile } from '../model/file';
+import { cleanSpaceName, MAIN, spaceLabel } from '../model/spaces';
+import { shorten } from '../model/text';
 import { parseDate } from '../model/time';
-import type { Workspace } from '../model/workspace';
+import type { SpaceTab, Workspace } from '../model/workspace';
 import type { Snapshot } from '../store/db';
 import { isPersisted, persistenceNeedsPrompt, requestPersistence, type Store } from '../store/persist';
 import { prefs, setPrefs, type ThemePref } from '../store/prefs';
@@ -10,6 +12,7 @@ import { hapticsSupported, setHaptics } from './haptics';
 import { icons } from './icons';
 import { installKind, onInstallChange, promptInstall } from './install';
 import { afterAnimation, animate, EASE_IN, SPRING } from './motion';
+import { newSpaceEntry, type SpaceUi } from './spaces';
 import { ACCENTS } from './theme';
 import type { Toasts } from './toast';
 
@@ -32,6 +35,7 @@ export class Settings {
     private readonly store: Store,
     private readonly toasts: Toasts,
     private readonly sync: SyncController,
+    private readonly spaces: SpaceUi,
   ) {}
 
   open(): void {
@@ -57,6 +61,8 @@ export class Settings {
     if (!dialog) return;
     this.dialog = null;
     this.cleanups.splice(0).forEach((c) => c());
+    // A toast shown in here ("Deleted Dev · Undo") carries on outside.
+    this.toasts.mount(null);
     dialog.classList.add('closing');
     const panel = dialog.querySelector<HTMLElement>('.sheet-panel')!;
     const from = getComputedStyle(panel).transform;
@@ -177,12 +183,127 @@ export class Settings {
             ['Ctrl+Z', 'Undo the last delete'],
             ['Ctrl+Enter (notes)', 'Make a task from the line'],
             ['F5 (notes)', 'Insert the date and time'],
+            ...(this.spaces.on ? [['Alt+0 / Alt+1–9', 'All / the 1st–9th space']] : []),
           ].flatMap(([k, v]) => [h('dt', {}, h('kbd', { text: k })), h('dd', { text: v })]),
         ),
       ),
     );
 
-    return [h('div.sheet-grip', { 'aria-hidden': 'true' }), title, h('div.sheet-scroll', {}, appearance, feel, this.syncSection(), install, data, about)];
+    return [h('div.sheet-grip', { 'aria-hidden': 'true' }), title, h('div.sheet-scroll', {}, appearance, feel, this.spacesSection(), this.syncSection(), install, data, about)];
+  }
+
+  // ------------------------------------------------------------------ spaces
+
+  /**
+   * Settings → Spaces: Main (to rename), each space (rename, move up or down, delete with Undo)
+   * and "+ New space". With no spaces yet, this is the one place they show: Main and New space.
+   * Kept up to date while open (another tab or device may change spaces meanwhile).
+   */
+  private spacesSection(): HTMLElement {
+    const rows = h('div.space-rows');
+    let focusNext: string | null = null;
+    let waiting = false;
+    const render = () => {
+      // Never under someone's typing: a name being changed is put back on screen when it's done.
+      const typing = document.activeElement;
+      if (typing instanceof HTMLInputElement && rows.contains(typing) && typing.value !== typing.dataset.shown) {
+        waiting = true;
+        return;
+      }
+      waiting = false;
+      const tabs = this.ws.spaceTabs;
+      rows.replaceChildren(...tabs.map((tab, i) => this.spaceRow(tab, i, tabs.length, (key) => (focusNext = key), () => waiting && render())));
+      if (focusNext) {
+        const key = focusNext;
+        focusNext = null;
+        const el = rows.querySelector<HTMLButtonElement>(`[data-key="${CSS.escape(key)}"]`);
+        // Moved to the top or bottom: its other arrow keeps the focus.
+        const other = key.replace(/^(up|down):/, (_, d: string) => (d === 'up' ? 'down:' : 'up:'));
+        (el && !el.disabled ? el : rows.querySelector<HTMLElement>(`[data-key="${CSS.escape(other)}"]`))?.focus();
+      }
+    };
+    const entry = newSpaceEntry((name) => this.spaces.create(name) !== null);
+    render();
+    // Done (or a tap outside) with a new space's name typed: it's made, as Enter would make it.
+    this.cleanups.push(() => entry.keep());
+    this.cleanups.push(this.ws.subscribe((change) => change.spaces.size > 0 && render()));
+    return group(
+      'Spaces',
+      rows,
+      entry.el,
+      h('p.note.small', { text: 'Spaces keep work, development and personal tasks apart. Everything starts in Main; tap a name to rename it. Each device remembers which space it shows.' }),
+    );
+  }
+
+  private spaceRow(tab: SpaceTab, i: number, count: number, focusNext: (key: string) => void, renamed: () => void): HTMLElement {
+    const { id, label } = tab;
+    const input = h('input.space-name', {
+      type: 'text',
+      value: label,
+      maxlength: '100',
+      'aria-label': `Name of ${label}`,
+      'data-key': `name:${id}`,
+      'data-shown': label,
+      enterkeyhint: 'done',
+      autocomplete: 'off',
+      autocapitalize: 'words',
+      spellcheck: 'false',
+    });
+    const commit = () => {
+      const typed = cleanSpaceName(input.value);
+      // Main called "Main", or nothing, is simply Main again (no name of its own); another space keeps a name.
+      const name = id === MAIN && typed === 'Main' ? '' : typed;
+      const current = this.ws.spaces.get(id)?.name ?? '';
+      if (name === current || (!name && id !== MAIN)) {
+        input.value = spaceLabel(id, current);
+      } else {
+        input.value = spaceLabel(id, name);
+        input.dataset.shown = input.value;
+        // Renaming never moves a space (Main's first name gives it a record without a place).
+        this.ws.renameSpace(id, name);
+      }
+      renamed();
+    };
+    input.addEventListener('change', commit);
+    input.addEventListener('blur', renamed);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        commit();
+        input.blur();
+      } else if (e.key === 'Escape') {
+        // Back to the name it had (and Settings stays open).
+        e.preventDefault();
+        e.stopPropagation();
+        input.value = input.dataset.shown!;
+        input.blur();
+      }
+    });
+    const row = h('div.space-row', {}, input);
+    // Main is renamed only: it never goes, and it moves as the spaces around it do.
+    if (count > 1 && id !== MAIN) {
+      const button = (key: string, icon: string, name: string, disabled: boolean, run: () => void) =>
+        h('button.icon-button', { type: 'button', 'aria-label': name, title: name, disabled, 'data-key': key, onclick: run }, svg(icon));
+      const move = (to: number, key: string) => () => {
+        focusNext(key);
+        this.ws.moveSpace(id, to);
+      };
+      row.append(
+        button(`up:${id}`, icons.up, `Move ${label} up`, i === 0, move(i - 1, `up:${id}`)),
+        button(`down:${id}`, icons.down, `Move ${label} down`, i === count - 1, move(i + 1, `down:${id}`)),
+        button(`delete:${id}`, icons.trash, `Delete ${label}`, false, () => {
+          const tabs = this.ws.spaceTabs;
+          const next = tabs[i + 1] ?? tabs[i - 1];
+          if (next) focusNext(next.id === MAIN ? `name:${MAIN}` : `delete:${next.id}`);
+          const undo = this.ws.deleteSpace(id);
+          // Its tasks and notes show in Main meanwhile; Undo puts them all back.
+          this.toasts.mount(this.dialog);
+          this.toasts.show(`Deleted ${shorten(label, 24)}`, undo);
+        }),
+      );
+      row.lastElementChild!.classList.add('space-delete');
+    }
+    return row;
   }
 
   // ------------------------------------------------------------------ sync

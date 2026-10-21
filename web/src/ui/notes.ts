@@ -1,16 +1,22 @@
 import { continueList, noteLinesToTasks, sheetTitle, shorten } from '../model/text';
+import type { Sheet } from '../model/types';
 import type { Origin, Workspace } from '../model/workspace';
 import { prefs, setPrefs } from '../store/prefs';
 import { h, svg } from './dom';
 import { haptics } from './haptics';
 import { icons } from './icons';
 import { animate, EASE_OUT, measure, playFlip, reducedMotion } from './motion';
+import type { SpaceUi } from './spaces';
 import type { Toasts } from './toast';
 
 export interface NotesContext {
   toasts: Toasts;
   /** A task was made from a note: nudge the Tasks switch so you can see where it went. */
   sentToTasks(count: number): void;
+  /** The space on show: its sheets are the ones on the tabs. */
+  spaces: SpaceUi;
+  /** The sheet being written on changed, or there's none (a space's blank paper). */
+  activeChanged(): void;
 }
 
 /**
@@ -67,7 +73,7 @@ export class NotesView {
     // Tools must not steal focus from the editor: that would drop the selection and the keyboard.
     this.tools.addEventListener('pointerdown', (e) => e.preventDefault());
 
-    this.editor.addEventListener('input', () => this.ws.editSheet(this.activeId, this.editor.value));
+    this.editor.addEventListener('input', () => this.onInput());
     this.editor.addEventListener('beforeinput', this.onBeforeInput);
     this.editor.addEventListener('keydown', this.onKeyDown);
     this.editor.addEventListener('blur', () => this.syncEditor());
@@ -84,6 +90,9 @@ export class NotesView {
       if (pill) this.select(pill.dataset.id!);
     });
     this.strip.addEventListener('keydown', this.onStripKey);
+    // The strip narrows when writing ends (the dock gives the mode switch its room back): the
+    // sheet just written on stays in sight.
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => this.revealActive()).observe(this.strip);
   }
 
   get active(): string {
@@ -94,18 +103,48 @@ export class NotesView {
     return this.ws.sheets.get(this.activeId)?.text ?? '';
   }
 
+  /** The sheets on the tabs: the space on show's (all of them in All, or with no spaces). */
+  private list(): Sheet[] {
+    return this.ws.sheetsIn(this.ctx.spaces.show);
+  }
+
+  /** The sheet each space showed last (this session), so switching back lands on it again. */
+  private readonly lastIn = new Map<string, string>();
+
+  private remember(): void {
+    if (this.activeId) this.lastIn.set(this.ctx.spaces.show, this.activeId);
+  }
+
+  private onInput(): void {
+    if (this.activeId) {
+      this.ws.editSheet(this.activeId, this.editor.value);
+      return;
+    }
+    // A space with no sheets shows blank paper: the first keystroke makes its sheet.
+    const sheet = this.ws.addSheet(this.editor.value, this.ctx.spaces.here);
+    this.activeId = sheet.id;
+    setPrefs({ activeSheet: sheet.id });
+    this.remember();
+    this.renderStrip();
+  }
+
   /**
    * `origin` says where the change came from. Your own typing is already in the editor; a change
    * from another tab or window (or an import) must reach it even while you're writing, or your
    * next keystroke would save the old text over it.
    */
   render(origin: Origin = 'local'): void {
-    const sheets = this.ws.sheetList;
+    const sheets = this.list();
     if (!sheets.some((s) => s.id === this.activeId)) {
+      const last = this.lastIn.get(this.ctx.spaces.show);
       const remembered = prefs().activeSheet;
-      this.activeId = (sheets.find((s) => s.id === remembered) ?? this.ws.ensureSheet()).id;
+      // In a space with no sheets: blank paper (switching spaces never makes empty sheets).
+      const pick =
+        sheets.find((s) => s.id === last) ?? sheets.find((s) => s.id === remembered) ?? sheets[0] ?? (this.ctx.spaces.on ? null : this.ws.ensureSheet());
+      this.activeId = pick?.id ?? '';
       this.editor.value = this.activeText;
     }
+    this.remember();
     this.renderStrip();
     this.syncEditor(origin !== 'local');
   }
@@ -135,7 +174,7 @@ export class NotesView {
   private stripIds = '';
 
   private renderStrip(): void {
-    const sheets = this.ws.sheetList;
+    const sheets = this.list();
     // Animate only when sheets were added, removed or reordered, not on every keystroke.
     const ids = sheets.map((s) => s.id).join(',');
     const reshaped = ids !== this.stripIds;
@@ -161,8 +200,24 @@ export class NotesView {
       cursor = pill;
     }
     existing.forEach((p) => p.remove());
+    // A space's blank paper: a quiet stand-in for the sheet its first keystroke makes.
+    const ghost = this.strip.querySelector('.sheet-ghost');
+    if (sheets.length) ghost?.remove();
+    else if (!ghost) this.strip.append(h('span.sheet-ghost', { 'aria-hidden': 'true', text: 'New sheet' }));
     this.strip.classList.toggle('single', sheets.length <= 1);
     if (before) playFlip(this.strip, before);
+    this.ctx.activeChanged();
+  }
+
+  /** Brings the active sheet's tab into sight in the strip (only the strip scrolls, at once). */
+  private revealActive(): void {
+    const pill = this.strip.querySelector<HTMLElement>('.sheet-pill[aria-selected="true"]');
+    if (!pill) return;
+    const strip = this.strip.getBoundingClientRect();
+    const r = pill.getBoundingClientRect();
+    const fade = 18; // the strip fades out at its right edge
+    if (r.left < strip.left) this.strip.scrollLeft -= strip.left - r.left + 12;
+    else if (r.right > strip.right - fade) this.strip.scrollLeft += r.right - strip.right + fade;
   }
 
   select(id: string, focusEditor = false): void {
@@ -172,9 +227,11 @@ export class NotesView {
     }
     const leaving = this.ws.sheets.get(this.activeId);
     this.scrollMemory.set(this.activeId, { top: this.editor.scrollTop, caret: this.editor.selectionStart });
-    const goingRight = this.ws.sheetList.findIndex((s) => s.id === id) > this.ws.sheetList.findIndex((s) => s.id === this.activeId);
+    const list = this.list();
+    const goingRight = list.findIndex((s) => s.id === id) > list.findIndex((s) => s.id === this.activeId);
     this.activeId = id;
     setPrefs({ activeSheet: id });
+    this.remember();
     // An empty sheet you walk away from isn't worth keeping.
     if (leaving && !leaving.text.trim() && this.ws.sheetList.length > 1) this.ws.deleteSheet(leaving.id);
     this.editor.value = this.activeText;
@@ -195,27 +252,29 @@ export class NotesView {
 
   newSheet(): void {
     const current = this.ws.sheets.get(this.activeId);
-    if (current && !current.text.trim()) {
-      // Already on a blank sheet: just start writing.
+    if ((current && !current.text.trim()) || !this.activeId) {
+      // Already on a blank sheet (or a space's blank paper): just start writing.
       this.editor.focus();
       return;
     }
     haptics.tick();
-    const sheet = this.ws.addSheet();
+    const sheet = this.ws.addSheet('', this.ctx.spaces.here);
     this.select(sheet.id, true);
   }
 
   deleteActive(): void {
     const sheet = this.ws.sheets.get(this.activeId);
     if (!sheet) return;
-    const list = this.ws.sheetList;
+    const list = this.list();
     const index = list.findIndex((s) => s.id === sheet.id);
-    const wasOnly = list.length <= 1;
+    // The very last sheet is cleared instead (a space's last one goes, leaving blank paper).
+    const wasOnly = this.ws.sheetList.length <= 1;
     if (wasOnly && !sheet.text.trim()) return;
     const undo = this.ws.deleteSheet(sheet.id);
     haptics.warn();
     if (!wasOnly) {
-      const next = this.ws.sheetList[Math.min(index, this.ws.sheetList.length - 1)];
+      const rest = this.list();
+      const next = rest[Math.min(index, rest.length - 1)];
       this.activeId = '';
       this.render();
       if (next) this.select(next.id);
@@ -245,7 +304,9 @@ export class NotesView {
       this.ctx.toasts.show('Put the cursor on a line, or select some text, to make a task');
       return;
     }
-    const { added, undo } = this.ws.addTasks(lines);
+    // Into the sheet's own space.
+    const sheet = this.ws.sheets.get(this.activeId);
+    const { added, undo } = this.ws.addTasks(lines, sheet ? this.ws.spaceOf(sheet) : this.ctx.spaces.here);
     haptics.success();
     const label = added.length === 1 ? `Added to Tasks: “${shorten(added[0].text, 26)}”` : `Added ${added.length} tasks`;
     this.ctx.toasts.show(label, undo);
@@ -295,7 +356,7 @@ export class NotesView {
 
   private onStripKey = (e: KeyboardEvent) => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    const list = this.ws.sheetList;
+    const list = this.list();
     const i = list.findIndex((s) => s.id === this.activeId);
     const next = list[(i + (e.key === 'ArrowRight' ? 1 : -1) + list.length) % list.length];
     if (!next) return;
@@ -306,7 +367,7 @@ export class NotesView {
 
   /** Next sheet (Ctrl+Tab on desktop). */
   cycle(delta: number): void {
-    const list = this.ws.sheetList;
+    const list = this.list();
     const i = list.findIndex((s) => s.id === this.activeId);
     const next = list[(i + delta + list.length) % list.length];
     if (next) this.select(next.id, document.activeElement === this.editor);

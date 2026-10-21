@@ -1,8 +1,8 @@
 import { Hlc, ZERO, type Stamp } from './hlc';
 import { newId } from './ids';
 import { cloneSheet, cloneSpace, cloneTask, mergeFocus, mergeSheet, mergeSpace, mergeTask, type ConcurrentText } from './merge';
-import { keyAfter, keyBefore, keysAt } from './order';
-import { cleanSpaceName, isSpaceId, MAIN, normalSheet, normalTask } from './spaces';
+import { keyAfter, keyBefore, keyBetween, keysAt } from './order';
+import { ALL, cleanSpaceName, isSpaceId, MAIN, normalSheet, normalTask, spaceLabel } from './spaces';
 import { cleanTaskText, noteText } from './text';
 import { isoLocal, parseDate, sameLocalDay } from './time';
 import type { Focus, Sheet, Space, Task, WorkspaceData } from './types';
@@ -27,6 +27,13 @@ export interface Summary {
   progress: number;
 }
 
+/** A space as the lists show it: its id ('main' for Main), its own name, and the name shown. */
+export interface SpaceTab {
+  id: string;
+  name: string;
+  label: string;
+}
+
 const byOrder = (a: { order: string; id: string }, b: { order: string; id: string }) =>
   a.order < b.order ? -1 : a.order > b.order ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 
@@ -45,7 +52,7 @@ export class Workspace {
   private readonly listeners = new Set<(change: Change) => void>();
   private pending: Change | null = null;
   private depth = 0;
-  private views: { open?: Task[]; done?: Task[]; sheets?: Sheet[]; spaces?: Space[] } = {};
+  private views: { open?: Task[]; done?: Task[]; sheets?: Sheet[]; spaces?: Space[]; tabs?: SpaceTab[]; live?: Set<string> } = {};
 
   constructor(
     readonly hlc: Hlc,
@@ -96,19 +103,103 @@ export class Workspace {
     return this.views.sheets;
   }
 
-  /** Live spaces in order (Main's record among them, once it has one). */
+  /**
+   * Live spaces in order (Main's record among them, once it has one). A record with All's id
+   * (only a hand-made file has one) is never a space: it isn't listed, and what's in it is in Main.
+   */
   get spaceList(): Space[] {
     if (!this.views.spaces) {
-      this.views.spaces = [...this.spaces.values()].filter((s) => !s.deleted).sort(byOrder);
+      this.views.spaces = [...this.spaces.values()].filter((s) => !s.deleted && s.id !== ALL).sort(byOrder);
     }
     return this.views.spaces;
   }
 
-  summary(): Summary {
+  /** Whether there's a space besides Main. Until there is, nothing about spaces shows anywhere. */
+  get hasSpaces(): boolean {
+    return this.spaceList.some((s) => s.id !== MAIN);
+  }
+
+  /**
+   * Spaces as every list shows them: Main first while it has no place of its own (no record, or
+   * a record that was only ever renamed: its order never stamped), then every live space (Main's
+   * record among them, once it has a place) by order key, then id.
+   */
+  get spaceTabs(): readonly SpaceTab[] {
+    if (!this.views.tabs) {
+      const placed = this.mainHasPlace();
+      const tabs = this.spaceList
+        .filter((s) => placed || s.id !== MAIN)
+        .map((s) => ({ id: s.id, name: s.name, label: spaceLabel(s.id, s.name) }));
+      if (!placed) {
+        const main = this.spaces.get(MAIN);
+        const name = main && !main.deleted ? main.name : '';
+        tabs.unshift({ id: MAIN, name, label: spaceLabel(MAIN, name) });
+      }
+      this.views.tabs = tabs;
+    }
+    return this.views.tabs;
+  }
+
+  /** How a space is shown ("Main" for Main until it's renamed). */
+  labelOf(id: string): string {
+    return this.spaceTabs.find((s) => s.id === id)?.label ?? spaceLabel(MAIN, this.spaces.get(MAIN)?.name ?? '');
+  }
+
+  /**
+   * What a device shows for its choice (see Prefs): All, or a space. A space that's gone (deleted,
+   * here or elsewhere) or never arrived shows Main.
+   */
+  shown(choice: string): string {
+    return choice === ALL ? ALL : this.spaceOf({ space: choice });
+  }
+
+  /** The space a task or sheet shows in: its own while that's a live space, else Main (see effectiveSpace). */
+  spaceOf(item: { space: string }): string {
+    const s = item.space;
+    if (!s || s === MAIN) return MAIN;
+    if (!this.views.live) this.views.live = new Set(this.spaceList.map((x) => x.id));
+    return this.views.live.has(s) ? s : MAIN;
+  }
+
+  /** Whether `item` shows in `show` (All, or a space as `shown` gives it). */
+  shows(item: { space: string }, show: string): boolean {
+    return show === ALL || this.spaceOf(item) === show;
+  }
+
+  /** Open tasks as `show` shows them: the one order, filtered. */
+  openIn(show: string): Task[] {
+    return show === ALL ? this.open : this.open.filter((t) => this.spaceOf(t) === show);
+  }
+
+  doneIn(show: string): Task[] {
+    return show === ALL ? this.done : this.done.filter((t) => this.spaceOf(t) === show);
+  }
+
+  sheetsIn(show: string): Sheet[] {
+    return show === ALL ? this.sheetList : this.sheetList.filter((s) => this.spaceOf(s) === show);
+  }
+
+  /** Open tasks (the one in focus included) per space, and in all. */
+  openCounts(): Map<string, number> {
+    const counts = new Map<string, number>();
+    const now = this.now;
+    let all = 0;
+    for (const t of now ? [now, ...this.open] : this.open) {
+      const s = this.spaceOf(t);
+      counts.set(s, (counts.get(s) ?? 0) + 1);
+      all++;
+    }
+    counts.set(ALL, all);
+    return counts;
+  }
+
+  /** Open and done-today counts for `show` (everything, unless a space is given). */
+  summary(show: string = ALL): Summary {
     const today = this.clock();
-    const open = this.open.length + (this.now ? 1 : 0);
+    const now = this.now;
+    const open = this.openIn(show).length + (now && this.shows(now, show) ? 1 : 0);
     let doneToday = 0;
-    for (const t of this.done) {
+    for (const t of this.doneIn(show)) {
       const d = parseDate(t.completed);
       if (d && sameLocalDay(d, today)) doneToday++;
     }
@@ -118,12 +209,16 @@ export class Workspace {
 
   // ---------------------------------------------------------------- tasks
 
-  /** Adds a task at the top of the list (or straight into focus). */
-  addTask(rawText: string, options: { asNow?: boolean } = {}): Task | null {
+  /**
+   * Adds a task at the top of the list (or straight into focus). In `space`, if that's a live
+   * space other than Main (stamped with the task's own clock); anywhere else, in no space (Main).
+   */
+  addTask(rawText: string, options: { asNow?: boolean; space?: string } = {}): Task | null {
     const text = cleanTaskText(rawText);
     if (!text) return null;
     return this.batch(() => {
       const top = this.open[0]?.order;
+      const space = this.placeIn(options.space);
       const c = this.hlc.now();
       const task: Task = {
         id: newId(),
@@ -132,8 +227,8 @@ export class Workspace {
         completed: null,
         order: top ? keyBefore(top) : 'V',
         deleted: false,
-        space: '',
-        clk: { text: c, completed: c, order: c, deleted: c, space: ZERO },
+        space,
+        clk: { text: c, completed: c, order: c, deleted: c, space: space ? c : ZERO },
       };
       this.putTask(task);
       if (options.asNow) {
@@ -145,12 +240,12 @@ export class Workspace {
     });
   }
 
-  /** Adds several tasks, keeping their order, at the top of the list. */
-  addTasks(texts: string[]): { added: Task[]; undo: Undo } {
+  /** Adds several tasks, keeping their order, at the top of the list (in `space`, as addTask puts them). */
+  addTasks(texts: string[], space?: string): { added: Task[]; undo: Undo } {
     const added: Task[] = [];
     this.batch(() => {
       for (let i = texts.length - 1; i >= 0; i--) {
-        const t = this.addTask(texts[i]);
+        const t = this.addTask(texts[i], { space });
         if (t) added.unshift(t);
       }
     });
@@ -249,8 +344,39 @@ export class Workspace {
     });
   }
 
-  clearDone(): Undo {
-    const ids = this.done.map((t) => t.id);
+  /**
+   * Moves an open task to `index` among the open tasks `show` shows (as they'd be without it),
+   * within the one order all spaces share: it lands just past the last task it passes in this
+   * view (below it going down, above it going up), so tasks in other spaces keep their places.
+   *
+   * Tasks in other spaces are never re-keyed. Every place between the task's new neighbours in
+   * this view looks the same here, so where keys tie (two devices adding at the top at once) it
+   * takes the nearest of those places whose neighbours' keys differ, and gets a key of its own
+   * there. If they all tie, only this view's tasks make room.
+   */
+  moveTaskIn(show: string, id: string, index: number): void {
+    if (show === ALL) return this.moveTask(id, index);
+    const view = this.openIn(show);
+    const from = view.findIndex((t) => t.id === id);
+    if (from < 0) return;
+    const others = view.filter((t) => t.id !== id);
+    const to = Math.max(0, Math.min(index, others.length));
+    if (to === from) return;
+    const all = this.open.filter((t) => t.id !== id);
+    const lo = to > 0 ? all.indexOf(others[to - 1]!) + 1 : 0;
+    const hi = to < others.length ? all.indexOf(others[to]!) : all.length;
+    const free = (g: number) => g === 0 || g === all.length || all[g - 1]!.order < all[g]!.order;
+    for (let k = 0; k <= hi - lo; k++) {
+      const g = to > from ? lo + k : hi - k;
+      if (free(g)) return this.moveTask(id, g);
+    }
+    const task = this.tasks.get(id)!;
+    this.batch(() => this.setOrderAt(task, others, to));
+  }
+
+  /** Deletes the finished tasks `show` shows (all of them, unless a space is given). */
+  clearDone(show: string = ALL): Undo {
+    const ids = this.doneIn(show).map((t) => t.id);
     if (ids.length === 0) return () => {};
     this.batch(() => ids.forEach((id) => this.removeTask(id)));
     return () =>
@@ -264,9 +390,11 @@ export class Workspace {
 
   // ---------------------------------------------------------------- sheets
 
-  addSheet(text = ''): Sheet {
+  /** Adds a sheet after the last one, in `space` as addTask puts tasks there. */
+  addSheet(text = '', space?: string): Sheet {
     return this.batch(() => {
       const last = this.sheetList.at(-1)?.order;
+      const where = this.placeIn(space);
       const c = this.hlc.now();
       const sheet: Sheet = {
         id: newId(),
@@ -274,8 +402,8 @@ export class Workspace {
         updated: isoLocal(this.clock()),
         order: last ? keyAfter(last) : 'V',
         deleted: false,
-        space: '',
-        clk: { text: c, order: c, deleted: c, space: ZERO },
+        space: where,
+        clk: { text: c, order: c, deleted: c, space: where ? c : ZERO },
       };
       this.putSheet(sheet);
       return sheet;
@@ -336,7 +464,11 @@ export class Workspace {
     });
   }
 
-  /** Renames a space. Main gets a record of its own the first time it's renamed. */
+  /**
+   * Renames a space. Main gets a record of its own the first time it's renamed: the name alone,
+   * with no place (its order never stamped), so Main stays where it was, here and on every
+   * device the name reaches.
+   */
   renameSpace(id: string, rawName: string): void {
     const name = cleanSpaceName(rawName);
     const s = this.spaces.get(id);
@@ -361,6 +493,42 @@ export class Workspace {
         const space = this.spaces.get(id);
         if (space) this.setSpaceField(space, 'deleted', false);
       });
+  }
+
+  /**
+   * Moves a space to `index` in the list as spaceTabs shows it (as it would be without the space):
+   * a new order key between its new neighbours, its order stamped (neighbours tied with the one
+   * above it get new keys too, as tasks do, so it really lands there). Main has no key until it
+   * has a record: moving Main makes one, nameless (it still shows as "Main") with only its order
+   * stamped; a space going above a Main with no place first gives Main one the same way, at the top.
+   * A Main that was renamed but never moved has a record without a place: placing it stamps its
+   * order alone, keeping its name.
+   */
+  moveSpace(id: string, index: number): void {
+    const tabs = this.spaceTabs;
+    const from = tabs.findIndex((s) => s.id === id);
+    if (from < 0) return;
+    const to = Math.max(0, Math.min(index, tabs.length - 1));
+    if (to === from) return;
+    const placed = this.mainHasPlace();
+    // Keyed records in their order, without the one moving (nor a Main with no place).
+    const records = this.spaceList.filter((s) => s.id !== id && (placed || s.id !== MAIN));
+    // Main, with no place of its own, sits above every key (unless it's the one moving).
+    const pinned = !placed && id !== MAIN;
+    if (pinned && to === 0 && this.spaces.get(MAIN)?.deleted) return; // a deleted Main record (only a damaged file has one)
+    this.batch(() => {
+      let at = pinned ? to - 1 : to;
+      if (pinned && to === 0) {
+        // Going above Main: Main takes the top key first.
+        const main = this.placeMain(keyBetween(null, records[0]?.order ?? null));
+        records.unshift(main);
+        at = 0;
+      }
+      const keys = keysAt(records.map((s) => s.order), at);
+      if (id === MAIN) this.placeMain(keys[0]!);
+      else this.setSpaceField(this.spaces.get(id)!, 'order', keys[0]!);
+      for (let i = 1; i < keys.length; i++) this.setSpaceField(records[at + i - 1]!, 'order', keys[i]!);
+    });
   }
 
   /** Puts a task in a space ('main' for Main). Its place in the list and the focus stay as they are. */
@@ -579,7 +747,37 @@ export class Workspace {
     if (observe) this.hlc.observe(maxClock(space.clk));
     this.spaces.set(space.id, space);
     this.current().spaces.add(space.id);
-    this.views.spaces = undefined;
+    this.views.spaces = this.views.tabs = this.views.live = undefined;
+  }
+
+  /** A new task's or sheet's space: `space` if it's a live space other than Main, else none (''). */
+  private placeIn(space: string | undefined): string {
+    return space && space !== MAIN && this.spaceOf({ space }) === space ? space : '';
+  }
+
+  /**
+   * Gives Main a place: its record's order, stamped (a name it was given stays). With no record
+   * yet, one is made: no name (it shows as "Main"), only the order stamped.
+   */
+  private placeMain(order: string): Space {
+    const existing = this.spaces.get(MAIN);
+    if (existing) {
+      this.setSpaceField(existing, 'order', order);
+      return this.spaces.get(MAIN)!;
+    }
+    const main: Space = { id: MAIN, name: '', order, deleted: false, clk: { name: ZERO, order: this.hlc.now(), deleted: ZERO } };
+    this.putSpace(main);
+    return main;
+  }
+
+  /**
+   * Whether Main has a place among the spaces' order keys: a live record whose order was stamped
+   * (Main was moved, here or elsewhere). A record made by renaming alone has no place; Main then
+   * sits first, as it does with no record at all.
+   */
+  private mainHasPlace(): boolean {
+    const main = this.spaces.get(MAIN);
+    return !!main && !main.deleted && main.clk.order !== ZERO;
   }
 
   private setTaskField<K extends 'text' | 'completed' | 'order' | 'deleted' | 'space'>(task: Task, field: K, value: Task[K]): void {

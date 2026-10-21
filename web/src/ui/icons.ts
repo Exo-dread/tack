@@ -27,6 +27,10 @@ export const icons = {
   grip: icon('<circle cx="9" cy="7" r=".9" fill="currentColor"/><circle cx="15" cy="7" r=".9" fill="currentColor"/><circle cx="9" cy="12" r=".9" fill="currentColor"/><circle cx="15" cy="12" r=".9" fill="currentColor"/><circle cx="9" cy="17" r=".9" fill="currentColor"/><circle cx="15" cy="17" r=".9" fill="currentColor"/>'),
   cloud: icon('<path d="M7.25 18.25h9.5a3.75 3.75 0 0 0 .6-7.45 5.25 5.25 0 0 0-10.2-.9A4.2 4.2 0 0 0 7.25 18.25Z"/>'),
   reopen: icon('<path d="M5 12a7 7 0 1 0 2.05-4.95"/><path d="M4.75 4.5v3.75H8.5"/>'),
+  /** Move to another space: an arrow going into a folder. */
+  move: icon('<path d="M3.75 7.25A1.75 1.75 0 0 1 5.5 5.5h3.55l1.95 2.1h7.5a1.75 1.75 0 0 1 1.75 1.75v8.15a1.75 1.75 0 0 1-1.75 1.75h-13a1.75 1.75 0 0 1-1.75-1.75Z"/><path d="M8.75 13.4h6.5M12.75 10.9l2.5 2.5-2.5 2.5"/>'),
+  more: icon('<circle cx="6" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="18" cy="12" r="1.3" fill="currentColor" stroke="none"/>'),
+  tick: icon('<path d="m6.25 12.5 3.75 3.75 7.75-8.25"/>'),
 };
 
 /** The checkbox: a ring that fills, and a tick that draws itself. */

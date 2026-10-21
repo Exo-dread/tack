@@ -23,18 +23,21 @@ exchanging tasks with Tack for Windows' own sync code through a folder on disk. 
 with the service worker blocked: in WebKit, Playwright can't intercept requests from a page a
 worker controls, and they must never reach the real Microsoft.
 
-**Unit tests (133, including 40 runs of the sync simulation)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
+**Unit tests (227, including 40 runs of the sync simulation)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
 random inserts, clock monotonicity and skew, .NET date parsing, every workspace mutation and its
 undo, snapshot restore, two- and three-device merges with a randomised convergence test, concurrent
 note edits (conflict copies), and tack.json import/export against a file shaped exactly like
 Tack for Windows writes it (BOM, comments, trailing commas, seven-digit fractions), including
 re-importing after edits on the desktop, on the phone, or both (newer wins; notes kept twice), and
-storage (in an in-memory IndexedDB) merging every write so a stale tab can't undo a newer edit.
+storage (in an in-memory IndexedDB) merging every write so a stale tab can't undo a newer edit,
+and spaces: what each space shows (filtering in the one order, counts, a space that's gone showing
+Main), reordering inside a space without re-keying the others, adding into a space, and reordering
+spaces.
 `vectors.test.ts` computes the shared test vectors that Tack for Windows' port of the model must
 reproduce exactly (`tests/Tack.Tests`), and reads back the file the desktop saved for its round-trip
 export to check nothing was lost on the way.
 
-**End-to-end tests (120 across three projects, a few skipped where they don't apply)** run against `vite build` + `vite preview`, so the real
+**End-to-end tests (183 across three projects, 18 skipped where they don't apply)** run against `vite build` + `vite preview`, so the real
 service worker and bundle are tested:
 
 | Project | Engine | Emulates |
@@ -54,7 +57,12 @@ offline after the first visit (Chromium); running clean under the production CSP
 accessibility scans (WCAG 2.2 AA rules) of Tasks, Notes and Settings in light and dark; a note edited
 in another window reaching this one mid-writing; an emptied edit surviving the app being hidden;
 Undo after deleting from an emptied edit; a tick landing during a swipe; the one-time install
-suggestion; a toast that waits while you hold it; and a speed guard (500 pasted tasks).
+suggestion; a toast that waits while you hold it; a speed guard (500 pasted tasks); and spaces:
+nothing new on screen with Main alone, making and switching spaces (the title's switcher, Alt+0…9
+while typing), adding into the space on show, moving tasks and sheets with Undo, All with each
+task's space, the "Now in …" line, Done and Clear per space, notes per space (blank paper until you
+write), deleting a space with Undo, renaming and reordering, the space on show surviving a reload,
+and axe scans with spaces on screen in light and dark.
 
 Gestures are driven with synthetic pointer events (Playwright can only tap), so they test the
 gesture logic, not a real finger. WebKit on Windows is close to Safari's engine but isn't iOS:
@@ -88,11 +96,15 @@ Emulation can't cover these. Each takes a minute.
 - [ ] Keyboard: the dock sits above it (Chrome resizes the page; check Gboard and Samsung Keyboard).
 - [ ] Haptic ticks; back gesture doesn't lose anything.
 - [ ] Notes list continuation with Gboard (composition can differ from iOS).
+- [ ] Spaces: with two or more, tap the title to switch (the sheet sits within thumb reach); a task's
+      *Move* and Notes ⋯ → *Move sheet to…* work with the keyboard open and closed; the back
+      gesture closes the switcher without switching.
 
 ### Desktop browsers
 - [ ] Chrome or Edge: install as an app; the window shows both columns; the open-task count shows
       as a badge on the taskbar icon.
-- [ ] Safari (macOS) and Firefox: basic flows, keyboard shortcuts.
+- [ ] Safari (macOS) and Firefox: basic flows, keyboard shortcuts. With spaces: Alt+0…9 switch on
+      Windows and Linux even while typing; on a Mac, Option+digit switches outside text fields only.
 
 ### Updates
 - [ ] With the app installed, deploy a change, open the app online, leave it, come back: it has

@@ -31,10 +31,10 @@ public partial class PeekWindow : Window
         WindowEffects.ExcludeFromPeek(_hwnd);
     }
 
-    public void ShowFor(OrbWindow orb, Workspace ws, string hotkey)
+    public void ShowFor(OrbWindow orb, SpaceView view, string hotkey)
     {
         _wanted = true;
-        Fill(ws, hotkey);
+        Fill(view, hotkey);
 
         var (cx, cy) = orb.Center;
         if (!IsVisible)
@@ -75,13 +75,19 @@ public partial class PeekWindow : Window
         Anim.Slide(Bubble, toLeft ? 8 : -8, 0, 180);
     }
 
-    private void Fill(Workspace ws, string hotkey)
+    /// <summary>What's on show: a space's (or everything's) focus task and counts, and, once there are spaces, which one.</summary>
+    private void Fill(SpaceView view, string hotkey)
     {
-        var focus = ws.FocusTask;
-        if (ws.Now != null)
+        var focus = view.FocusTask;
+        if (view.Now != null)
         {
             Label.Text = "NOW";
-            TaskText.Text = ws.Now.Text;
+            TaskText.Text = view.Now.Text;
+        }
+        else if (view.NowElsewhere is { } now)
+        {
+            Label.Text = $"NOW IN {view.NameOf(view.SpaceOf(now)).ToUpper(System.Globalization.CultureInfo.CurrentCulture)}";
+            TaskText.Text = now.Text;
         }
         else if (focus != null)
         {
@@ -91,14 +97,15 @@ public partial class PeekWindow : Window
         else
         {
             Label.Text = "ALL CLEAR";
-            TaskText.Text = ws.DoneToday > 0 ? "Everything's done. Nice work." : "Nothing on your list.";
+            TaskText.Text = view.DoneToday > 0 ? "Everything's done. Nice work." : "Nothing on your list.";
         }
 
-        int open = ws.OpenCount, done = ws.DoneToday;
+        int open = view.OpenCount, done = view.DoneToday;
         var parts = new List<string>();
         if (open > 0) parts.Add($"{open} open");
         if (done > 0) parts.Add($"{done} done today");
         if (parts.Count == 0 && !string.IsNullOrEmpty(hotkey)) parts.Add($"Click or press {hotkey} to add a task");
+        if (view.HasSpaces) parts.Insert(0, view.ShownName); // "Work  ·  3 open  ·  2 done today"
         Summary.Text = string.Join("  ·  ", parts);
         Summary.Visibility = Summary.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }

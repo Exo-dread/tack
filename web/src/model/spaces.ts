@@ -15,6 +15,17 @@ import type { Sheet, Space, Task } from './types';
 /** Main's id: an explicit move back to Main, and Main's own record once it's renamed. */
 export const MAIN = 'main';
 
+/**
+ * The view of everything, as a device's choice of what to show ('all', 'main' or a space id).
+ * Not a space: nothing is ever put in it.
+ */
+export const ALL = 'all';
+
+/** A space as it's shown: Main is "Main" until it's given a name of its own. */
+export function spaceLabel(id: string, name: string): string {
+  return name || (id === MAIN ? 'Main' : 'Untitled');
+}
+
 /** Space ids follow the record id rule. */
 const ID = /^[\w-]{1,64}$/;
 
@@ -23,14 +34,17 @@ export const isSpaceId = (v: unknown): v is string => typeof v === 'string' && I
 /** The longest space name, in UTF-16 units (as JavaScript counts; Tack for Windows counts the same). */
 export const MAX_SPACE_NAME = 100;
 
+/** Control characters (C0, DEL and C1): invisible, or a line break where U+0085 is one (WPF). */
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
+
 /**
  * A space name as every device keeps it, wherever it comes from (typed, a file, storage): one
- * line, and no longer than MAX_SPACE_NAME, cut where a character ends (an emoji is never halved)
- * and tidied again. Cleaning a clean name changes nothing, so devices that read the same name
- * hold the same name.
+ * line, with no control characters (each is a space), and no longer than MAX_SPACE_NAME, cut where
+ * a character ends (an emoji is never halved) and tidied again. Cleaning a clean name changes
+ * nothing, so devices that read the same name hold the same name.
  */
 export function cleanSpaceName(raw: string): string {
-  const name = cleanTaskText(raw);
+  const name = cleanTaskText(raw.replace(CONTROL, ' '));
   if (name.length <= MAX_SPACE_NAME) return name;
   const high = name.charCodeAt(MAX_SPACE_NAME - 1);
   return cleanTaskText(name.slice(0, high >= 0xd800 && high <= 0xdbff ? MAX_SPACE_NAME - 1 : MAX_SPACE_NAME));
@@ -67,10 +81,11 @@ export function normalSheet(s: Sheet): Sheet {
 
 /**
  * The space a task or sheet shows in: its own if that's a live space, else Main (never assigned,
- * moved back to Main, its space deleted, or a space not known here yet).
+ * moved back to Main, its space deleted, or a space not known here yet). All's id is never a
+ * space, even with a record (only a hand-made file has one).
  */
 export function effectiveSpace(space: string, spaces: Iterable<Space>): string {
-  if (!space || space === MAIN) return MAIN;
+  if (!space || space === MAIN || space === ALL) return MAIN;
   for (const s of spaces) if (s.id === space && !s.deleted) return space;
   return MAIN;
 }

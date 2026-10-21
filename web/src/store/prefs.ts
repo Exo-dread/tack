@@ -23,6 +23,11 @@ export interface Prefs {
    * that's already in use doesn't hand them to your other devices if you never touched them.
    */
   welcome: { tasks: Record<string, string>; sheets: Record<string, string> } | null;
+  /**
+   * The space on show on this device: 'all', 'main' or a space id (one that's gone shows Main).
+   * Each device keeps its own, so the PC can stay on Work while the phone shows Personal.
+   */
+  space: string;
 }
 
 const KEY = 'tack.prefs';
@@ -39,6 +44,7 @@ const DEFAULTS: Prefs = {
   installHintDismissed: false,
   firstDay: null,
   welcome: null,
+  space: 'main',
 };
 
 let current: Prefs = load();
@@ -51,6 +57,7 @@ function load(): Prefs {
     const p = { ...DEFAULTS, ...parsed };
     if (!['system', 'light', 'dark'].includes(p.theme)) p.theme = 'system';
     if (p.mode !== 'notes') p.mode = 'tasks';
+    if (typeof p.space !== 'string') p.space = DEFAULTS.space;
     return p;
   } catch {
     return { ...DEFAULTS };
