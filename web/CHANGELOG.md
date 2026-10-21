@@ -1,6 +1,6 @@
 # Tack Focus changelog
 
-## Unreleased
+## 0.3.0 (21 October 2026)
 
 - **Groundwork for spaces** (Work, Dev, Personal), with nothing visible yet: tasks and notes can
   carry the space they're in, and spaces sync like everything else, so every device understands them

@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.4.0 (2026-10-21)
+
+The groundwork for spaces, so every device understands them before the screens for them arrive.
+Nothing looks different yet.
 
 - **Groundwork for spaces** (Work, Dev, Personal), with nothing visible yet. Tasks and notes can
   carry the space they're in, and spaces themselves sync like tasks do, so once the screens for them

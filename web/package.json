@@ -1,6 +1,6 @@
 {
   "name": "tack-focus",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "Tack Focus: Tack's tasks and notes as an offline-first web app for phones, tablets and browsers.",
   "license": "MIT",
