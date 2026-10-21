@@ -110,7 +110,7 @@ describe('M2: device ids that are also built-in object properties', () => {
 
   it('a deletion whose id is "__proto__" survives the round trip', () => {
     const ws = new Workspace(new Hlc('aaaa1111', () => NOW), () => new Date(NOW));
-    ws.merge({ tasks: [{ id: '__proto__', text: '', created: '', completed: null, order: 'V', deleted: true, clk: { text: ZERO, completed: ZERO, order: ZERO, deleted: encode(NOW, 0, 'aaaa1111') } }], sheets: [], focus: { id: null, clk: ZERO } }, 'remote');
+    ws.merge({ tasks: [{ id: '__proto__', text: '', created: '', completed: null, order: 'V', deleted: true, space: '', clk: { text: ZERO, completed: ZERO, order: ZERO, deleted: encode(NOW, 0, 'aaaa1111'), space: ZERO } }], sheets: [], focus: { id: null, clk: ZERO } }, 'remote');
     const text = serializeDeviceFile(makeDeviceFile(ws.toData(), { device: 'aaaa1111', name: 'a', app: 'a', written: encode(NOW, 5, 'aaaa1111'), seen: {} }));
     expect(text).toContain('"__proto__"');
     const back = parseDeviceFile(text, 'aaaa1111', NOW);
@@ -258,7 +258,7 @@ describe('L8: a clock that ran far ahead', () => {
 
   it('so stamps after a fixed clock are ones other devices accept', () => {
     const ws = new Workspace(new Hlc('aaaa1111', () => NOW), () => new Date(NOW));
-    ws.merge({ tasks: [{ id: 'f', text: 'from the future', created: '2028-10-21T09:00:00Z', completed: null, order: 'V', deleted: false, clk: { text: encode(NOW + 730 * DAY, 0, 'aaaa1111'), completed: ZERO, order: ZERO, deleted: ZERO } }], sheets: [], focus: { id: null, clk: ZERO } }, 'storage');
+    ws.merge({ tasks: [{ id: 'f', text: 'from the future', created: '2028-10-21T09:00:00Z', completed: null, order: 'V', deleted: false, space: '', clk: { text: encode(NOW + 730 * DAY, 0, 'aaaa1111'), completed: ZERO, order: ZERO, deleted: ZERO, space: ZERO } }], sheets: [], focus: { id: null, clk: ZERO } }, 'storage');
     const written = ws.hlc.now();
     expect(() => parseDeviceFile(serializeDeviceFile(makeDeviceFile(ws.toData(), { device: 'aaaa1111', name: 'a', app: 'a', written, seen: {} })), 'aaaa1111', NOW)).not.toThrow();
   });

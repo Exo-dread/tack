@@ -82,6 +82,7 @@ internal static class StateFile
         {
             foreach (var t in section.Tasks) clock.Observe(t.Clk.Max());
             foreach (var s in section.Sheets) clock.Observe(s.Clk.Max());
+            foreach (var s in section.Spaces) clock.Observe(s.Clk.Max());
             clock.Observe(section.Focus.Clk);
         }
 
@@ -129,7 +130,8 @@ internal static class StateFile
                     done ? IsoTime.FormatTrimmed(r.Completed!.Value) : null,
                     OrderKey.Mid,
                     false,
-                    new TaskClocks(@base, done ? Stamp.FromTime(r.Completed!.Value.ToUnixTimeMilliseconds()) : @base, @base, @base)));
+                    "",
+                    new TaskClocks(@base, done ? Stamp.FromTime(r.Completed!.Value.ToUnixTimeMilliseconds()) : @base, @base, @base, Stamp.Zero)));
             }
             if (done) continue;
             if (r.Now && nowId == null)
@@ -203,7 +205,7 @@ internal static class StateFile
             {
                 at = sheets.Count;
                 sheetAt[id] = at;
-                sheets.Add(new SheetData(id, text, IsoTime.FormatTrimmed(r.Updated), OrderKey.Mid, false,
+                sheets.Add(new SheetData(id, text, IsoTime.FormatTrimmed(r.Updated), OrderKey.Mid, false, "",
                     SheetClocks.All(Stamp.FromTime(r.Updated.ToUnixTimeMilliseconds()))));
             }
             sheetChain.Add(at);
@@ -223,7 +225,21 @@ internal static class StateFile
                 : sheets[i] with { Order = key };
         }
 
-        return new WorkspaceData(tasks, sheets, focus);
+        // ---- Spaces: only the section has them (the top level lists every task and sheet, whatever
+        // its space). Kept as they are, deleted ones too; a section that can't be read loses them.
+        var spaces = new List<SpaceData>();
+        var spaceAt = new Dictionary<string, int>();
+        foreach (var s in section?.Spaces ?? [])
+        {
+            if (spaceAt.TryGetValue(s.Id, out int i)) spaces[i] = Merge.Space(spaces[i], s).Value;
+            else
+            {
+                spaceAt[s.Id] = spaces.Count;
+                spaces.Add(s);
+            }
+        }
+
+        return new WorkspaceData(tasks, sheets, focus, spaces);
     }
 
     private static TaskRecord ToRecord(TaskItem t, bool isNow) => new()
@@ -237,6 +253,7 @@ internal static class StateFile
         string newest = data.Focus.Clk;
         foreach (var t in data.Tasks) newest = Stamp.Max(newest, t.Clk.Max());
         foreach (var s in data.Sheets) newest = Stamp.Max(newest, s.Clk.Max());
+        foreach (var s in data.Spaces) newest = Stamp.Max(newest, s.Clk.Max());
         double ms = Math.Clamp(Stamp.Time(newest), 0, 253_402_300_799_000);
         return TackFile.LocalText((long)ms);
     }

@@ -22,6 +22,9 @@ public sealed class Workspace : Observable, IImportTarget
     private readonly Dictionary<string, TaskItem> _tasks = new();
     private readonly List<NoteSheet> _allSheets = new();
     private readonly Dictionary<string, NoteSheet> _sheets = new();
+    // Spaces, deleted ones included: ids in the order they first appeared, and the records.
+    private readonly List<string> _spaceIds = new();
+    private readonly Dictionary<string, SpaceData> _spaces = new();
     private readonly Func<DateTimeOffset> _wall;
     private readonly Func<string> _newId;
     private FocusData _focus = FocusData.None;
@@ -121,7 +124,7 @@ public sealed class Workspace : Observable, IImportTarget
         string? top = TopOrder();
         string c = Clock.Now();
         var task = AddItem(new TaskData(_newId(), JsText.CleanTaskText(text), Today(), null,
-            top != null ? OrderKey.Before(top) : OrderKey.Mid, false, TaskClocks.All(c)));
+            top != null ? OrderKey.Before(top) : OrderKey.Mid, false, "", TaskClocks.All(c)));
         if (asNow)
         {
             var previous = _now;
@@ -289,6 +292,76 @@ public sealed class Workspace : Observable, IImportTarget
         };
     }
 
+    // ---- Spaces (groundwork: kept, merged and synced; nothing on screen calls these yet) ----
+
+    /// <summary>Live spaces in their order (key, then id), Main's own record included once it has one.</summary>
+    internal IReadOnlyList<SpaceData> SpaceList =>
+        _spaceIds.Select(id => _spaces[id]).Where(s => !s.Deleted).OrderBy(s => s, Comparer<SpaceData>.Create((a, b) => CompareKeys(a.Order, a.Id, b.Order, b.Id))).ToList();
+
+    /// <summary>Any space with this id, deleted ones included.</summary>
+    internal SpaceData? SpaceById(string id) => _spaces.GetValueOrDefault(id);
+
+    /// <summary>Adds a space after the last one.</summary>
+    internal SpaceData AddSpace(string name)
+    {
+        string? last = SpaceList.LastOrDefault()?.Order;
+        string c = Clock.Now();
+        var space = new SpaceData(_newId(), SpaceField.CleanName(name), last != null ? OrderKey.After(last) : OrderKey.Mid, false, SpaceClocks.All(c));
+        PutSpace(space);
+        MarkChanged();
+        return space;
+    }
+
+    /// <summary>
+    /// Renames a space (not a deleted one; the same name changes nothing). Main has no record until
+    /// it's first renamed; this makes it. Names are kept to 100 characters (<see cref="SpaceField.CleanName"/>).
+    /// </summary>
+    internal void RenameSpace(string id, string name)
+    {
+        string text = SpaceField.CleanName(name);
+        if (!_spaces.TryGetValue(id, out var space))
+        {
+            if (id != SpaceField.Main) return;
+            PutSpace(new SpaceData(SpaceField.Main, text, OrderKey.Mid, false, new SpaceClocks(Clock.Now(), Stamp.Zero, Stamp.Zero)));
+            MarkChanged();
+            return;
+        }
+        if (space.Deleted || space.Name == text) return;
+        SetSpaceName(space, text);
+    }
+
+    /// <summary>
+    /// Deletes a space (never Main). Its tasks and sheets keep their space and show in Main
+    /// (<see cref="Spaces.Effective"/>), so Undo brings them all back with it.
+    /// </summary>
+    internal Action DeleteSpace(string id)
+    {
+        if (id == SpaceField.Main || !_spaces.TryGetValue(id, out var space) || space.Deleted) return () => { };
+        SetSpaceDeleted(space, true);
+        return () =>
+        {
+            if (_spaces.TryGetValue(id, out var s)) SetSpaceDeleted(s, false);
+        };
+    }
+
+    /// <summary>Puts a task in a space ("main" for Main). Its place in the list and the focus stay as they are.</summary>
+    internal void MoveTaskToSpace(string taskId, string spaceId)
+    {
+        if (!_tasks.TryGetValue(taskId, out var task) || !Ids.IsValid(spaceId) || task.Space == spaceId) return;
+        task.Space = spaceId;
+        task.Clk = task.Clk with { Space = Clock.Now() };
+        MarkChanged();
+    }
+
+    /// <summary>Puts a sheet in a space ("main" for Main). Nothing else about it changes.</summary>
+    internal void MoveSheetToSpace(string sheetId, string spaceId)
+    {
+        if (!_sheets.TryGetValue(sheetId, out var sheet) || !Ids.IsValid(spaceId) || sheet.Space == spaceId) return;
+        sheet.Space = spaceId;
+        sheet.Clk = sheet.Clk with { Space = Clock.Now() };
+        MarkChanged();
+    }
+
     // ---- Housekeeping ----
 
     /// <summary>
@@ -307,19 +380,20 @@ public sealed class Workspace : Observable, IImportTarget
 
     /// <summary>
     /// Joining a sync folder your other devices already use: the welcome tasks you never touched
-    /// (not edited, ticked or moved: all their clocks are still the one they were made with, here)
-    /// and a blank sheet never written on stay behind, instead of turning up on every device.
-    /// A sheet stays if it would be the last one.
+    /// (not edited, ticked or moved, in the list or to a space: all their clocks are still the one
+    /// they were made with, here, and none for a space) and a blank sheet never written on (or put
+    /// in a space) stay behind, instead of turning up on every device. A sheet stays if it would be
+    /// the last one. (untouchedWelcome in Tack Focus.)
     /// </summary>
     internal void LeaveWelcomeBehind(Func<string, bool> isWelcomeTip)
     {
         bool Untouched(TaskItem t) =>
             isWelcomeTip(t.Text) && Stamp.Node(t.Clk.Text) == Clock.Node
-            && t.Clk.Completed == t.Clk.Text && t.Clk.Order == t.Clk.Text && t.Clk.Deleted == t.Clk.Text;
+            && t.Clk.Completed == t.Clk.Text && t.Clk.Order == t.Clk.Text && t.Clk.Deleted == t.Clk.Text && t.Clk.Space == Stamp.Zero;
         var tasks = _allTasks.Where(t => !t.IsDeleted && Untouched(t)).ToList();
         foreach (var t in tasks) Remove(t);
         // Only this PC's own blank sheets, never one that just arrived from another device.
-        var blank = Sheets.Where(s => s.Text.Length == 0 && s.Clk.Text == s.Clk.Deleted && Stamp.Node(s.Clk.Deleted) == Clock.Node).ToList();
+        var blank = Sheets.Where(s => s.Text.Length == 0 && s.Clk.Text == s.Clk.Deleted && Stamp.Node(s.Clk.Deleted) == Clock.Node && s.Clk.Space == Stamp.Zero).ToList();
         if (blank.Count == Sheets.Count) blank = blank.Skip(1).ToList();
         foreach (var s in blank) SetSheetDeleted(s, true);
         if (tasks.Count > 0 || blank.Count > 0) Rebuild();
@@ -354,6 +428,12 @@ public sealed class Workspace : Observable, IImportTarget
             _sheets.Remove(s.Id);
             removed++;
         }
+        foreach (string id in _spaceIds.Where(id => _spaces[id] is { Deleted: true } s && Stamp.Time(s.Clk.Deleted) < cutoff).ToList())
+        {
+            _spaceIds.Remove(id);
+            _spaces.Remove(id);
+            removed++;
+        }
         return removed;
     }
 
@@ -361,7 +441,7 @@ public sealed class Workspace : Observable, IImportTarget
 
     /// <summary>Copies of every record (deleted ones included) and the focus register, e.g. for saving.</summary>
     internal WorkspaceData ToData() =>
-        new(_allTasks.Select(t => t.ToData()).ToList(), _allSheets.Select(s => s.ToData()).ToList(), _focus);
+        new(_allTasks.Select(t => t.ToData()).ToList(), _allSheets.Select(s => s.ToData()).ToList(), _focus, _spaceIds.Select(id => _spaces[id]).ToList());
 
     /// <summary>
     /// Merges records from elsewhere (a file, or another device) into the workspace. Newer edits win
@@ -375,8 +455,9 @@ public sealed class Workspace : Observable, IImportTarget
         _applying = true;
         try
         {
-            foreach (var remote in data.Tasks)
+            foreach (var record in data.Tasks)
             {
+                var remote = SpaceField.Normal(record);
                 Clock.Observe(remote.Clk.Max());
                 _tasks.TryGetValue(remote.Id, out var local);
                 var (value, c) = Merge.Task(local?.ToData(), remote);
@@ -385,8 +466,9 @@ public sealed class Workspace : Observable, IImportTarget
                 if (local != null) local.Apply(value);
                 else AddItem(value);
             }
-            foreach (var remote in data.Sheets)
+            foreach (var record in data.Sheets)
             {
+                var remote = SpaceField.Normal(record);
                 Clock.Observe(remote.Clk.Max());
                 _sheets.TryGetValue(remote.Id, out var local);
                 var (value, c, conflict) = Merge.Sheet(local?.ToData(), remote, @base, concurrent);
@@ -401,6 +483,14 @@ public sealed class Workspace : Observable, IImportTarget
                     changed = true;
                     AddItem(conflict);
                 }
+            }
+            foreach (var remote in data.Spaces)
+            {
+                Clock.Observe(remote.Clk.Max());
+                var (value, c) = Merge.Space(_spaces.GetValueOrDefault(remote.Id), remote);
+                if (!c) continue;
+                changed = true;
+                PutSpace(value);
             }
             Clock.Observe(data.Focus.Clk);
             var (focus, fc) = Merge.Focus(_focus, data.Focus);
@@ -440,17 +530,22 @@ public sealed class Workspace : Observable, IImportTarget
     /// </summary>
     internal void Restore(WorkspaceData data)
     {
+        // Never put anywhere ("") and moved back ("main") are both Main; going back there is a move to "main".
         var tasks = new Dictionary<string, TaskData>();
-        foreach (var t in data.Tasks) tasks[t.Id] = t;
+        foreach (var t in data.Tasks) tasks[t.Id] = SpaceField.Normal(t);
         var sheets = new Dictionary<string, SheetData>();
-        foreach (var s in data.Sheets) sheets[s.Id] = s;
+        foreach (var s in data.Sheets) sheets[s.Id] = SpaceField.Normal(s);
 
         foreach (string id in _allTasks.Select(t => t.Id).Concat(data.Tasks.Select(t => t.Id)).Distinct().ToList())
         {
             tasks.TryGetValue(id, out var target);
             if (!_tasks.TryGetValue(id, out var item))
             {
-                if (target is { Deleted: false }) AddItem(target with { Clk = TaskClocks.All(Clock.Now()) });
+                if (target is { Deleted: false })
+                {
+                    string c = Clock.Now();
+                    AddItem(target with { Clk = TaskClocks.All(c) with { Space = target.Space.Length > 0 ? c : Stamp.Zero } });
+                }
                 continue;
             }
             var current = item.ToData();
@@ -467,6 +562,7 @@ public sealed class Workspace : Observable, IImportTarget
                 item.IsDeleted = want.Deleted;
                 Restamp(item, deleted: true);
             }
+            if (!SameSpace(current.Space, want.Space)) MoveTaskToSpace(id, SpaceOrMain(want.Space));
         }
 
         foreach (string id in _allSheets.Select(s => s.Id).Concat(data.Sheets.Select(s => s.Id)).Distinct().ToList())
@@ -474,7 +570,11 @@ public sealed class Workspace : Observable, IImportTarget
             sheets.TryGetValue(id, out var target);
             if (!_sheets.TryGetValue(id, out var item))
             {
-                if (target is { Deleted: false }) AddItem(target with { Clk = SheetClocks.All(Clock.Now()) });
+                if (target is { Deleted: false })
+                {
+                    string c = Clock.Now();
+                    AddItem(target with { Clk = SheetClocks.All(c) with { Space = target.Space.Length > 0 ? c : Stamp.Zero } });
+                }
                 continue;
             }
             var current = item.ToData();
@@ -482,6 +582,29 @@ public sealed class Workspace : Observable, IImportTarget
             if (current.Deleted && !want.Deleted) SetSheetDeleted(item, false);
             if (current.Text != want.Text && !want.Deleted && !item.IsDeleted) item.Text = NoteSheet.ForTextBox(want.Text);
             if (!current.Deleted && want.Deleted) SetSheetDeleted(item, true);
+            if (!SameSpace(current.Space, want.Space)) MoveSheetToSpace(id, SpaceOrMain(want.Space));
+        }
+
+        // Names as they're kept now (a snapshot may hold one from before the limit).
+        var spaces = new Dictionary<string, SpaceData>();
+        foreach (var s in data.Spaces) spaces[s.Id] = s with { Name = SpaceField.CleanName(s.Name) };
+        foreach (string id in _spaceIds.Concat(data.Spaces.Select(s => s.Id)).Distinct().ToList())
+        {
+            spaces.TryGetValue(id, out var target);
+            if (!_spaces.TryGetValue(id, out var current))
+            {
+                if (target is { Deleted: false }) PutSpace(target with { Clk = SpaceClocks.All(Clock.Now()) });
+                continue;
+            }
+            // Main is never deleted: before it was renamed, it had no name of its own.
+            var want = target ?? (id == SpaceField.Main ? current with { Name = "" } : current with { Deleted = true });
+            if (current.Name != want.Name && !want.Deleted) SetSpaceName(_spaces[id], want.Name);
+            if (current.Order != want.Order && !want.Deleted)
+            {
+                var space = _spaces[id];
+                PutSpace(space with { Order = want.Order, Clk = space.Clk with { Order = Clock.Now() } });
+            }
+            if (current.Deleted != want.Deleted && id != SpaceField.Main) SetSpaceDeleted(_spaces[id], want.Deleted);
         }
 
         if (_focus.Id != data.Focus.Id) _focus = new FocusData(data.Focus.Id, Clock.Now());
@@ -495,17 +618,24 @@ public sealed class Workspace : Observable, IImportTarget
         _applying = true;
         try
         {
-            foreach (var t in data.Tasks)
+            foreach (var record in data.Tasks)
             {
+                var t = SpaceField.Normal(record);
                 Clock.Observe(t.Clk.Max());
                 if (_tasks.TryGetValue(t.Id, out var twin)) twin.Apply(Merge.Task(twin.ToData(), t).Value);
                 else AddItem(t);
             }
-            foreach (var s in data.Sheets)
+            foreach (var record in data.Sheets)
             {
+                var s = SpaceField.Normal(record);
                 Clock.Observe(s.Clk.Max());
                 if (_sheets.TryGetValue(s.Id, out var twin)) twin.Apply(Merge.Sheet(twin.ToData(), s).Value);
                 else AddItem(s);
+            }
+            foreach (var s in data.Spaces)
+            {
+                Clock.Observe(s.Clk.Max());
+                PutSpace(Merge.Space(_spaces.GetValueOrDefault(s.Id), s).Value);
             }
             Clock.Observe(data.Focus.Clk);
             _focus = data.Focus;
@@ -574,7 +704,7 @@ public sealed class Workspace : Observable, IImportTarget
     {
         var c = task.Clk;
         string stamp = Clock.Now();
-        task.Clk = new TaskClocks(text ? stamp : c.Text, completed ? stamp : c.Completed, order ? stamp : c.Order, deleted ? stamp : c.Deleted);
+        task.Clk = c with { Text = text ? stamp : c.Text, Completed = completed ? stamp : c.Completed, Order = order ? stamp : c.Order, Deleted = deleted ? stamp : c.Deleted };
         MarkChanged();
     }
 
@@ -584,6 +714,30 @@ public sealed class Workspace : Observable, IImportTarget
         sheet.Clk = sheet.Clk with { Deleted = Clock.Now() };
         MarkChanged();
     }
+
+    private void SetSpaceName(SpaceData space, string name)
+    {
+        PutSpace(space with { Name = name, Clk = space.Clk with { Name = Clock.Now() } });
+        MarkChanged();
+    }
+
+    private void SetSpaceDeleted(SpaceData space, bool deleted)
+    {
+        PutSpace(space with { Deleted = deleted, Clk = space.Clk with { Deleted = Clock.Now() } });
+        MarkChanged();
+    }
+
+    /// <summary>Adds or replaces a space record (they're immutable; nothing on screen holds them yet).</summary>
+    private void PutSpace(SpaceData space)
+    {
+        if (!_spaces.ContainsKey(space.Id)) _spaceIds.Add(space.Id);
+        _spaces[space.Id] = space;
+    }
+
+    /// <summary>"" (never assigned) and "main" are both Main.</summary>
+    private static bool SameSpace(string a, string b) => SpaceOrMain(a) == SpaceOrMain(b);
+
+    private static string SpaceOrMain(string space) => space.Length == 0 ? SpaceField.Main : space;
 
     /// <summary>The focus register: one task id (or none) with its own clock.</summary>
     private void SetFocus(TaskItem? task)
@@ -633,7 +787,7 @@ public sealed class Workspace : Observable, IImportTarget
     {
         string? last = Sheets.Count > 0 ? Sheets[^1].Order : null;
         string c = Clock.Now();
-        var sheet = AddItem(new SheetData(_newId(), "", Today(), last != null ? OrderKey.After(last) : OrderKey.Mid, false, SheetClocks.All(c)));
+        var sheet = AddItem(new SheetData(_newId(), "", Today(), last != null ? OrderKey.After(last) : OrderKey.Mid, false, "", SheetClocks.All(c)));
         Sheets.Add(sheet);
         return sheet;
     }

@@ -53,13 +53,18 @@ internal static class Interop
         ["focus"] = new Dictionary<string, object?> { ["id"] = d.Focus.Id, ["clk"] = d.Focus.Clk },
         ["tasks"] = d.Tasks.Select(t => new Dictionary<string, object?>
         {
-            ["id"] = t.Id, ["text"] = t.Text, ["created"] = t.Created, ["completed"] = t.Completed, ["order"] = t.Order, ["deleted"] = t.Deleted,
-            ["clk"] = new Dictionary<string, string> { ["text"] = t.Clk.Text, ["completed"] = t.Clk.Completed, ["order"] = t.Clk.Order, ["deleted"] = t.Clk.Deleted },
+            ["id"] = t.Id, ["text"] = t.Text, ["created"] = t.Created, ["completed"] = t.Completed, ["order"] = t.Order, ["deleted"] = t.Deleted, ["space"] = t.Space,
+            ["clk"] = new Dictionary<string, string> { ["text"] = t.Clk.Text, ["completed"] = t.Clk.Completed, ["order"] = t.Clk.Order, ["deleted"] = t.Clk.Deleted, ["space"] = t.Clk.Space },
         }).ToList(),
         ["sheets"] = d.Sheets.Select(s => new Dictionary<string, object?>
         {
-            ["id"] = s.Id, ["text"] = s.Text, ["updated"] = s.Updated, ["order"] = s.Order, ["deleted"] = s.Deleted,
-            ["clk"] = new Dictionary<string, string> { ["text"] = s.Clk.Text, ["order"] = s.Clk.Order, ["deleted"] = s.Clk.Deleted },
+            ["id"] = s.Id, ["text"] = s.Text, ["updated"] = s.Updated, ["order"] = s.Order, ["deleted"] = s.Deleted, ["space"] = s.Space,
+            ["clk"] = new Dictionary<string, string> { ["text"] = s.Clk.Text, ["order"] = s.Clk.Order, ["deleted"] = s.Clk.Deleted, ["space"] = s.Clk.Space },
+        }).ToList(),
+        ["spaces"] = d.Spaces.Select(s => new Dictionary<string, object?>
+        {
+            ["id"] = s.Id, ["name"] = s.Name, ["order"] = s.Order, ["deleted"] = s.Deleted,
+            ["clk"] = new Dictionary<string, string> { ["name"] = s.Clk.Name, ["order"] = s.Clk.Order, ["deleted"] = s.Clk.Deleted },
         }).ToList(),
     };
 }

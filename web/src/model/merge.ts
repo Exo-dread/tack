@@ -1,7 +1,8 @@
 import { derivedId } from './ids';
-import type { Stamp } from './hlc';
+import { ZERO, type Stamp } from './hlc';
 import { keyAfter } from './order';
-import { SHEET_FIELDS, TASK_FIELDS, type Focus, type Sheet, type Task } from './types';
+import { spaceField } from './spaces';
+import { SHEET_FIELDS, SPACE_FIELDS, TASK_FIELDS, type Focus, type Sheet, type Space, type Task } from './types';
 
 /**
  * Merging two copies of the same record, field by field: the change with the later clock wins.
@@ -15,10 +16,11 @@ export function mergeTask(local: Task | undefined, remote: Task): { value: Task;
   if (!local) return { value: cloneTask(remote), changed: true };
   let value = local;
   for (const field of TASK_FIELDS) {
-    if (wins(remote.clk[field], remote[field], local.clk[field], local[field])) {
+    // A copy from a version without spaces has no clock for it: ZERO, so it never undoes an assignment.
+    if (wins(remote.clk[field] ?? ZERO, remote[field], local.clk[field] ?? ZERO, local[field])) {
       if (value === local) value = cloneTask(local);
       (value as unknown as Record<string, unknown>)[field] = remote[field];
-      value.clk[field] = remote.clk[field];
+      value.clk[field] = remote.clk[field] ?? ZERO;
     }
   }
   // Creation time never changes; if copies disagree (hand edits), keep the earlier one. A
@@ -63,10 +65,10 @@ export function mergeSheet(local: Sheet | undefined, remote: Sheet, base?: Stamp
       : local.clk.text > base && remote.clk.text > base);
 
   for (const field of SHEET_FIELDS) {
-    if (wins(remote.clk[field], remote[field], local.clk[field], local[field])) {
+    if (wins(remote.clk[field] ?? ZERO, remote[field], local.clk[field] ?? ZERO, local[field])) {
       if (value === local) value = cloneSheet(local);
       (value as unknown as Record<string, unknown>)[field] = remote[field];
-      value.clk[field] = remote.clk[field];
+      value.clk[field] = remote.clk[field] ?? ZERO;
       if (field === 'text') value.updated = remote.updated;
     }
   }
@@ -74,17 +76,34 @@ export function mergeSheet(local: Sheet | undefined, remote: Sheet, base?: Stamp
   if (textConcurrent) {
     const loser = value.text === local.text ? remote : local;
     if (loser.text.trim()) {
+      // The copy stays in the space the losing text was written in.
+      const { space, clk } = spaceField(loser.space, loser.clk.space);
       conflict = {
         id: derivedId(`${local.id}:${loser.clk.text}`),
         text: loser.text,
         updated: loser.updated,
         order: keyAfter(value.order),
         deleted: false,
-        clk: { text: loser.clk.text, order: loser.clk.text, deleted: loser.clk.text },
+        space,
+        clk: { text: loser.clk.text, order: loser.clk.text, deleted: loser.clk.text, space: clk },
       };
     }
   }
   return { value, changed: value !== local, conflict };
+}
+
+/** Merges a space, field by field (no copies: a name is short, and the later one wins). */
+export function mergeSpace(local: Space | undefined, remote: Space): { value: Space; changed: boolean } {
+  if (!local) return { value: cloneSpace(remote), changed: true };
+  let value = local;
+  for (const field of SPACE_FIELDS) {
+    if (wins(remote.clk[field], remote[field], local.clk[field], local[field])) {
+      if (value === local) value = cloneSpace(local);
+      (value as unknown as Record<string, unknown>)[field] = remote[field];
+      value.clk[field] = remote.clk[field];
+    }
+  }
+  return { value, changed: value !== local };
 }
 
 export function mergeFocus(local: Focus, remote: Focus): { value: Focus; changed: boolean } {
@@ -105,3 +124,4 @@ function wins(remoteClk: Stamp, remoteValue: unknown, localClk: Stamp, localValu
 
 export const cloneTask = (t: Task): Task => ({ ...t, clk: { ...t.clk } });
 export const cloneSheet = (s: Sheet): Sheet => ({ ...s, clk: { ...s.clk } });
+export const cloneSpace = (s: Space): Space => ({ ...s, clk: { ...s.clk } });

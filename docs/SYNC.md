@@ -58,8 +58,13 @@ Everything one device knows, written as one file, replaced whole (`web/src/sync/
 | `name`, `app` | For people: "Tack Focus on Android", "Tack for Windows on DESKTOP-1". |
 | `written` | The writer's clock when it wrote the file. |
 | `seen` | For each other device, the latest version of its file merged into this one. |
-| `focus`, `tasks`, `sheets` | Live records, exactly as in tack.json's `tackFocus` section. |
-| `deleted` | Deleted records as `id → clock of the deletion`, about 45 bytes each, never their text. |
+| `focus`, `tasks`, `sheets` | Live records, exactly as in tack.json's `tackFocus` section. A task or sheet carries `space` (and `clk.space`) only once it has been put in a space. |
+| `spaces` | Live spaces (Work, Dev...), only if there are any. Nothing shows them yet. |
+| `deleted` | Deleted records as `id → clock of the deletion`, about 45 bytes each, never their text (`spaces` only if a space was deleted). |
+
+With no spaces and nothing put in one, a file is byte for byte what Tack 1.3 and Tack Focus 0.2 write,
+and those versions read the new keys as unknown and skip them. A copy of a task from such a version
+has no clock for its space, so it never moves the task back.
 
 ### One sync cycle
 
@@ -67,7 +72,9 @@ The same in both apps (`web/src/sync/engine.ts`, `src/Tack/Sync/SyncEngine.cs`):
 
 1. List the folder. Read every device file whose content changed since last time (a damaged file,
    one too big to be Tack's, or one from a newer Tack, is reported and set aside; a file that
-   fails to download is simply tried again next time; the rest still sync).
+   fails to download is simply tried again next time; the rest still sync). Each file's entry in
+   the sync state notes the `reader` that read it (2 since spaces): a file read by an older reader
+   is read once more, changed or not, so what that reader dropped is learned after an upgrade.
 2. Check this device's own file is still its own (see "Recovery" below).
 3. Merge each changed file into the workspace, field by field by clock. Every changed file is
    merged, even one this device seems to have had through another device's file already: merges
@@ -115,7 +122,12 @@ Without sync, deletions are still forgotten after 90 days, as before.
 - **A data folder copied to another PC** (two devices with the same id): the first to notice takes
   a new id; both devices' data survive and merge.
 - **Joining** a folder your other devices use: what's on the device and what's in the folder are
-  combined, except a new device's untouched welcome tasks and blank sheet, which stay behind.
+  combined, except a new device's untouched welcome tasks and blank sheet, which stay behind (one
+  you moved to a space counts as touched).
+- **An older version writing under the same id** (an old Tack Focus tab left open in the same
+  browser, or Tack downgraded and upgraded again) writes the device's file without what it doesn't
+  know, such as spaces. The sync state notes the `writer` of each write (2 since spaces), and a file
+  last written by any other writer is written again in full on the next cycle.
 
 ### Damaged and hostile files
 
@@ -129,9 +141,12 @@ hide a device's changes after it's gone. Both apps apply the same rules (`device
   Tack Focus reads it as U+FFFD and never writes it out; Tack for Windows sets such a file aside.
   Either way the rest syncs.
 - **Limits** far beyond real use: 20 MB per file, checked from the listing before downloading;
-  200,000 records (tasks, sheets and deletions together) and 1,000 devices seen per file; 100,000
-  characters per task and 1,000,000 per note; clock device ids of at most 32 characters; order
-  keys of at most 10,000. A file over a limit is set aside; an over-long record is skipped.
+  200,000 records (tasks, sheets, spaces and deletions together) and 1,000 devices seen per file;
+  100,000 characters per task and 1,000,000 per note; clock device ids of at most 32 characters;
+  order keys of at most 10,000. A file over a limit is set aside; an over-long record is skipped.
+  Space names are the exception: both apps keep every name to 100 characters (UTF-16 units, never
+  half an emoji) wherever it comes from, typed, imported or read, so a longer one is cut, not
+  skipped, and no device holds a name its peers would refuse.
 - **Dates** must be ISO 8601 dates of at most 40 characters; anything else counts as missing (an
   empty `completed` means not done, in both apps).
 - **Clocks** more than a year and a day ahead are refused in files and not adopted by clocks.

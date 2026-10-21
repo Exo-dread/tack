@@ -12,6 +12,21 @@ namespace Tack.Sync;
 internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hooks)
 {
     /// <summary>
+    /// What this version reads from a device file. A file is skipped while its tag is unchanged,
+    /// but only if it was read by a reader this capable: what an older one dropped (spaces, from
+    /// 2 on) is learned by reading every peer file once more after an upgrade.
+    /// </summary>
+    public const int Reader = 2;
+
+    /// <summary>
+    /// What this version writes in a device file, noted with each write of this device's own file.
+    /// A file last written by an older version under this device's id (Tack downgraded and upgraded
+    /// again) is written again in full, though nothing else changed: the older one left out what
+    /// it didn't know (spaces, from 2 on).
+    /// </summary>
+    public const int Writer = 2;
+
+    /// <summary>
     /// One exchange with the folder: read what changed, merge it, and write this device's file if
     /// it now knows anything its file doesn't say. Every step can be interrupted and simply runs
     /// again next time. <paramref name="meta"/> is updated in place; save it only if this completes.
@@ -42,7 +57,8 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             }
             if (own != null && (own.Written == meta.Own.Written || own.Written == meta.Own.Pending))
             {
-                meta.Own = new OwnFile(ownEntry.Tag, own.Written, null);
+                // The write noted (or the pending one, now arrived): the writer noted with it stays.
+                meta.Own = new OwnFile(ownEntry.Tag, own.Written, null, meta.Own.Writer);
             }
             else if (own != null && meta.Own.Written == null && meta.Own.Pending == null)
             {
@@ -60,8 +76,9 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
                 damaged = true; // damaged, or an older version put back
             }
         }
-        // Missing, damaged, or a write whose arrival was never confirmed: say it all again.
-        bool rewrite = ownEntry == null || damaged || meta.Own.Pending != null;
+        // Missing, damaged, a write whose arrival was never confirmed, or one by an older version (it
+        // leaves out what it doesn't know, such as spaces): say it all again.
+        bool rewrite = ownEntry == null || damaged || meta.Own.Pending != null || meta.Own.Writer != Writer;
 
         // ---- read what changed
         var fresh = new List<DeviceFile>();
@@ -72,7 +89,7 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             if (device == null || device == me) continue;
             present.Add(entry.Name);
             meta.Files.TryGetValue(entry.Name, out var known);
-            if (known != null && known.Tag == entry.Tag)
+            if (known != null && known.Tag == entry.Tag && known.Reader == Reader)
             {
                 if (known.Problem != null) result.Problems.Add((device, ProblemOf(known.Problem)));
                 continue;
@@ -82,7 +99,7 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             {
                 result.Problems.Add((device, problem));
                 meta.Files[entry.Name] = new FileSummary(entry.Tag, device, known?.Name ?? "", known?.App ?? "", known?.Written ?? Stamp.Zero,
-                    problem.ToString().ToLowerInvariant());
+                    problem.ToString().ToLowerInvariant(), Reader);
             }
             if (TooBig(entry))
             {
@@ -93,7 +110,7 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             {
                 var file = DeviceFile.Parse(await folder.ReadAsync(entry), device, nowMs);
                 fresh.Add(file);
-                meta.Files[entry.Name] = new FileSummary(entry.Tag, device, file.Name, file.App, file.Written);
+                meta.Files[entry.Name] = new FileSummary(entry.Tag, device, file.Name, file.App, file.Written, Reader: Reader);
             }
             catch (DeviceFileException ex)
             {
@@ -113,14 +130,14 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
 
         // ---- merge what's new
         bool news = false;
-        if (adopted != null) news |= ws.MergeFrom(new WorkspaceData(adopted.Tasks, adopted.Sheets, adopted.Focus));
+        if (adopted != null) news |= ws.MergeFrom(new WorkspaceData(adopted.Tasks, adopted.Sheets, adopted.Focus, adopted.Spaces));
         foreach (var file in fresh.OrderBy(f => f.Device, StringComparer.Ordinal))
         {
             // Every changed file is merged, even one that seems already had through another device:
             // merges are idempotent, and skipping on another file's word would let one bad file
             // hide a device's changes from everyone.
             var seenHere = new Dictionary<string, string>(meta.Seen);
-            var data = new WorkspaceData(file.Tasks, file.Sheets, file.Focus);
+            var data = new WorkspaceData(file.Tasks, file.Sheets, file.Focus, file.Spaces);
             // A note changed on both sides is kept twice only if neither side had seen the other's text.
             news |= ws.MergeFrom(data, null, (local, remote) =>
                 !SeenBy(local.Clk.Text, file.Device, file.Seen) && !SeenBy(remote.Clk.Text, me, seenHere));
@@ -146,10 +163,10 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             byte[] bytes = DeviceFile.Write(ws.ToData(), me, name, app, written, meta.Seen);
             // Every device refuses a file this big, so writing it would only look like syncing.
             if (bytes.Length > DeviceFile.MaxBytes) throw new SyncException(SyncErrorKind.TooLarge, "This PC's sync file would be over 20 MB");
-            meta.Own = meta.Own with { Pending = written };
+            meta.Own = meta.Own with { Pending = written, Writer = Writer };
             await hooks.SaveMetaAsync(meta);
             var entry = await folder.WriteAsync(DeviceFile.FileName(me), bytes);
-            meta.Own = new OwnFile(entry.Tag, written, null);
+            meta.Own = new OwnFile(entry.Tag, written, null, Writer);
             result.Wrote = true;
         }
 
@@ -193,10 +210,19 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             Consider(t.Clk.Completed);
             Consider(t.Clk.Order);
             Consider(t.Clk.Deleted);
+            Consider(t.Clk.Space);
         }
         foreach (var s in data.Sheets)
         {
             Consider(s.Clk.Text);
+            Consider(s.Clk.Order);
+            Consider(s.Clk.Deleted);
+            Consider(s.Clk.Space);
+        }
+        // A space renamed or deleted here is news too, like a task moved into one.
+        foreach (var s in data.Spaces)
+        {
+            Consider(s.Clk.Name);
             Consider(s.Clk.Order);
             Consider(s.Clk.Deleted);
         }
@@ -266,11 +292,18 @@ internal sealed class SyncMeta
 }
 
 /// <param name="Problem">This version couldn't be used ("unreadable", "newer", "mismatch"); it isn't fetched again until it changes.</param>
+/// <param name="Reader">The <see cref="SyncEngine.Reader"/> that read it (none: a version from before spaces, so it's read once more).</param>
 internal sealed record FileSummary(string Tag, string Device, string Name, string App, string Written,
-    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Problem = null);
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Problem = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] int? Reader = null);
 
 /// <param name="Pending">A write whose answer never came back: if the folder has it, it's ours.</param>
-internal sealed record OwnFile(string? Tag, string? Written, string? Pending);
+/// <param name="Writer">
+/// The <see cref="SyncEngine.Writer"/> of this device's latest write of its file, a pending one included.
+/// None: an older version wrote it (it notes its writes without this), so it's written again.
+/// </param>
+internal sealed record OwnFile(string? Tag, string? Written, string? Pending,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] int? Writer = null);
 
 internal sealed record PeerInfo(string Device, string Name, string App, long WrittenMs);
 

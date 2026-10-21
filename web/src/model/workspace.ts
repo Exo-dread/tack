@@ -1,10 +1,11 @@
 import { Hlc, ZERO, type Stamp } from './hlc';
 import { newId } from './ids';
-import { cloneSheet, cloneTask, mergeFocus, mergeSheet, mergeTask, type ConcurrentText } from './merge';
+import { cloneSheet, cloneSpace, cloneTask, mergeFocus, mergeSheet, mergeSpace, mergeTask, type ConcurrentText } from './merge';
 import { keyAfter, keyBefore, keysAt } from './order';
+import { cleanSpaceName, isSpaceId, MAIN, normalSheet, normalTask } from './spaces';
 import { cleanTaskText, noteText } from './text';
 import { isoLocal, parseDate, sameLocalDay } from './time';
-import type { Focus, Sheet, Task, WorkspaceData } from './types';
+import type { Focus, Sheet, Space, Task, WorkspaceData } from './types';
 
 /** Where a change came from. Changes loaded from this device's own storage needn't be saved again. */
 export type Origin = 'local' | 'storage' | 'remote';
@@ -12,6 +13,7 @@ export type Origin = 'local' | 'storage' | 'remote';
 export interface Change {
   tasks: Set<string>;
   sheets: Set<string>;
+  spaces: Set<string>;
   focus: boolean;
   origin: Origin;
 }
@@ -29,19 +31,21 @@ const byOrder = (a: { order: string; id: string }, b: { order: string; id: strin
   a.order < b.order ? -1 : a.order > b.order ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 
 /**
- * Everything the user owns: tasks, the one task in focus ("Now") and note sheets.
- * Every mutation goes through here, is stamped with the clock, and is announced to
+ * Everything the user owns: tasks, the one task in focus ("Now"), note sheets and the spaces
+ * they're in. Every mutation goes through here, is stamped with the clock, and is announced to
  * subscribers (the UI and the store) as one batched Change.
  */
 export class Workspace {
   readonly tasks = new Map<string, Task>();
   readonly sheets = new Map<string, Sheet>();
+  /** Spaces (see spaces.ts). Focus and order stay global: one focus task, one order for all. */
+  readonly spaces = new Map<string, Space>();
   focus: Focus = { id: null, clk: ZERO };
 
   private readonly listeners = new Set<(change: Change) => void>();
   private pending: Change | null = null;
   private depth = 0;
-  private views: { open?: Task[]; done?: Task[]; sheets?: Sheet[] } = {};
+  private views: { open?: Task[]; done?: Task[]; sheets?: Sheet[]; spaces?: Space[] } = {};
 
   constructor(
     readonly hlc: Hlc,
@@ -92,6 +96,14 @@ export class Workspace {
     return this.views.sheets;
   }
 
+  /** Live spaces in order (Main's record among them, once it has one). */
+  get spaceList(): Space[] {
+    if (!this.views.spaces) {
+      this.views.spaces = [...this.spaces.values()].filter((s) => !s.deleted).sort(byOrder);
+    }
+    return this.views.spaces;
+  }
+
   summary(): Summary {
     const today = this.clock();
     const open = this.open.length + (this.now ? 1 : 0);
@@ -120,7 +132,8 @@ export class Workspace {
         completed: null,
         order: top ? keyBefore(top) : 'V',
         deleted: false,
-        clk: { text: c, completed: c, order: c, deleted: c },
+        space: '',
+        clk: { text: c, completed: c, order: c, deleted: c, space: ZERO },
       };
       this.putTask(task);
       if (options.asNow) {
@@ -261,7 +274,8 @@ export class Workspace {
         updated: isoLocal(this.clock()),
         order: last ? keyAfter(last) : 'V',
         deleted: false,
-        clk: { text: c, order: c, deleted: c },
+        space: '',
+        clk: { text: c, order: c, deleted: c, space: ZERO },
       };
       this.putSheet(sheet);
       return sheet;
@@ -303,6 +317,71 @@ export class Workspace {
     return this.sheetList[0] ?? this.addSheet();
   }
 
+  // ---------------------------------------------------------------- spaces (nothing shows them yet)
+
+  /** Adds a space after the last one. */
+  addSpace(rawName: string): Space {
+    return this.batch(() => {
+      const last = this.spaceList.at(-1)?.order;
+      const c = this.hlc.now();
+      const space: Space = {
+        id: newId(),
+        name: cleanSpaceName(rawName),
+        order: last ? keyAfter(last) : 'V',
+        deleted: false,
+        clk: { name: c, order: c, deleted: c },
+      };
+      this.putSpace(space);
+      return space;
+    });
+  }
+
+  /** Renames a space. Main gets a record of its own the first time it's renamed. */
+  renameSpace(id: string, rawName: string): void {
+    const name = cleanSpaceName(rawName);
+    const s = this.spaces.get(id);
+    if (!s && id === MAIN) {
+      this.batch(() => this.putSpace({ id, name, order: 'V', deleted: false, clk: { name: this.hlc.now(), order: ZERO, deleted: ZERO } }));
+      return;
+    }
+    if (!s || s.deleted || s.name === name) return;
+    this.batch(() => this.setSpaceField(s, 'name', name));
+  }
+
+  /**
+   * Deletes a space. Its tasks and sheets keep their `space` and show in Main meanwhile (see
+   * effectiveSpace), so the returned undo puts everything back as it was. Main can't be deleted.
+   */
+  deleteSpace(id: string): Undo {
+    const s = this.spaces.get(id);
+    if (id === MAIN || !s || s.deleted) return () => {};
+    this.batch(() => this.setSpaceField(s, 'deleted', true));
+    return () =>
+      this.batch(() => {
+        const space = this.spaces.get(id);
+        if (space) this.setSpaceField(space, 'deleted', false);
+      });
+  }
+
+  /** Puts a task in a space ('main' for Main). Its place in the list and the focus stay as they are. */
+  moveTaskToSpace(taskId: string, spaceId: string): void {
+    const t = this.tasks.get(taskId);
+    if (!t || !isSpaceId(spaceId) || t.space === spaceId) return;
+    this.batch(() => this.setTaskField(t, 'space', spaceId));
+  }
+
+  /** Puts a sheet in a space ('main' for Main), leaving its place and text as they are. */
+  moveSheetToSpace(sheetId: string, spaceId: string): void {
+    const s = this.sheets.get(sheetId);
+    if (!s || !isSpaceId(spaceId) || s.space === spaceId) return;
+    this.batch(() => {
+      const next = cloneSheet(s);
+      next.space = spaceId;
+      next.clk.space = this.hlc.now();
+      this.putSheet(next);
+    });
+  }
+
   // ---------------------------------------------------------------- loading and merging
 
   /**
@@ -312,16 +391,24 @@ export class Workspace {
   merge(data: Partial<WorkspaceData>, origin: Origin, base?: Stamp | ConcurrentText): void {
     this.batch(() => {
       if (this.depth === 1) this.current().origin = origin;
-      for (const remote of data.tasks ?? []) {
+      // Records from a version without spaces have neither field: they're in no space ('', ZERO).
+      for (const raw of data.tasks ?? []) {
+        const remote = normalTask(raw);
         this.hlc.observe(maxClock(remote.clk));
         const { value, changed } = mergeTask(this.tasks.get(remote.id), remote);
         if (changed) this.putTask(value, false);
       }
-      for (const remote of data.sheets ?? []) {
+      for (const raw of data.sheets ?? []) {
+        const remote = normalSheet(raw);
         this.hlc.observe(maxClock(remote.clk));
         const { value, changed, conflict } = mergeSheet(this.sheets.get(remote.id), remote, base);
         if (changed) this.putSheet(value, false);
         if (conflict && !this.sheets.has(conflict.id)) this.putSheet(conflict, false);
+      }
+      for (const remote of data.spaces ?? []) {
+        this.hlc.observe(maxClock(remote.clk));
+        const { value, changed } = mergeSpace(this.spaces.get(remote.id), remote);
+        if (changed) this.putSpace(value, false);
       }
       if (data.focus) {
         this.hlc.observe(data.focus.clk);
@@ -341,8 +428,13 @@ export class Workspace {
    * the edits are new, they win over the state they replace everywhere it has spread.
    */
   restore(data: WorkspaceData): void {
-    const tasks = new Map(data.tasks.map((t) => [t.id, t]));
-    const sheets = new Map(data.sheets.map((s) => [s.id, s]));
+    // A snapshot from before spaces has neither the fields nor any spaces: everything was in Main.
+    const tasks = new Map(data.tasks.map((t) => [t.id, normalTask(t)]));
+    const sheets = new Map(data.sheets.map((s) => [s.id, normalSheet(s)]));
+    // Names as they're kept now (a snapshot may hold one from before the limit).
+    const spaces = new Map((data.spaces ?? []).map((s) => [s.id, { ...s, name: cleanSpaceName(s.name) }]));
+    // Never put anywhere ('') and moved back ('main') are both Main; going back there is a move to 'main'.
+    const where = (space: string) => space || MAIN;
     this.batch(() => {
       for (const id of new Set([...this.tasks.keys(), ...tasks.keys()])) {
         const target = tasks.get(id);
@@ -350,7 +442,7 @@ export class Workspace {
         if (!current) {
           if (target && !target.deleted) {
             const c = this.hlc.now();
-            this.putTask({ ...cloneTask(target), clk: { text: c, completed: c, order: c, deleted: c } });
+            this.putTask({ ...cloneTask(target), clk: { text: c, completed: c, order: c, deleted: c, space: target.space ? c : ZERO } });
           }
           continue;
         }
@@ -359,6 +451,7 @@ export class Workspace {
         if (current.completed !== want.completed) this.setTaskField(current, 'completed', want.completed);
         if (current.order !== want.order) this.setTaskField(current, 'order', want.order);
         if (current.deleted !== want.deleted) this.setTaskField(current, 'deleted', want.deleted);
+        if (where(current.space) !== where(want.space)) this.setTaskField(current, 'space', where(want.space));
       }
       for (const id of new Set([...this.sheets.keys(), ...sheets.keys()])) {
         const target = sheets.get(id);
@@ -366,7 +459,7 @@ export class Workspace {
         if (!current) {
           if (target && !target.deleted) {
             const c = this.hlc.now();
-            this.putSheet({ ...cloneSheet(target), clk: { text: c, order: c, deleted: c } });
+            this.putSheet({ ...cloneSheet(target), clk: { text: c, order: c, deleted: c, space: target.space ? c : ZERO } });
           }
           continue;
         }
@@ -374,6 +467,23 @@ export class Workspace {
         if (current.deleted && !want.deleted) this.setSheetDeleted(current, false);
         if (current.text !== want.text && !want.deleted) this.editSheet(id, want.text);
         if (!current.deleted && want.deleted) this.setSheetDeleted(current, true);
+        if (where(current.space) !== where(want.space)) this.moveSheetToSpace(id, where(want.space));
+      }
+      for (const id of new Set([...this.spaces.keys(), ...spaces.keys()])) {
+        const target = spaces.get(id);
+        const current = this.spaces.get(id);
+        if (!current) {
+          if (target && !target.deleted) {
+            const c = this.hlc.now();
+            this.putSpace({ ...cloneSpace(target), clk: { name: c, order: c, deleted: c } });
+          }
+          continue;
+        }
+        // Main is never deleted: before it was renamed, it had no name of its own.
+        const want = target ?? (id === MAIN ? { ...current, name: '' } : { ...current, deleted: true });
+        if (current.name !== want.name && !want.deleted) this.setSpaceField(current, 'name', want.name);
+        if (current.order !== want.order && !want.deleted) this.setSpaceField(current, 'order', want.order);
+        if (current.deleted !== want.deleted && id !== MAIN) this.setSpaceField(current, 'deleted', want.deleted);
       }
       if (this.focus.id !== data.focus.id) this.setFocus(data.focus.id);
     });
@@ -385,24 +495,30 @@ export class Workspace {
       tasks: [...this.tasks.values()].map(cloneTask),
       sheets: [...this.sheets.values()].map(cloneSheet),
       focus: { ...this.focus },
+      spaces: [...this.spaces.values()].map(cloneSpace),
     };
   }
 
   /** Removes tombstones older than `maxAgeMs` for good. Returns the ids removed. */
-  purgeTombstones(maxAgeMs: number, stampTime: (s: Stamp) => number): { tasks: string[]; sheets: string[] } {
+  purgeTombstones(maxAgeMs: number, stampTime: (s: Stamp) => number): { tasks: string[]; sheets: string[]; spaces: string[] } {
     const cutoff = this.clock().getTime() - maxAgeMs;
     const tasks: string[] = [];
     const sheets: string[] = [];
+    const spaces: string[] = [];
     for (const t of this.tasks.values()) {
       if (t.deleted && stampTime(t.clk.deleted) < cutoff) tasks.push(t.id);
     }
     for (const s of this.sheets.values()) {
       if (s.deleted && stampTime(s.clk.deleted) < cutoff) sheets.push(s.id);
     }
+    for (const s of this.spaces.values()) {
+      if (s.deleted && stampTime(s.clk.deleted) < cutoff) spaces.push(s.id);
+    }
     tasks.forEach((id) => this.tasks.delete(id));
     sheets.forEach((id) => this.sheets.delete(id));
-    if (tasks.length || sheets.length) this.views = {};
-    return { tasks, sheets };
+    spaces.forEach((id) => this.spaces.delete(id));
+    if (tasks.length || sheets.length || spaces.length) this.views = {};
+    return { tasks, sheets, spaces };
   }
 
   /**
@@ -432,7 +548,7 @@ export class Workspace {
       if (this.depth === 0 && this.pending) {
         const change = this.pending;
         this.pending = null;
-        if (change.tasks.size || change.sheets.size || change.focus) {
+        if (change.tasks.size || change.sheets.size || change.spaces.size || change.focus) {
           for (const l of this.listeners) l(change);
         }
       }
@@ -440,7 +556,7 @@ export class Workspace {
   }
 
   private current(): Change {
-    if (!this.pending) this.pending = { tasks: new Set(), sheets: new Set(), focus: false, origin: 'local' };
+    if (!this.pending) this.pending = { tasks: new Set(), sheets: new Set(), spaces: new Set(), focus: false, origin: 'local' };
     return this.pending;
   }
 
@@ -459,11 +575,25 @@ export class Workspace {
     this.views.sheets = undefined;
   }
 
-  private setTaskField<K extends 'text' | 'completed' | 'order' | 'deleted'>(task: Task, field: K, value: Task[K]): void {
+  private putSpace(space: Space, observe = true): void {
+    if (observe) this.hlc.observe(maxClock(space.clk));
+    this.spaces.set(space.id, space);
+    this.current().spaces.add(space.id);
+    this.views.spaces = undefined;
+  }
+
+  private setTaskField<K extends 'text' | 'completed' | 'order' | 'deleted' | 'space'>(task: Task, field: K, value: Task[K]): void {
     const next = cloneTask(this.tasks.get(task.id) ?? task);
     next[field] = value;
     next.clk[field] = this.hlc.now();
     this.putTask(next);
+  }
+
+  private setSpaceField<K extends 'name' | 'order' | 'deleted'>(space: Space, field: K, value: Space[K]): void {
+    const next = cloneSpace(this.spaces.get(space.id) ?? space);
+    next[field] = value;
+    next.clk[field] = this.hlc.now();
+    this.putSpace(next);
   }
 
   /**

@@ -20,6 +20,7 @@ const TYPING_DELAY = 350;
 export class Store {
   private dirtyTasks = new Set<string>();
   private dirtySheets = new Set<string>();
+  private dirtySpaces = new Set<string>();
   private dirtyFocus = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly inflight = new Set<Promise<void>>();
@@ -75,7 +76,7 @@ export class Store {
   }
 
   get hasPending(): boolean {
-    return this.dirtyTasks.size > 0 || this.dirtySheets.size > 0 || this.dirtyFocus || this.inflight.size > 0;
+    return this.dirtyTasks.size > 0 || this.dirtySheets.size > 0 || this.dirtySpaces.size > 0 || this.dirtyFocus || this.inflight.size > 0;
   }
 
   /** Everything is on disk: nothing waiting, nothing being written, no failed writes. */
@@ -93,16 +94,18 @@ export class Store {
       clearTimeout(this.timer);
       this.timer = null;
     }
-    if (!this.dirtyTasks.size && !this.dirtySheets.size && !this.dirtyFocus) {
+    if (!this.dirtyTasks.size && !this.dirtySheets.size && !this.dirtySpaces.size && !this.dirtyFocus) {
       await Promise.all(this.inflight);
       return;
     }
 
     const taskIds = [...this.dirtyTasks];
     const sheetIds = [...this.dirtySheets];
+    const spaceIds = [...this.dirtySpaces];
     const focus = this.dirtyFocus;
     this.dirtyTasks.clear();
     this.dirtySheets.clear();
+    this.dirtySpaces.clear();
     this.dirtyFocus = false;
 
     this.setStatus(this.failures ? 'retrying' : 'saving');
@@ -110,6 +113,7 @@ export class Store {
       .write({
         tasks: taskIds.map((id) => this.ws.tasks.get(id)).filter((t) => t !== undefined),
         sheets: sheetIds.map((id) => this.ws.sheets.get(id)).filter((s) => s !== undefined),
+        spaces: spaceIds.map((id) => this.ws.spaces.get(id)).filter((s) => s !== undefined),
         focus: focus ? this.ws.focus : undefined,
       })
       .then(
@@ -121,6 +125,7 @@ export class Store {
           console.error('Save failed', error);
           taskIds.forEach((id) => this.dirtyTasks.add(id));
           sheetIds.forEach((id) => this.dirtySheets.add(id));
+          spaceIds.forEach((id) => this.dirtySpaces.add(id));
           this.dirtyFocus ||= focus;
           this.failures++;
           this.schedule(Math.min(30000, 500 * 2 ** this.failures));
@@ -156,8 +161,8 @@ export class Store {
       }
       if (this.keepDeletions()) return;
       const purged = this.ws.purgeTombstones(TOMBSTONE_DAYS * 86400000, stampTime);
-      if (purged.tasks.length || purged.sheets.length) {
-        await this.backend.write({ tasks: [], sheets: [], deleteTasks: purged.tasks, deleteSheets: purged.sheets });
+      if (purged.tasks.length || purged.sheets.length || purged.spaces.length) {
+        await this.backend.write({ tasks: [], sheets: [], deleteTasks: purged.tasks, deleteSheets: purged.sheets, deleteSpaces: purged.spaces });
       }
     } catch (error) {
       console.warn('Housekeeping failed', error);
@@ -172,8 +177,9 @@ export class Store {
     if (change.origin === 'storage') return;
     change.tasks.forEach((id) => this.dirtyTasks.add(id));
     change.sheets.forEach((id) => this.dirtySheets.add(id));
+    change.spaces.forEach((id) => this.dirtySpaces.add(id));
     if (change.focus) this.dirtyFocus = true;
-    const typingOnly = change.tasks.size === 0 && !change.focus;
+    const typingOnly = change.tasks.size === 0 && change.spaces.size === 0 && !change.focus;
     this.schedule(typingOnly ? TYPING_DELAY : 0);
     if (!this.persistAsked && !persistenceNeedsPrompt()) {
       this.persistAsked = true;

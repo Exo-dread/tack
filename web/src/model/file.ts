@@ -1,9 +1,10 @@
 import { decode, encode, isPlausibleStamp, ZERO, type Stamp } from './hlc';
 import { derivedId } from './ids';
 import { isOrderKey, keyAfter, keyBefore } from './order';
+import { cleanSpaceName, spaceField } from './spaces';
 import { cleanTaskText, noteText, wellFormedValues } from './text';
 import { isoLocal, parseDate } from './time';
-import type { Focus, Sheet, Task, WorkspaceData } from './types';
+import type { Focus, Sheet, SheetClocks, Space, Task, TaskClocks, WorkspaceData } from './types';
 import type { Workspace } from './workspace';
 
 /**
@@ -30,16 +31,23 @@ interface DesktopSheet {
   updated: string;
 }
 
+/** A task as files carry it: the space and its clock only once it has been put in one. */
+export type TaskRecord = Omit<Task, 'space' | 'clk'> & { space?: string; clk: Omit<TaskClocks, 'space'> & { space?: Stamp } };
+export type SheetRecord = Omit<Sheet, 'space' | 'clk'> & { space?: string; clk: Omit<SheetClocks, 'space'> & { space?: Stamp } };
+
 export interface TackFile {
   version: 1;
+  /** Every task and sheet, whatever space it's in (Tack for Windows takes a task missing here as deleted). */
   tasks: DesktopTask[];
   sheets: DesktopSheet[];
   tackFocus: {
     format: number;
     exported: string;
     focus: Focus;
-    tasks: Task[];
-    sheets: Sheet[];
+    tasks: TaskRecord[];
+    sheets: SheetRecord[];
+    /** Every space, live and deleted; only there once there are any. */
+    spaces?: Space[];
   };
 }
 
@@ -57,13 +65,48 @@ export function exportFile(ws: Workspace, now: Date = new Date()): TackFile {
     tackFocus: {
       format: FILE_FORMAT,
       exported: isoLocal(now),
-      focus: data.focus,
+      focus: focusRecord(data.focus),
       // Deleted records travel so the deletion can be merged elsewhere, but without their text.
-      tasks: data.tasks.map((t) => (t.deleted ? { ...t, text: '' } : t)),
-      sheets: data.sheets.map((s) => (s.deleted ? { ...s, text: '' } : s)),
+      tasks: data.tasks.map((t) => taskRecord(t, t.deleted ? '' : t.text)),
+      sheets: data.sheets.map((s) => sheetRecord(s, s.deleted ? '' : s.text)),
+      // A deleted space goes without its name, and without its name's clock: a blank name with the
+      // real name's clock would tie with that name when the deletion is undone, and could win.
+      ...(data.spaces.length ? { spaces: data.spaces.map((s) => (s.deleted ? spaceRecord(s, '', ZERO) : spaceRecord(s))) } : {}),
     },
   };
 }
+
+/*
+ * Records as files carry them (tack.json's section, device files), written key by key so a file
+ * says exactly this and nothing else memory may hold. Without spaces, a file is byte for byte what
+ * versions before spaces wrote. Tack for Windows writes the same keys in the same order.
+ */
+
+export function taskRecord(t: Task, text = t.text): TaskRecord {
+  const c = t.clk;
+  const assigned = !!c.space && c.space !== ZERO;
+  return {
+    id: t.id, text, created: t.created, completed: t.completed, order: t.order, deleted: t.deleted,
+    ...(assigned ? { space: t.space } : {}),
+    clk: { text: c.text, completed: c.completed, order: c.order, deleted: c.deleted, ...(assigned ? { space: c.space } : {}) },
+  };
+}
+
+export function sheetRecord(s: Sheet, text = s.text): SheetRecord {
+  const c = s.clk;
+  const assigned = !!c.space && c.space !== ZERO;
+  return {
+    id: s.id, text, updated: s.updated, order: s.order, deleted: s.deleted,
+    ...(assigned ? { space: s.space } : {}),
+    clk: { text: c.text, order: c.order, deleted: c.deleted, ...(assigned ? { space: c.space } : {}) },
+  };
+}
+
+export function spaceRecord(s: Space, name = s.name, nameClk = s.clk.name): Space {
+  return { id: s.id, name, order: s.order, deleted: s.deleted, clk: { name: nameClk, order: s.clk.order, deleted: s.clk.deleted } };
+}
+
+export const focusRecord = (f: Focus): Focus => ({ id: f.id, clk: f.clk });
 
 function desktopTask(t: Task, now: boolean): DesktopTask {
   const out: DesktopTask = { id: t.id, text: t.text, created: t.created, now };
@@ -112,7 +155,8 @@ function parseFile(text: string, ws: Workspace, options: ReadOptions): { data: W
     const tasks = extra.tasks.map((r) => readTaskRecord(r)).filter((t): t is Task => t !== null);
     const sheets = extra.sheets.map((r) => readSheetRecord(r)).filter((s): s is Sheet => s !== null);
     const focus = readFocus(extra.focus);
-    return { data: { tasks, sheets, focus }, withClocks: true };
+    const spaces = Array.isArray(extra.spaces) ? extra.spaces.map((r) => readSpaceRecord(r)).filter((s): s is Space => s !== null) : [];
+    return { data: { tasks, sheets, focus, spaces }, withClocks: true };
   }
 
   if (!Array.isArray(doc.tasks) && !Array.isArray(doc.sheets)) {
@@ -175,14 +219,17 @@ function readDesktop(doc: Record<string, unknown>, ws: Workspace, options: ReadO
       completed: completed ? (sameDone && existing?.completed ? existing.completed : String(r.completed)) : null,
       order: keys.get(r) ?? existing?.order ?? 'V',
       deleted: existing?.deleted ?? false,
+      // Tack for Windows' own lists know nothing of spaces: a task stays where it is here.
+      space: existing?.space ?? '',
       clk: existing
         ? {
             text: changedClock(existing.text === text, existing.clk.text),
             completed: changedClock(sameDone, existing.clk.completed),
             order: existing.clk.order,
             deleted: existing.clk.deleted,
+            space: existing.clk.space,
           }
-        : { text: base, completed: completed ? stampFrom(completed.getTime()) : base, order: base, deleted: base },
+        : { text: base, completed: completed ? stampFrom(completed.getTime()) : base, order: base, deleted: base, space: ZERO },
     });
     if (r.now === true && !completed && focusId === null) focusId = id;
   }
@@ -202,7 +249,7 @@ function readDesktop(doc: Record<string, unknown>, ws: Workspace, options: ReadO
       id = derivedId(`${id}:${text}`);
       if (ws.sheets.has(id)) continue;
       const c = stampFrom(updatedAt.getTime());
-      sheets.push({ id, text, updated, order: nextKey(), deleted: false, clk: { text: c, order: c, deleted: c } });
+      sheets.push({ id, text, updated, order: nextKey(), deleted: false, space: '', clk: { text: c, order: c, deleted: c, space: ZERO } });
       continue;
     }
     if (existing) {
@@ -212,14 +259,14 @@ function readDesktop(doc: Record<string, unknown>, ws: Workspace, options: ReadO
       continue;
     }
     const c = stampFrom(updatedAt.getTime());
-    sheets.push({ id, text, updated, order: nextKey(), deleted: false, clk: { text: c, order: c, deleted: c } });
+    sheets.push({ id, text, updated, order: nextKey(), deleted: false, space: '', clk: { text: c, order: c, deleted: c, space: ZERO } });
   }
 
   // Importing is an explicit "bring this in": the file's focus task becomes the focus here too
   // (unless it already is, so importing the same file twice still changes nothing).
   const focus: Focus =
     focusId && ws.focus.id !== focusId ? { id: focusId, clk: ws.hlc.now() } : { id: null, clk: ZERO };
-  return { tasks, sheets, focus };
+  return { tasks, sheets, focus, spaces: [] };
 }
 
 /** Clocks for desktop records: their own time, from a pseudo-device that loses ties. */
@@ -255,6 +302,8 @@ export function readTaskRecord(r: unknown, now = Date.now()): Task | null {
   if (![clk.text, clk.completed, clk.order, clk.deleted].every((c) => isPlausibleStamp(c, now))) return null;
   const text = cleanTaskText(typeof r.text === 'string' ? r.text : '');
   if (!text && r.deleted !== true) return null;
+  // Never a reason to skip the record: anything odd (or missing, from a version before spaces) is "in Main".
+  const space = spaceField(r.space, clk.space, now);
   return {
     id: r.id,
     text,
@@ -263,7 +312,8 @@ export function readTaskRecord(r: unknown, now = Date.now()): Task | null {
     completed: isFileDate(r.completed) ? r.completed : null,
     order: isOrderKey(r.order) ? r.order : 'V',
     deleted: r.deleted === true,
-    clk: { text: clk.text as Stamp, completed: clk.completed as Stamp, order: clk.order as Stamp, deleted: clk.deleted as Stamp },
+    space: space.space,
+    clk: { text: clk.text as Stamp, completed: clk.completed as Stamp, order: clk.order as Stamp, deleted: clk.deleted as Stamp, space: space.clk },
   };
 }
 
@@ -271,13 +321,29 @@ export function readSheetRecord(r: unknown, now = Date.now()): Sheet | null {
   if (!isObject(r) || typeof r.id !== 'string' || !ID.test(r.id) || !isObject(r.clk)) return null;
   const clk = r.clk;
   if (![clk.text, clk.order, clk.deleted].every((c) => isPlausibleStamp(c, now))) return null;
+  const space = spaceField(r.space, clk.space, now);
   return {
     id: r.id,
     text: noteText(typeof r.text === 'string' ? r.text : ''),
     updated: isFileDate(r.updated) ? r.updated : isoLocal(new Date(0)),
     order: isOrderKey(r.order) ? r.order : 'V',
     deleted: r.deleted === true,
-    clk: { text: clk.text as Stamp, order: clk.order as Stamp, deleted: clk.deleted as Stamp },
+    space: space.space,
+    clk: { text: clk.text as Stamp, order: clk.order as Stamp, deleted: clk.deleted as Stamp, space: space.clk },
+  };
+}
+
+/** A space record from a file: its id and clocks must be sound; its name is one line, possibly empty, and at most 100 characters. */
+export function readSpaceRecord(r: unknown, now = Date.now()): Space | null {
+  if (!isObject(r) || typeof r.id !== 'string' || !ID.test(r.id) || !isObject(r.clk)) return null;
+  const clk = r.clk;
+  if (![clk.name, clk.order, clk.deleted].every((c) => isPlausibleStamp(c, now))) return null;
+  return {
+    id: r.id,
+    name: cleanSpaceName(typeof r.name === 'string' ? r.name : ''),
+    order: isOrderKey(r.order) ? r.order : 'V',
+    deleted: r.deleted === true,
+    clk: { name: clk.name as Stamp, order: clk.order as Stamp, deleted: clk.deleted as Stamp },
   };
 }
 

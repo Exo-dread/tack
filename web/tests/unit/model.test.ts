@@ -243,8 +243,8 @@ describe('workspace', () => {
   function withKeys(ws: Workspace, keys: Record<string, string>, focus: string | null = null) {
     const c = encode(Date.UTC(2026, 9, 17, 8, 0, 0), 0, 'other');
     const tasks: Task[] = Object.entries(keys).map(([text, order]) => ({
-      id: text.repeat(12), text, created: '2026-10-17T08:00:00.000Z', completed: null, order, deleted: false,
-      clk: { text: c, completed: c, order: c, deleted: c },
+      id: text.repeat(12), text, created: '2026-10-17T08:00:00.000Z', completed: null, order, deleted: false, space: '',
+      clk: { text: c, completed: c, order: c, deleted: c, space: ZERO },
     }));
     ws.merge({ tasks, focus: { id: focus && focus.repeat(12), clk: c } }, 'remote');
   }
