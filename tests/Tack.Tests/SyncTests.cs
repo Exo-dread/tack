@@ -19,6 +19,29 @@ internal static class SyncTests
 
     private static readonly string DesktopDevice = Path.Combine(Program.Root, "tests", "vectors", "desktop-device.json");
 
+    /// <summary>
+    /// Device files exactly as Tack Focus wrote them (the folders the cycles start from), by file
+    /// name and "written": what this app writes for the same cycle must be the same bytes.
+    /// </summary>
+    private static readonly Lazy<Dictionary<string, HashSet<string>>> WebTexts = new(() =>
+    {
+        var texts = new Dictionary<string, HashSet<string>>();
+        foreach (var cycle in Vectors.Value.GetProperty("cycles").EnumerateArray())
+        {
+            foreach (var f in cycle.GetProperty("before").GetProperty("folder").EnumerateArray())
+            {
+                string text = f.Str("text")!;
+                string? written;
+                try { written = JsonDocument.Parse(text).RootElement.Str("written"); }
+                catch (JsonException) { continue; }
+                string key = $"{f.Str("name")}|{written}";
+                if (!texts.TryGetValue(key, out var set)) texts[key] = set = new HashSet<string>(StringComparer.Ordinal);
+                set.Add(text);
+            }
+        }
+        return texts;
+    });
+
     public static IEnumerable<(string Name, Action Run)> All()
     {
         int n = 0;
@@ -85,7 +108,11 @@ internal static class SyncTests
         if (after.TryGetProperty("written", out var written))
         {
             var (_, bytes) = folder.Files[DeviceFile.FileName(device)];
-            JsonEqual(written, JsonDocument.Parse(bytes).RootElement, $"{what}: the device file it wrote");
+            // Key for key, in the order Tack Focus wrote them.
+            JsonEqual(written, JsonDocument.Parse(bytes).RootElement, $"{what}: the device file it wrote", ordered: true);
+            // And byte for byte, wherever a later cycle shows the file Tack Focus wrote here.
+            if (WebTexts.Value.TryGetValue($"{DeviceFile.FileName(device)}|{written.Str("written")}", out var texts))
+                Check.True(texts.Contains(Encoding.UTF8.GetString(bytes)), $"{what}: the device file it wrote, byte for byte as Tack Focus wrote it");
         }
         if (index == Vectors.Value.GetProperty("cycles").GetArrayLength() && Program.Update) WriteDesktopDevice(after.GetProperty("data"), meta);
     }
@@ -137,7 +164,7 @@ internal static class SyncTests
                 string.Join(",", e.GetProperty("seen").EnumerateObject().Select(p => $"{p.Name}={p.Value.GetString()}").Order(StringComparer.Ordinal)),
                 string.Join(",", file.Seen.Select(p => $"{p.Key}={p.Value}").Order(StringComparer.Ordinal)),
                 $"{what}: seen");
-            Check.Data(Sorted(Json.Data(e)), Sorted(new WorkspaceData(file.Tasks, file.Sheets, file.Focus)), $"{what}: records");
+            Check.Data(Sorted(Json.Data(e)), Sorted(new WorkspaceData(file.Tasks, file.Sheets, file.Focus, file.Spaces)), $"{what}: records");
         }
         catch (DeviceFileException ex)
         {
@@ -298,17 +325,20 @@ internal static class SyncTests
 
     // ---------------------------------------------------------------- helpers
 
-    private static WorkspaceData Sorted(WorkspaceData d) => new(
+    internal static WorkspaceData Sorted(WorkspaceData d) => new(
         d.Tasks.OrderBy(t => t.Id, StringComparer.Ordinal).ToList(),
         d.Sheets.OrderBy(s => s.Id, StringComparer.Ordinal).ToList(),
-        d.Focus);
+        d.Focus,
+        d.Spaces.OrderBy(s => s.Id, StringComparer.Ordinal).ToList());
 
-    /// <summary>The same JSON value (object keys in any order).</summary>
-    private static void JsonEqual(JsonElement expected, JsonElement actual, string what)
+    /// <summary>The same JSON value (object keys in any order, unless <paramref name="ordered"/>).</summary>
+    /// <param name="ordered">Keys must also come in the same order (a file as written), not just say the same.</param>
+    private static void JsonEqual(JsonElement expected, JsonElement actual, string what, bool ordered = false)
     {
+        IEnumerable<JsonProperty> Keys(JsonElement e) => ordered ? e.EnumerateObject() : e.EnumerateObject().OrderBy(p => p.Name, StringComparer.Ordinal);
         string Canonical(JsonElement e) => e.ValueKind switch
         {
-            JsonValueKind.Object => "{" + string.Join(",", e.EnumerateObject().OrderBy(p => p.Name, StringComparer.Ordinal).Select(p => JsonSerializer.Serialize(p.Name) + ":" + Canonical(p.Value))) + "}",
+            JsonValueKind.Object => "{" + string.Join(",", Keys(e).Select(p => JsonSerializer.Serialize(p.Name) + ":" + Canonical(p.Value))) + "}",
             JsonValueKind.Array => "[" + string.Join(",", e.EnumerateArray().Select(Canonical)) + "]",
             JsonValueKind.Number => e.GetDouble().ToString("R", System.Globalization.CultureInfo.InvariantCulture),
             JsonValueKind.String => JsonSerializer.Serialize(e.GetString()),

@@ -106,7 +106,14 @@ internal static partial class TackFile
         foreach (var r in extra.GetProperty("sheets").EnumerateArray())
             if (ReadSheetRecord(r, nowMs) is { } s) sheets.Add(s);
         var focus = extra.TryGetProperty("focus", out var f) ? ReadFocus(f, nowMs) : FocusData.None;
-        return new WorkspaceData(tasks, sheets, focus);
+        // Spaces are optional (only written once there are any).
+        var spaces = new List<SpaceData>();
+        if (IsArray(extra, "spaces"))
+        {
+            foreach (var r in extra.GetProperty("spaces").EnumerateArray())
+                if (ReadSpaceRecord(r, nowMs) is { } s) spaces.Add(s);
+        }
+        return new WorkspaceData(tasks, sheets, focus, spaces);
     }
 
     /// <summary>The device id this file's own app stamps with (only Tack for Windows writes one).</summary>
@@ -125,6 +132,7 @@ internal static partial class TackFile
         if (text.Length == 0 && !deleted) return null;
         string? order = Str(r, "order");
         string? created = Str(r, "created"), completed = Str(r, "completed");
+        var (space, cs) = SpaceField.Read(Str(r, "space"), Str(clk, "space"), nowMs);
         return new TaskData(
             id,
             text,
@@ -133,7 +141,8 @@ internal static partial class TackFile
             IsFileDate(completed) ? completed : null,
             OrderKey.IsOrderKey(order) ? order! : OrderKey.Mid,
             deleted,
-            new TaskClocks(ct!, cc!, co!, cd!));
+            space,
+            new TaskClocks(ct!, cc!, co!, cd!, cs));
     }
 
     public static SheetData? ReadSheetRecord(JsonElement r, long nowMs)
@@ -143,13 +152,34 @@ internal static partial class TackFile
         string? ct = Str(clk, "text"), co = Str(clk, "order"), cd = Str(clk, "deleted");
         if (!Stamp.IsPlausible(ct, nowMs) || !Stamp.IsPlausible(co, nowMs) || !Stamp.IsPlausible(cd, nowMs)) return null;
         string? order = Str(r, "order"), updated = Str(r, "updated");
+        var (space, cs) = SpaceField.Read(Str(r, "space"), Str(clk, "space"), nowMs);
         return new SheetData(
             id,
             JsText.NoteText(Str(r, "text") ?? ""),
             IsFileDate(updated) ? updated! : EpochText(),
             OrderKey.IsOrderKey(order) ? order! : OrderKey.Mid,
             IsTrue(r, "deleted"),
-            new SheetClocks(ct!, co!, cd!));
+            space,
+            new SheetClocks(ct!, co!, cd!, cs));
+    }
+
+    /// <summary>
+    /// A space record (readSpaceRecord in file.ts): its name is one line, like a task's, and at most
+    /// 100 characters (<see cref="SpaceField.CleanName"/>); an empty name is fine.
+    /// </summary>
+    public static SpaceData? ReadSpaceRecord(JsonElement r, long nowMs)
+    {
+        if (r.ValueKind != JsonValueKind.Object || Str(r, "id") is not { } id || !Ids.IsValid(id)) return null;
+        if (!r.TryGetProperty("clk", out var clk) || clk.ValueKind != JsonValueKind.Object) return null;
+        string? cn = Str(clk, "name"), co = Str(clk, "order"), cd = Str(clk, "deleted");
+        if (!Stamp.IsPlausible(cn, nowMs) || !Stamp.IsPlausible(co, nowMs) || !Stamp.IsPlausible(cd, nowMs)) return null;
+        string? order = Str(r, "order");
+        return new SpaceData(
+            id,
+            SpaceField.CleanName(Str(r, "name") ?? ""),
+            OrderKey.IsOrderKey(order) ? order! : OrderKey.Mid,
+            IsTrue(r, "deleted"),
+            new SpaceClocks(cn!, co!, cd!));
     }
 
     public static FocusData ReadFocus(JsonElement r, long nowMs)
@@ -163,7 +193,11 @@ internal static partial class TackFile
 
     /// <summary>
     /// Writes a tackFocus section, field for field as Tack Focus's export writes it. Deleted records
-    /// travel so the deletion can be merged elsewhere, but without their text.
+    /// travel so the deletion can be merged elsewhere, but without their text (a deleted space
+    /// without its name, and without its name's clock: a blank name with the real name's clock
+    /// would tie with that name when the deletion is undone, and could win). A record's "space"
+    /// is written only once it has been put in one, and "spaces" only if there are any, so without
+    /// spaces the section is exactly what Tack 1.3 writes.
     /// </summary>
     public static void WriteSection(Utf8JsonWriter w, WorkspaceData data, string exported, string? device)
     {
@@ -187,12 +221,14 @@ internal static partial class TackFile
             w.WriteString("completed", t.Completed);
             w.WriteString("order", t.Order);
             w.WriteBoolean("deleted", t.Deleted);
+            if (t.Clk.Space != Stamp.Zero) w.WriteString("space", t.Space);
             w.WritePropertyName("clk");
             w.WriteStartObject();
             w.WriteString("text", t.Clk.Text);
             w.WriteString("completed", t.Clk.Completed);
             w.WriteString("order", t.Clk.Order);
             w.WriteString("deleted", t.Clk.Deleted);
+            if (t.Clk.Space != Stamp.Zero) w.WriteString("space", t.Clk.Space);
             w.WriteEndObject();
             w.WriteEndObject();
         }
@@ -207,15 +243,38 @@ internal static partial class TackFile
             w.WriteString("updated", s.Updated);
             w.WriteString("order", s.Order);
             w.WriteBoolean("deleted", s.Deleted);
+            if (s.Clk.Space != Stamp.Zero) w.WriteString("space", s.Space);
             w.WritePropertyName("clk");
             w.WriteStartObject();
             w.WriteString("text", s.Clk.Text);
             w.WriteString("order", s.Clk.Order);
             w.WriteString("deleted", s.Clk.Deleted);
+            if (s.Clk.Space != Stamp.Zero) w.WriteString("space", s.Clk.Space);
             w.WriteEndObject();
             w.WriteEndObject();
         }
         w.WriteEndArray();
+
+        if (data.Spaces.Count > 0)
+        {
+            w.WriteStartArray("spaces");
+            foreach (var s in data.Spaces)
+            {
+                w.WriteStartObject();
+                w.WriteString("id", s.Id);
+                w.WriteString("name", s.Deleted ? "" : s.Name);
+                w.WriteString("order", s.Order);
+                w.WriteBoolean("deleted", s.Deleted);
+                w.WritePropertyName("clk");
+                w.WriteStartObject();
+                w.WriteString("name", s.Deleted ? Stamp.Zero : s.Clk.Name);
+                w.WriteString("order", s.Clk.Order);
+                w.WriteString("deleted", s.Clk.Deleted);
+                w.WriteEndObject();
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+        }
         w.WriteEndObject();
     }
 
@@ -279,13 +338,16 @@ internal static partial class TackFile
                 completed != null ? (sameDone && !string.IsNullOrEmpty(existing!.Completed) ? existing.Completed : JsString(r, "completed")) : null,
                 keys.TryGetValue(index, out var k) ? k : existing?.Order ?? OrderKey.Mid,
                 existing?.Deleted ?? false,
+                // Files without clocks know nothing of spaces: the task stays where it is here.
+                existing?.Space ?? "",
                 existing != null
                     ? new TaskClocks(
                         ChangedClock(existing.Text == text, existing.Clk.Text),
                         ChangedClock(sameDone, existing.Clk.Completed),
                         existing.Clk.Order,
-                        existing.Clk.Deleted)
-                    : new TaskClocks(@base, completed is long c ? Stamp.FromTime(c) : @base, @base, @base)));
+                        existing.Clk.Deleted,
+                        existing.Clk.Space)
+                    : new TaskClocks(@base, completed is long c ? Stamp.FromTime(c) : @base, @base, @base, Stamp.Zero)));
             if (IsTrue(r, "now") && completed == null && focusId == null) focusId = id;
         }
 
@@ -307,7 +369,7 @@ internal static partial class TackFile
                 id = Ids.Derived($"{id}:{text}");
                 if (ws.FindSheet(id) != null) continue;
                 string c = Stamp.FromTime(updatedAt);
-                sheets.Add(new SheetData(id, text, updated, NextKey(), false, SheetClocks.All(c)));
+                sheets.Add(new SheetData(id, text, updated, NextKey(), false, "", SheetClocks.All(c)));
                 continue;
             }
             if (existing != null)
@@ -323,13 +385,13 @@ internal static partial class TackFile
                 continue;
             }
             string stamp = Stamp.FromTime(updatedAt);
-            sheets.Add(new SheetData(id, text, updated, NextKey(), false, SheetClocks.All(stamp)));
+            sheets.Add(new SheetData(id, text, updated, NextKey(), false, "", SheetClocks.All(stamp)));
         }
 
         // Importing is an explicit "bring this in": the file's focus task becomes the focus here too
         // (unless it already is, so importing the same file twice still changes nothing).
         var focus = focusId != null && ws.FocusId != focusId ? new FocusData(focusId, ws.Clock.Now()) : FocusData.None;
-        return new WorkspaceData(tasks, sheets, focus);
+        return new WorkspaceData(tasks, sheets, focus, []);
     }
 
     // ------------------------------------------------------------------ helpers

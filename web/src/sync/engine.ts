@@ -69,7 +69,26 @@ export interface FileSummary {
   written: Stamp;
   /** This version couldn't be used (and isn't fetched again until it changes). */
   problem?: DeviceFileError['reason'];
+  /**
+   * The reader that read it (READER). A file read by an older one is read once more, whether or
+   * not it changed: that reader dropped what it didn't know (spaces), and only a new read learns it.
+   */
+  reader?: number;
 }
+
+/**
+ * This version of the device file reader. Raise it whenever a new version learns to read
+ * something older ones dropped: every device then reads every file once more. 2: spaces.
+ */
+export const READER = 2;
+
+/**
+ * This version of the device file writer, noted with each write of this device's own file.
+ * Raise it whenever a new version writes something older ones leave out: a file last written by
+ * an older version under this device's id (an old tab still open in the same browser, or the app
+ * downgraded and upgraded again) is then written again in full, though nothing else changed. 2: spaces.
+ */
+export const WRITER = 2;
 
 /** What this device keeps between cycles, next to its data. */
 export interface SyncMeta {
@@ -84,6 +103,11 @@ export interface SyncMeta {
     written: Stamp | null;
     /** A write whose answer never came back: if the folder has it, it's ours. */
     pending: Stamp | null;
+    /**
+     * The writer (WRITER) of this device's latest write of its file, a pending one included.
+     * None: an older version wrote it (it notes its writes without this), so it's written again.
+     */
+    writer?: number;
   };
   /** When the last cycle completed (ms), for the status line. */
   lastSync: number;
@@ -169,7 +193,9 @@ export class SyncEngine {
         if (error instanceof SyncError && error.kind !== 'gone') throw error;
       }
       if (own && (own.written === meta.own.written || own.written === meta.own.pending)) {
-        meta.own = { tag: ownEntry.tag, written: own.written, pending: null };
+        // The write noted (or the pending one, now arrived): the writer noted with it stays.
+        const writer = meta.own.writer;
+        meta.own = { tag: ownEntry.tag, written: own.written, pending: null, ...(writer === undefined ? {} : { writer }) };
       } else if (own && meta.own.written === null && meta.own.pending === null) {
         // No memory of ever writing here (this device's sync state was lost): it's this device's
         // own file from before. Take it back rather than mistaking it for another device's.
@@ -182,8 +208,9 @@ export class SyncEngine {
         damaged = true; // damaged, or an older version put back
       }
     }
-    // Missing, damaged, or a write whose arrival was never confirmed: say it all again.
-    const rewrite = !ownEntry || damaged || meta.own.pending !== null;
+    // Missing, damaged, a write whose arrival was never confirmed, or one by an older version (it
+    // leaves out what it doesn't know, such as spaces): say it all again.
+    const rewrite = !ownEntry || damaged || meta.own.pending !== null || meta.own.writer !== WRITER;
 
     // ---- read what changed
     const fresh: DeviceFile[] = [];
@@ -193,14 +220,15 @@ export class SyncEngine {
       if (!device || device === me) continue;
       present.add(entry.name);
       const known = Object.hasOwn(meta.files, entry.name) ? meta.files[entry.name] : undefined;
-      if (known?.tag === entry.tag) {
+      // Unchanged since this reader read it (one before it may have dropped what it couldn't read).
+      if (known?.tag === entry.tag && known.reader === READER) {
         if (known.problem) result.problems.push({ device, reason: known.problem });
         continue;
       }
       // Noted, so it isn't fetched again until it changes.
       const unusable = (reason: DeviceFileError['reason']) => {
         result.problems.push({ device, reason });
-        meta.files[entry.name] = { tag: entry.tag, device, name: known?.name ?? '', app: known?.app ?? '', written: known?.written ?? ZERO, problem: reason };
+        meta.files[entry.name] = { tag: entry.tag, device, name: known?.name ?? '', app: known?.app ?? '', written: known?.written ?? ZERO, problem: reason, reader: READER };
       };
       if (tooBig(entry)) {
         unusable('unreadable'); // never downloaded
@@ -209,7 +237,7 @@ export class SyncEngine {
       try {
         const file = parseDeviceFile(await this.folder.read(entry), device, now);
         fresh.push(file);
-        meta.files[entry.name] = { tag: entry.tag, device, name: file.name, app: file.app, written: file.written };
+        meta.files[entry.name] = { tag: entry.tag, device, name: file.name, app: file.app, written: file.written, reader: READER };
       } catch (error) {
         if (error instanceof DeviceFileError) unusable(error.reason);
         else if (error instanceof SyncError && (error.kind === 'offline' || error.kind === 'server')) {
@@ -226,7 +254,7 @@ export class SyncEngine {
       if (c.origin === 'remote') news = true;
     });
     try {
-      if (adopted) this.ws.merge({ tasks: adopted.tasks, sheets: adopted.sheets, focus: adopted.focus }, 'remote');
+      if (adopted) this.ws.merge({ tasks: adopted.tasks, sheets: adopted.sheets, focus: adopted.focus, spaces: adopted.spaces }, 'remote');
       for (const file of fresh.sort((a, b) => (a.device < b.device ? -1 : 1))) {
         // Every changed file is merged, even one that seems already had through another device:
         // merges are idempotent, and skipping on another file's word would let one bad file
@@ -234,7 +262,7 @@ export class SyncEngine {
         const seenHere = { ...meta.seen };
         // A note changed on both sides is kept twice only if neither side had seen the other's text.
         const concurrent = (local: Sheet, remote: Sheet) => !seenBy(local.clk.text, file.device, file.seen) && !seenBy(remote.clk.text, me, seenHere);
-        this.ws.merge({ tasks: file.tasks, sheets: file.sheets, focus: file.focus }, 'remote', concurrent);
+        this.ws.merge({ tasks: file.tasks, sheets: file.sheets, focus: file.focus, spaces: file.spaces }, 'remote', concurrent);
         meta.seen[file.device] = later(stampOf(meta.seen, file.device), file.written);
         // Whatever that device had merged, this one now has too; no device can have seen past its
         // own clock, so a claim beyond the file's `written` is cut back to it.
@@ -261,9 +289,10 @@ export class SyncEngine {
       // Every device refuses a file this big, so writing it would only look like syncing.
       if (new TextEncoder().encode(text).length > MAX_FILE_BYTES) throw new SyncError('toolarge', 'This device’s sync file would be over 20 MB');
       meta.own.pending = written;
+      meta.own.writer = WRITER;
       await this.hooks.saveMeta(meta);
       const entry = await this.folder.write(fileName(me), text);
-      meta.own = { tag: entry.tag, written, pending: null };
+      meta.own = { tag: entry.tag, written, pending: null, writer: WRITER };
       result.wrote = true;
     }
 
@@ -284,7 +313,9 @@ function ownClock(ws: Workspace, me: string): Stamp {
     if (s > max && nodeOf(s) === me) max = s;
   };
   consider(ws.focus.clk);
+  // Every clock a record has, a move to another space (clk.space) included.
   for (const t of ws.tasks.values()) Object.values(t.clk).forEach(consider);
   for (const s of ws.sheets.values()) Object.values(s.clk).forEach(consider);
+  for (const s of ws.spaces.values()) Object.values(s.clk).forEach(consider);
   return max;
 }

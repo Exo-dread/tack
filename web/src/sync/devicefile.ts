@@ -1,8 +1,9 @@
-import { isObject, readFocus, readSheetRecord, readTaskRecord } from '../model/file';
+import { focusRecord, isObject, readFocus, readSheetRecord, readSpaceRecord, readTaskRecord, sheetRecord, spaceRecord, taskRecord } from '../model/file';
 import { isPlausibleStamp, ZERO, type Stamp } from '../model/hlc';
-import { mergeSheet, mergeTask } from '../model/merge';
+import { mergeSheet, mergeSpace, mergeTask } from '../model/merge';
+import { MAX_SPACE_NAME } from '../model/spaces';
 import { wellFormedValues } from '../model/text';
-import type { Focus, Sheet, Task, WorkspaceData } from '../model/types';
+import type { Focus, Sheet, Space, Task, WorkspaceData } from '../model/types';
 
 /**
  * A device file: everything one device knows, written only by that device, read by all the
@@ -15,7 +16,9 @@ import type { Focus, Sheet, Task, WorkspaceData } from '../model/types';
  *   written           the writer's clock when it wrote the file (later than every stamp inside)
  *   seen              for each other device, the `written` of the latest version of its file
  *                     merged into this one (directly, or through a third device's file)
- *   focus, tasks, sheets   live records, exactly as in tack.json's tackFocus section
+ *   focus, tasks, sheets   live records, exactly as in tack.json's tackFocus section (a record's
+ *                     `space` and its clock only once it has been put in one)
+ *   spaces            live spaces, only once there are any
  *   deleted           deleted records, as id → the clock of the deletion. Deletions are kept
  *                     for good while sync is on (about 45 bytes each), so a copy that's out of
  *                     date (a device back after months, a file uploaded late) can never bring
@@ -29,12 +32,15 @@ export const MAX_FILE_BYTES = 20 * 1024 * 1024;
 /**
  * Limits inside a device file, far beyond any real use. A file over them is refused whole (and
  * set aside), and an over-long record is skipped, so a damaged or crafted file can't swell every
- * device's own file for good. Tack for Windows uses the same numbers.
+ * device's own file for good. Tack for Windows uses the same numbers. (A space name is the one
+ * thing cut rather than skipped: every device keeps names to MAX_SPACE_NAME wherever they come
+ * from, so no device can hold a name its peers would refuse.)
  */
-export const MAX_RECORDS = 200_000; // tasks + sheets + deletions
+export const MAX_RECORDS = 200_000; // tasks + sheets + spaces + deletions
 export const MAX_SEEN = 1_000;
 export const MAX_TASK_TEXT = 100_000;
 export const MAX_NOTE_TEXT = 1_000_000;
+export { MAX_SPACE_NAME };
 
 const DEVICE_ID = /^[0-9A-Za-z]{4,32}$/;
 const FILE_NAME = /^([0-9A-Za-z]{4,32})\.json$/;
@@ -52,6 +58,7 @@ export interface DeviceFile {
   /** Live and deleted records (deleted ones carry only their id and deletion clock). */
   tasks: Task[];
   sheets: Sheet[];
+  spaces: Space[];
 }
 
 export const isDeviceId = (id: unknown): id is string => typeof id === 'string' && DEVICE_ID.test(id);
@@ -65,13 +72,21 @@ export function deviceOfFile(name: string): string | null {
 
 /** A deleted task as a device file carries it: just enough to win against any older copy. */
 export function deadTask(id: string, deleted: Stamp): Task {
-  return { id, text: '', created: '', completed: null, order: 'V', deleted: true, clk: { text: ZERO, completed: ZERO, order: ZERO, deleted } };
+  return { id, text: '', created: '', completed: null, order: 'V', deleted: true, space: '', clk: { text: ZERO, completed: ZERO, order: ZERO, deleted, space: ZERO } };
 }
 
 export function deadSheet(id: string, deleted: Stamp): Sheet {
-  return { id, text: '', updated: '', order: 'V', deleted: true, clk: { text: ZERO, order: ZERO, deleted } };
+  return { id, text: '', updated: '', order: 'V', deleted: true, space: '', clk: { text: ZERO, order: ZERO, deleted, space: ZERO } };
 }
 
+export function deadSpace(id: string, deleted: Stamp): Space {
+  return { id, name: '', order: 'V', deleted: true, clk: { name: ZERO, order: ZERO, deleted } };
+}
+
+/**
+ * The file's content, key by key (never memory's objects as they are): with no spaces and nothing
+ * put in one, it's byte for byte what versions before spaces wrote. Tack for Windows writes the same.
+ */
 export function makeDeviceFile(
   data: WorkspaceData,
   meta: { device: string; name: string; app: string; written: Stamp; seen: Record<string, Stamp> },
@@ -83,6 +98,9 @@ export function makeDeviceFile(
     for (const r of records.filter((x) => x.deleted).sort(byId)) out[r.id] = r.clk.deleted;
     return out;
   };
+  const spaces = data.spaces ?? [];
+  const live = spaces.filter((s) => !s.deleted).sort(byId);
+  const deadSpaces = gone(spaces);
   return {
     format: DEVICE_FORMAT,
     version: DEVICE_VERSION,
@@ -91,10 +109,15 @@ export function makeDeviceFile(
     app: meta.app,
     written: meta.written,
     seen: sortedMap(meta.seen, meta.device),
-    focus: { ...data.focus },
-    tasks: data.tasks.filter((t) => !t.deleted).sort(byId),
-    sheets: data.sheets.filter((s) => !s.deleted).sort(byId),
-    deleted: { tasks: gone(data.tasks), sheets: gone(data.sheets) },
+    focus: focusRecord(data.focus),
+    tasks: data.tasks.filter((t) => !t.deleted).sort(byId).map((t) => taskRecord(t)),
+    sheets: data.sheets.filter((s) => !s.deleted).sort(byId).map((s) => sheetRecord(s)),
+    ...(live.length ? { spaces: live.map((s) => spaceRecord(s)) } : {}),
+    deleted: {
+      tasks: gone(data.tasks),
+      sheets: gone(data.sheets),
+      ...(Object.keys(deadSpaces).length ? { spaces: deadSpaces } : {}),
+    },
   };
 }
 
@@ -131,8 +154,11 @@ export function parseDeviceFile(text: string, device: string, now = Date.now()):
     throw new DeviceFileError('unreadable');
   }
   const deleted = isObject(doc.deleted) ? doc.deleted : {};
+  // Files from before spaces have none (and anything but a list is none).
+  const rawSpaces = Array.isArray(doc.spaces) ? doc.spaces : [];
   const count = (map: unknown) => (isObject(map) ? Object.keys(map).length : 0);
-  if (doc.tasks.length + doc.sheets.length + count(deleted.tasks) + count(deleted.sheets) > MAX_RECORDS || count(doc.seen) > MAX_SEEN) {
+  const records = doc.tasks.length + doc.sheets.length + rawSpaces.length + count(deleted.tasks) + count(deleted.sheets) + count(deleted.spaces);
+  if (records > MAX_RECORDS || count(doc.seen) > MAX_SEEN) {
     throw new DeviceFileError('unreadable');
   }
 
@@ -145,10 +171,17 @@ export function parseDeviceFile(text: string, device: string, now = Date.now()):
   const addSheet = (s: Sheet | null) => {
     if (s && s.text.length <= MAX_NOTE_TEXT) sheets.set(s.id, mergeSheet(sheets.get(s.id), s).value);
   };
+  const spaces = new Map<string, Space>();
+  // Names arrive cut to MAX_SPACE_NAME (readSpaceRecord), as every device keeps them.
+  const addSpace = (s: Space | null) => {
+    if (s) spaces.set(s.id, mergeSpace(spaces.get(s.id), s).value);
+  };
   doc.tasks.forEach((raw) => addTask(readTaskRecord(raw, now)));
   doc.sheets.forEach((raw) => addSheet(readSheetRecord(raw, now)));
+  rawSpaces.forEach((raw) => addSpace(readSpaceRecord(raw, now)));
   for (const [id, stamp] of entries(deleted.tasks, now)) addTask(deadTask(id, stamp));
   for (const [id, stamp] of entries(deleted.sheets, now)) addSheet(deadSheet(id, stamp));
+  for (const [id, stamp] of entries(deleted.spaces, now)) addSpace(deadSpace(id, stamp));
 
   return {
     format: DEVICE_FORMAT,
@@ -161,6 +194,7 @@ export function parseDeviceFile(text: string, device: string, now = Date.now()):
     focus: readFocus(doc.focus, now),
     tasks: [...tasks.values()],
     sheets: [...sheets.values()],
+    spaces: [...spaces.values()],
   };
 }
 

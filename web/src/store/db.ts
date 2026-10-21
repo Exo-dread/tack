@@ -1,5 +1,7 @@
-import { mergeFocus, mergeSheet, mergeTask } from '../model/merge';
-import type { Focus, Sheet, Task, WorkspaceData } from '../model/types';
+import { isObject, readSpaceRecord } from '../model/file';
+import { mergeFocus, mergeSheet, mergeSpace, mergeTask } from '../model/merge';
+import { normalSheet, normalTask } from '../model/spaces';
+import type { Focus, Sheet, Space, Task, WorkspaceData } from '../model/types';
 
 /**
  * Where records live on this device. IndexedDB normally; localStorage only where IndexedDB is
@@ -13,9 +15,11 @@ import type { Focus, Sheet, Task, WorkspaceData } from '../model/types';
 export interface Batch {
   tasks: Task[];
   sheets: Sheet[];
+  spaces?: Space[];
   focus?: Focus;
   deleteTasks?: string[];
   deleteSheets?: string[];
+  deleteSpaces?: string[];
 }
 
 export interface Snapshot {
@@ -47,6 +51,32 @@ const DB_NAME = 'tack';
 const DB_VERSION = 1;
 const OPEN_TIMEOUT_MS = 10000;
 const EMPTY_FOCUS: Focus = { id: null, clk: '000000000.0000.0' };
+
+/**
+ * What's stored, as this version keeps it in memory. Records saved before spaces have no space
+ * fields (they're in Main: '' and ZERO). Spaces are one list in the meta store (no new object store,
+ * so no database upgrade), and anything there that isn't a sound space record is left out.
+ */
+function loaded(tasks: Task[], sheets: Sheet[], focus: Focus | undefined, spaces: unknown): WorkspaceData {
+  return {
+    tasks: tasks.map((t) => (isObject(t) && isObject(t.clk) ? normalTask(t) : t)),
+    sheets: sheets.map((s) => (isObject(s) && isObject(s.clk) ? normalSheet(s) : s)),
+    focus: focus ?? EMPTY_FOCUS,
+    // Clocks this device stored aren't judged against today's date (as for tasks): any well-formed one goes.
+    spaces: Array.isArray(spaces) ? spaces.map((s) => readSpaceRecord(s, Infinity)).filter((s): s is Space => s !== null) : [],
+  };
+}
+
+/** The stored list of spaces with a batch merged in, record by record (so tabs never undo each other). */
+function mergedSpaces(stored: unknown, batch: Batch): Space[] {
+  const spaces = new Map<string, Space>();
+  for (const s of Array.isArray(stored) ? (stored as Space[]) : []) if (isObject(s) && typeof s.id === 'string') spaces.set(s.id, s);
+  for (const s of batch.spaces ?? []) spaces.set(s.id, mergeSpace(spaces.get(s.id), s).value);
+  for (const id of batch.deleteSpaces ?? []) spaces.delete(id);
+  return [...spaces.values()];
+}
+
+const touchesSpaces = (batch: Batch): boolean => !!(batch.spaces?.length || batch.deleteSpaces?.length);
 
 export async function openBackend(): Promise<Backend> {
   if (typeof indexedDB !== 'undefined') {
@@ -177,13 +207,14 @@ export class IdbBackend implements Backend {
   load() {
     return this.run(async (db) => {
       const tx = db.transaction(['tasks', 'sheets', 'meta'], 'readonly');
-      const [tasks, sheets, focus, device] = await Promise.all([
+      const [tasks, sheets, focus, device, spaces] = await Promise.all([
         request(tx.objectStore('tasks').getAll() as IDBRequest<Task[]>),
         request(tx.objectStore('sheets').getAll() as IDBRequest<Sheet[]>),
         request(tx.objectStore('meta').get('focus') as IDBRequest<Focus | undefined>),
         request(tx.objectStore('meta').get('device') as IDBRequest<string | undefined>),
+        request(tx.objectStore('meta').get('spaces') as IDBRequest<unknown>),
       ]);
-      return { data: { tasks, sheets, focus: focus ?? EMPTY_FOCUS }, device: device ?? null };
+      return { data: loaded(tasks, sheets, focus, spaces), device: device ?? null };
     });
   }
 
@@ -206,6 +237,10 @@ export class IdbBackend implements Backend {
       }
       for (const id of batch.deleteTasks ?? []) tasks.delete(id);
       for (const id of batch.deleteSheets ?? []) sheets.delete(id);
+      if (touchesSpaces(batch)) {
+        const get = meta.get('spaces');
+        get.onsuccess = () => meta.put(mergedSpaces(get.result, batch), 'spaces');
+      }
       if (batch.focus) {
         const focus = batch.focus;
         const get = meta.get('focus') as IDBRequest<Focus | undefined>;
@@ -264,7 +299,7 @@ export class IdbBackend implements Backend {
 
 // ---------------------------------------------------------------------------- localStorage
 
-const KEYS = { tasks: 'tack.tasks', sheets: 'tack.sheets', focus: 'tack.focus', device: 'tack.device', snapshots: 'tack.snapshots' };
+const KEYS = { tasks: 'tack.tasks', sheets: 'tack.sheets', focus: 'tack.focus', spaces: 'tack.spaces', device: 'tack.device', snapshots: 'tack.snapshots' };
 
 /** Same shape, kept as a few JSON blobs. Fine for the size of a task list. */
 export class LocalBackend implements Backend {
@@ -293,7 +328,7 @@ export class LocalBackend implements Backend {
     const tasks = Object.values(this.read<Record<string, Task>>(KEYS.tasks, {}));
     const sheets = Object.values(this.read<Record<string, Sheet>>(KEYS.sheets, {}));
     const focus = this.read<Focus>(KEYS.focus, EMPTY_FOCUS);
-    return { data: { tasks, sheets, focus }, device: this.get(KEYS.device) };
+    return { data: loaded(tasks, sheets, focus, this.read<unknown>(KEYS.spaces, [])), device: this.get(KEYS.device) };
   }
 
   async write(batch: Batch) {
@@ -306,6 +341,7 @@ export class LocalBackend implements Backend {
     for (const id of batch.deleteSheets ?? []) sheets.delete(id);
     this.set(KEYS.tasks, JSON.stringify(Object.fromEntries(tasks)));
     this.set(KEYS.sheets, JSON.stringify(Object.fromEntries(sheets)));
+    if (touchesSpaces(batch)) this.set(KEYS.spaces, JSON.stringify(mergedSpaces(this.read<unknown>(KEYS.spaces, []), batch)));
     if (batch.focus) {
       const stored = this.read<Focus | null>(KEYS.focus, null);
       this.set(KEYS.focus, JSON.stringify(stored ? mergeFocus(stored, batch.focus).value : batch.focus));
@@ -364,7 +400,7 @@ export class MemoryBackend extends LocalBackend {
 export const stranded = {
   async read(): Promise<WorkspaceData | null> {
     try {
-      if (!localStorage.getItem(KEYS.tasks) && !localStorage.getItem(KEYS.sheets)) return null;
+      if (!localStorage.getItem(KEYS.tasks) && !localStorage.getItem(KEYS.sheets) && !localStorage.getItem(KEYS.spaces)) return null;
       return (await new LocalBackend().load()).data;
     } catch {
       return null;
@@ -373,7 +409,7 @@ export const stranded = {
   clear(): void {
     try {
       // Sync state from that session goes too (its sign-in, if any, is asked for again).
-      for (const k of [KEYS.tasks, KEYS.sheets, KEYS.focus, KEYS.snapshots, 'tack.meta.sync', 'tack.meta.auth']) localStorage.removeItem(k);
+      for (const k of [KEYS.tasks, KEYS.sheets, KEYS.focus, KEYS.spaces, KEYS.snapshots, 'tack.meta.sync', 'tack.meta.auth']) localStorage.removeItem(k);
     } catch {
       /* ignore */
     }

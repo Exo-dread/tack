@@ -1,9 +1,63 @@
 import { Hlc } from '../../src/model/hlc';
 import { newDeviceId } from '../../src/model/ids';
+import { effectiveSpace } from '../../src/model/spaces';
 import { Workspace } from '../../src/model/workspace';
-import { DeviceCollision, emptyMeta, SyncEngine, SyncError, type CycleResult, type FolderEntry, type SyncFolder, type SyncMeta } from '../../src/sync/engine';
+import { DeviceCollision, emptyMeta, SyncEngine, SyncError, WRITER, type CycleResult, type FolderEntry, type SyncFolder, type SyncMeta } from '../../src/sync/engine';
 
 export const DAY = 86_400_000;
+
+/**
+ * A device file as a version before spaces reads it, and writes it: no `space` (or clock for it)
+ * on any record, no spaces, no deleted spaces. Anything that isn't a device file stays as it is.
+ */
+export function beforeSpaces(text: string): string {
+  let doc: Record<string, any>;
+  try {
+    doc = JSON.parse(text);
+  } catch {
+    return text;
+  }
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return text;
+  for (const list of [doc.tasks, doc.sheets]) {
+    for (const r of Array.isArray(list) ? list : []) {
+      if (!r || typeof r !== 'object') continue;
+      delete r.space;
+      if (r.clk && typeof r.clk === 'object') delete r.clk.space;
+    }
+  }
+  delete doc.spaces;
+  if (doc.deleted && typeof doc.deleted === 'object') delete doc.deleted.spaces;
+  return JSON.stringify(doc);
+}
+
+/** Sync state as a version before spaces keeps it: no reader on any file it read. */
+export function withoutReader(meta: SyncMeta): SyncMeta {
+  for (const f of Object.values(meta.files)) delete f.reader;
+  return meta;
+}
+
+/**
+ * A version before spaces never looks at the writer mark: a cycle it runs starts with the mark
+ * set (so this version's engine, standing in for it, writes only for that version's reasons).
+ * Returns `own` as the cycle found it, for asOldVersion.
+ */
+export function asOldCycle(meta: SyncMeta): { tag: string | null; writer?: number } {
+  const found = { tag: meta.own.tag, writer: meta.own.writer };
+  meta.own.writer = WRITER;
+  return found;
+}
+
+/**
+ * Sync state as a version before spaces leaves it (changed in place): no reader on any file it
+ * read, and no writer mark once it has replaced `own` (it writes its own file, or finds it there,
+ * and notes it anew), else the mark as it found it. `found`: from asOldCycle.
+ */
+export function asOldVersion(meta: SyncMeta, found: { tag: string | null; writer?: number }): SyncMeta {
+  withoutReader(meta);
+  if (meta.own.tag !== found.tag || found.writer === undefined) delete meta.own.writer;
+  else meta.own.writer = found.writer;
+  return meta;
+}
 
 /** A file's size in bytes, as a listing reports it. */
 const bytes = (text: string): number => new TextEncoder().encode(text).length;
@@ -107,6 +161,11 @@ export class Device {
   meta: SyncMeta;
   saved: SyncMeta;
   skew = 0;
+  /**
+   * Runs a version before spaces: what it reads loses its space fields (so it never learns them),
+   * what it writes has none, and its sync state says nothing of the reader or the writer.
+   */
+  old = false;
   readonly log: CycleResult[] = [];
 
   constructor(
@@ -126,11 +185,22 @@ export class Device {
     return this.ws.hlc.node;
   }
 
+  /** While a cycle of a version before spaces runs: its own state as that cycle found it. */
+  private found: { tag: string | null; writer?: number } | null = null;
+
   private engine(): SyncEngine {
-    return new SyncEngine(this.ws, this.view, {
+    const view = this.view;
+    const folder: SyncFolder = this.old
+      ? {
+          list: () => view.list(),
+          read: async (entry) => beforeSpaces(await view.read(entry)),
+          write: (name, text) => view.write(name, beforeSpaces(text)),
+        }
+      : view;
+    return new SyncEngine(this.ws, folder, {
       label: () => ({ name: this.label, app: 'test' }),
       flush: async () => {},
-      saveMeta: async (m) => void (this.saved = structuredClone(m)),
+      saveMeta: async (m) => void (this.saved = this.found ? asOldVersion(structuredClone(m), this.found) : structuredClone(m)),
     });
   }
 
@@ -141,8 +211,11 @@ export class Device {
   async sync(): Promise<CycleResult> {
     for (let attempt = 0; ; attempt++) {
       const meta = structuredClone(this.saved);
+      const found = this.old ? asOldCycle(meta) : null;
+      this.found = found;
       try {
         const result = await this.engine().cycle(meta, this.clock.now + this.skew);
+        if (found) asOldVersion(meta, found);
         this.saved = meta;
         this.meta = meta;
         this.log.push(result);
@@ -155,6 +228,8 @@ export class Device {
           continue;
         }
         throw error;
+      } finally {
+        this.found = null;
       }
     }
   }
@@ -192,7 +267,16 @@ export function records(ws: Workspace) {
     focus: data.focus,
     tasks: data.tasks.sort(byId).map((t) => (t.deleted ? dead(t) : t)),
     sheets: data.sheets.sort(byId).map((s) => (s.deleted ? dead(s) : s)),
+    spaces: data.spaces.sort(byId).map((s) => (s.deleted ? dead(s) : s)),
   };
+}
+
+/** Where each live task and sheet shows, by its text: the space it resolves to (see effectiveSpace). */
+export function shownIn(ws: Workspace): Record<string, string> {
+  const out: Record<string, string> = {};
+  const spaces = [...ws.spaces.values()];
+  for (const r of [...ws.tasks.values(), ...ws.sheets.values()]) if (!r.deleted) out[r.text] = effectiveSpace(r.space, spaces);
+  return out;
 }
 
 /** Everyone syncs until nothing changes (with the OneDrive app on PCs passing files along). */

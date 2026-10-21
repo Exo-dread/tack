@@ -70,9 +70,10 @@ internal static class OrderTests
         string Id(string text) => string.Concat(Enumerable.Repeat(text, 12));
         string c = Stamp.Encode(new DateTimeOffset(2026, 10, 17, 8, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds(), 0, "other");
         var data = new WorkspaceData(
-            tasks.Select(t => new TaskData(Id(t.Text), t.Text, "2026-10-17T08:00:00.000Z", null, t.Order, false, TaskClocks.All(c))).ToList(),
+            tasks.Select(t => new TaskData(Id(t.Text), t.Text, "2026-10-17T08:00:00.000Z", null, t.Order, false, "", TaskClocks.All(c))).ToList(),
             [],
-            new FocusData(focus == null ? null : Id(focus), c));
+            new FocusData(focus == null ? null : Id(focus), c),
+            []);
         return new Workspace(new Settings(), new Hlc("desk"), data);
     }
 

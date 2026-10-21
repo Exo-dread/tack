@@ -15,9 +15,13 @@ namespace Tack.Sync;
 ///   written           the writer's clock when it wrote the file (later than every stamp inside)
 ///   seen              for each other device, the "written" of the latest version of its file
 ///                     merged into this one (directly, or through a third device's file)
-///   focus, tasks, sheets   live records, exactly as in tack.json's tackFocus section
-///   deleted           deleted records, as id → the clock of the deletion. Kept for good while
-///                     sync is on, so an out-of-date copy can never bring a deleted task back.
+///   focus, tasks, sheets   live records, exactly as in tack.json's tackFocus section (a task's or
+///                     sheet's "space" only once it has been put in one)
+///   spaces            live spaces, only if there are any
+///   deleted           deleted records, as id → the clock of the deletion ("spaces" only if any
+///                     space was deleted). Kept for good while sync is on, so an out-of-date copy
+///                     can never bring a deleted task back.
+/// With no spaces and nothing put in one, the file is exactly what Tack 1.3 writes.
 /// </summary>
 internal sealed record DeviceFile(
     int Version,
@@ -28,7 +32,8 @@ internal sealed record DeviceFile(
     IReadOnlyDictionary<string, string> Seen,
     FocusData Focus,
     IReadOnlyList<TaskData> Tasks,
-    IReadOnlyList<SheetData> Sheets)
+    IReadOnlyList<SheetData> Sheets,
+    IReadOnlyList<SpaceData> Spaces)
 {
     public const string Format = "tack-sync-device";
     public const int CurrentVersion = 1;
@@ -38,12 +43,15 @@ internal sealed record DeviceFile(
     /// <summary>
     /// Limits inside a device file (the same as devicefile.ts), far beyond any real use. A file over
     /// them is refused whole and an over-long record is skipped, so a damaged or crafted file can't
-    /// swell every device's own file for good.
+    /// swell every device's own file for good. (A space name is the one thing cut rather than
+    /// skipped: every device keeps names to <see cref="MaxSpaceName"/> wherever they come from, so
+    /// no device can hold a name its peers would refuse.)
     /// </summary>
-    public const int MaxRecords = 200_000; // tasks + sheets + deletions
+    public const int MaxRecords = 200_000; // tasks + sheets + spaces + deletions
     public const int MaxSeen = 1_000;
     public const int MaxTaskText = 100_000;
     public const int MaxNoteText = 1_000_000;
+    public const int MaxSpaceName = SpaceField.MaxName;
 
     private static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
@@ -58,10 +66,13 @@ internal sealed record DeviceFile(
 
     /// <summary>A deleted task as a device file carries it: just enough to win against any older copy.</summary>
     public static TaskData DeadTask(string id, string deleted) =>
-        new(id, "", "", null, OrderKey.Mid, true, new TaskClocks(Stamp.Zero, Stamp.Zero, Stamp.Zero, deleted));
+        new(id, "", "", null, OrderKey.Mid, true, "", new TaskClocks(Stamp.Zero, Stamp.Zero, Stamp.Zero, deleted, Stamp.Zero));
 
     public static SheetData DeadSheet(string id, string deleted) =>
-        new(id, "", "", OrderKey.Mid, true, new SheetClocks(Stamp.Zero, Stamp.Zero, deleted));
+        new(id, "", "", OrderKey.Mid, true, "", new SheetClocks(Stamp.Zero, Stamp.Zero, deleted, Stamp.Zero));
+
+    public static SpaceData DeadSpace(string id, string deleted) =>
+        new(id, "", OrderKey.Mid, true, new SpaceClocks(Stamp.Zero, Stamp.Zero, deleted));
 
     /// <summary>Writes a device file, key for key as Tack Focus writes it.</summary>
     public static byte[] Write(WorkspaceData data, string device, string name, string app, string written, IReadOnlyDictionary<string, string> seen)
@@ -95,11 +106,13 @@ internal sealed record DeviceFile(
                 w.WriteString("completed", t.Completed);
                 w.WriteString("order", t.Order);
                 w.WriteBoolean("deleted", false);
+                if (t.Clk.Space != Stamp.Zero) w.WriteString("space", t.Space);
                 w.WriteStartObject("clk");
                 w.WriteString("text", t.Clk.Text);
                 w.WriteString("completed", t.Clk.Completed);
                 w.WriteString("order", t.Clk.Order);
                 w.WriteString("deleted", t.Clk.Deleted);
+                if (t.Clk.Space != Stamp.Zero) w.WriteString("space", t.Clk.Space);
                 w.WriteEndObject();
                 w.WriteEndObject();
             }
@@ -114,14 +127,37 @@ internal sealed record DeviceFile(
                 w.WriteString("updated", s.Updated);
                 w.WriteString("order", s.Order);
                 w.WriteBoolean("deleted", false);
+                if (s.Clk.Space != Stamp.Zero) w.WriteString("space", s.Space);
                 w.WriteStartObject("clk");
                 w.WriteString("text", s.Clk.Text);
                 w.WriteString("order", s.Clk.Order);
                 w.WriteString("deleted", s.Clk.Deleted);
+                if (s.Clk.Space != Stamp.Zero) w.WriteString("space", s.Clk.Space);
                 w.WriteEndObject();
                 w.WriteEndObject();
             }
             w.WriteEndArray();
+
+            var liveSpaces = data.Spaces.Where(s => !s.Deleted).OrderBy(s => s.Id, StringComparer.Ordinal).ToList();
+            if (liveSpaces.Count > 0)
+            {
+                w.WriteStartArray("spaces");
+                foreach (var s in liveSpaces)
+                {
+                    w.WriteStartObject();
+                    w.WriteString("id", s.Id);
+                    w.WriteString("name", s.Name);
+                    w.WriteString("order", s.Order);
+                    w.WriteBoolean("deleted", false);
+                    w.WriteStartObject("clk");
+                    w.WriteString("name", s.Clk.Name);
+                    w.WriteString("order", s.Clk.Order);
+                    w.WriteString("deleted", s.Clk.Deleted);
+                    w.WriteEndObject();
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
+            }
 
             w.WriteStartObject("deleted");
             w.WriteStartObject("tasks");
@@ -130,6 +166,12 @@ internal sealed record DeviceFile(
             w.WriteStartObject("sheets");
             foreach (var s in data.Sheets.Where(s => s.Deleted).OrderBy(s => s.Id, StringComparer.Ordinal)) w.WriteString(s.Id, s.Clk.Deleted);
             w.WriteEndObject();
+            if (data.Spaces.Any(s => s.Deleted))
+            {
+                w.WriteStartObject("spaces");
+                foreach (var s in data.Spaces.Where(s => s.Deleted).OrderBy(s => s.Id, StringComparer.Ordinal)) w.WriteString(s.Id, s.Clk.Deleted);
+                w.WriteEndObject();
+            }
             w.WriteEndObject();
             w.WriteEndObject();
         }
@@ -180,8 +222,10 @@ internal sealed record DeviceFile(
             if (!Stamp.IsPlausible(written, nowMs) || !IsArray(doc, "tasks") || !IsArray(doc, "sheets"))
                 throw new DeviceFileException(DeviceFileProblem.Unreadable);
             doc.TryGetProperty("deleted", out var deletedMaps);
-            if (doc.GetProperty("tasks").GetArrayLength() + doc.GetProperty("sheets").GetArrayLength()
-                + Count(deletedMaps, "tasks") + Count(deletedMaps, "sheets") > MaxRecords || Count(doc, "seen") > MaxSeen)
+            // Spaces are optional (Tack 1.3 writes none); anything but an array counts as none.
+            int spaceCount = IsArray(doc, "spaces") ? doc.GetProperty("spaces").GetArrayLength() : 0;
+            if (doc.GetProperty("tasks").GetArrayLength() + doc.GetProperty("sheets").GetArrayLength() + spaceCount
+                + Count(deletedMaps, "tasks") + Count(deletedMaps, "sheets") + Count(deletedMaps, "spaces") > MaxRecords || Count(doc, "seen") > MaxSeen)
                 throw new DeviceFileException(DeviceFileProblem.Unreadable);
 
             // Duplicate ids (only a hand edit makes them) merge rather than one silently replacing the other.
@@ -195,12 +239,23 @@ internal sealed record DeviceFile(
             {
                 if (s != null && s.Text.Length <= MaxNoteText) sheets[s.Id] = sheets.TryGetValue(s.Id, out var had) ? Merge.Sheet(had, s).Value : s;
             }
+            // Names arrive cut to MaxSpaceName (TackFile.ReadSpaceRecord), as every device keeps them.
+            var spaces = new Dictionary<string, SpaceData>();
+            void AddSpace(SpaceData? s)
+            {
+                if (s != null) spaces[s.Id] = spaces.TryGetValue(s.Id, out var had) ? Merge.Space(had, s).Value : s;
+            }
             foreach (var r in doc.GetProperty("tasks").EnumerateArray()) AddTask(TackFile.ReadTaskRecord(r, nowMs, clean: true));
             foreach (var r in doc.GetProperty("sheets").EnumerateArray()) AddSheet(TackFile.ReadSheetRecord(r, nowMs));
+            if (spaceCount > 0)
+            {
+                foreach (var r in doc.GetProperty("spaces").EnumerateArray()) AddSpace(TackFile.ReadSpaceRecord(r, nowMs));
+            }
             if (doc.TryGetProperty("deleted", out var deleted) && deleted.ValueKind == JsonValueKind.Object)
             {
                 foreach (var (id, stamp) in Entries(deleted, "tasks", nowMs)) AddTask(DeadTask(id, stamp));
                 foreach (var (id, stamp) in Entries(deleted, "sheets", nowMs)) AddSheet(DeadSheet(id, stamp));
+                foreach (var (id, stamp) in Entries(deleted, "spaces", nowMs)) AddSpace(DeadSpace(id, stamp));
             }
 
             var seen = new Dictionary<string, string>();
@@ -214,7 +269,8 @@ internal sealed record DeviceFile(
                 seen,
                 doc.TryGetProperty("focus", out var f) ? TackFile.ReadFocus(f, nowMs) : FocusData.None,
                 tasks.Values.ToList(),
-                sheets.Values.ToList());
+                sheets.Values.ToList(),
+                spaces.Values.ToList());
         }
     }
 

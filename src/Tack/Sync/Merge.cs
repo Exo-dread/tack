@@ -19,6 +19,9 @@ internal static class Merge
             value = value with { Order = remote.Order, Clk = value.Clk with { Order = remote.Clk.Order } };
         if (Wins(remote.Clk.Deleted, remote.Deleted, local.Clk.Deleted, local.Deleted))
             value = value with { Deleted = remote.Deleted, Clk = value.Clk with { Deleted = remote.Clk.Deleted } };
+        // A copy without the field (an older version's) has a Zero clock, so it never undoes an assignment.
+        if (Wins(remote.Clk.Space ?? Stamp.Zero, remote.Space ?? "", local.Clk.Space ?? Stamp.Zero, local.Space ?? ""))
+            value = value with { Space = remote.Space ?? "", Clk = value.Clk with { Space = remote.Clk.Space ?? Stamp.Zero } };
         // Creation time never changes; if copies disagree (hand edits), keep the earlier one. A
         // deletion that arrived before the task did (device files carry deletions bare) has none.
         if (remote.Created.Length > 0 && (value.Created.Length == 0 || string.CompareOrdinal(remote.Created, value.Created) < 0))
@@ -50,22 +53,41 @@ internal static class Merge
             value = value with { Order = remote.Order, Clk = value.Clk with { Order = remote.Clk.Order } };
         if (Wins(remote.Clk.Deleted, remote.Deleted, local.Clk.Deleted, local.Deleted))
             value = value with { Deleted = remote.Deleted, Clk = value.Clk with { Deleted = remote.Clk.Deleted } };
+        if (Wins(remote.Clk.Space ?? Stamp.Zero, remote.Space ?? "", local.Clk.Space ?? Stamp.Zero, local.Space ?? ""))
+            value = value with { Space = remote.Space ?? "", Clk = value.Clk with { Space = remote.Clk.Space ?? Stamp.Zero } };
 
         if (textConcurrent)
         {
             var loser = value.Text == local.Text ? remote : local;
             if (JsText.Trim(loser.Text).Length > 0)
             {
+                // The copy stays in the space the losing text was written in.
+                var (space, spaceClk) = SpaceField.Normal(loser.Space, loser.Clk.Space);
                 conflict = new SheetData(
                     Ids.Derived($"{local.Id}:{loser.Clk.Text}"),
                     loser.Text,
                     loser.Updated,
                     OrderKey.After(value.Order),
                     false,
-                    SheetClocks.All(loser.Clk.Text));
+                    space,
+                    SheetClocks.All(loser.Clk.Text) with { Space = spaceClk });
             }
         }
         return (value, !ReferenceEquals(value, local), conflict);
+    }
+
+    /// <summary>Merges a space, field by field (no copies: a name is short, the later one wins).</summary>
+    public static (SpaceData Value, bool Changed) Space(SpaceData? local, SpaceData remote)
+    {
+        if (local == null) return (remote, true);
+        var value = local;
+        if (Wins(remote.Clk.Name, remote.Name, local.Clk.Name, local.Name))
+            value = value with { Name = remote.Name, Clk = value.Clk with { Name = remote.Clk.Name } };
+        if (Wins(remote.Clk.Order, remote.Order, local.Clk.Order, local.Order))
+            value = value with { Order = remote.Order, Clk = value.Clk with { Order = remote.Clk.Order } };
+        if (Wins(remote.Clk.Deleted, remote.Deleted, local.Clk.Deleted, local.Deleted))
+            value = value with { Deleted = remote.Deleted, Clk = value.Clk with { Deleted = remote.Clk.Deleted } };
+        return (value, !ReferenceEquals(value, local));
     }
 
     public static (FocusData Value, bool Changed) Focus(FocusData local, FocusData remote) =>

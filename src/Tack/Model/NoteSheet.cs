@@ -61,6 +61,9 @@ public sealed class NoteSheet : Observable
 
     internal bool IsDeleted { get; set; }
 
+    /// <summary>The space it was put in ("" if never: Main). See <see cref="Spaces.Effective"/>.</summary>
+    internal string Space { get; set; } = "";
+
     internal SheetClocks Clk { get; set; }
 
     internal void SetUpdated(string iso)
@@ -69,7 +72,7 @@ public sealed class NoteSheet : Observable
         UpdatedAt = IsoTime.Parse(iso) ?? DateTimeOffset.UnixEpoch;
     }
 
-    internal SheetData ToData() => new(Id, JsText.NoteText(_text), UpdatedIso, Order, IsDeleted, Clk);
+    internal SheetData ToData() => new(Id, JsText.NoteText(_text), UpdatedIso, Order, IsDeleted, Space, Clk);
 
     /// <summary>Takes every field from a record (loading or merging; not a new edit).</summary>
     internal void Apply(SheetData data)
@@ -79,6 +82,7 @@ public sealed class NoteSheet : Observable
         if (data.Updated != UpdatedIso || UpdatedAt == default) SetUpdated(data.Updated);
         Order = data.Order;
         IsDeleted = data.Deleted;
+        Space = data.Space;
         Clk = data.Clk;
     }
 

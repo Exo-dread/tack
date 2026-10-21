@@ -30,6 +30,9 @@ internal static class VectorTests
         yield return ("merge: tasks", MergeTasks);
         yield return ("merge: sheets (with conflict copies)", MergeSheets);
         yield return ("merge: focus", MergeFocus);
+        yield return ("merge: spaces", MergeSpaces);
+        yield return ("effective space", EffectiveSpaces);
+        yield return ("space names: one line, at most 100 characters, never half a character", SpaceNames);
         int n = 0;
         foreach (var script in V.GetProperty("workspaces").EnumerateArray())
         {
@@ -216,6 +219,45 @@ internal static class VectorTests
         }
     }
 
+    private static void MergeSpaces()
+    {
+        if (!V.GetProperty("merge").TryGetProperty("spaces", out var cases))
+            throw new TestFailure("tests/vectors/sync.json has no space merge cases yet (Tack Focus regenerates them: npm run vectors)");
+        int i = 0;
+        foreach (var c in cases.EnumerateArray())
+        {
+            var (value, changed) = Merge.Space(Json.Space(c.GetProperty("local")), Json.Space(c.GetProperty("remote"))!);
+            Check.Equal(Json.Space(c.GetProperty("value")), value, $"space merge {i}");
+            Check.Equal(c.GetProperty("changed").GetBoolean(), changed, $"space merge {i}: changed");
+            i++;
+        }
+    }
+
+    private static void EffectiveSpaces()
+    {
+        if (!V.TryGetProperty("effectiveSpace", out var sets))
+            throw new TestFailure("tests/vectors/sync.json has no effective space cases yet (Tack Focus regenerates them: npm run vectors)");
+        int i = 0;
+        foreach (var set in sets.EnumerateArray())
+        {
+            var spaces = set.GetProperty("spaces").EnumerateArray().Select(s => Json.Space(s)!).ToList();
+            foreach (var c in set.GetProperty("cases").EnumerateArray())
+                Check.Equal(c.Str("value"), Spaces.Effective(c.Str("space")!, spaces), $"set {i}: effective space of {JsonSerializer.Serialize(c.Str("space"))}");
+            i++;
+        }
+    }
+
+    private static void SpaceNames()
+    {
+        if (!V.TryGetProperty("spaceNames", out var cases))
+            throw new TestFailure("tests/vectors/sync.json has no space name cases yet (Tack Focus regenerates them: npm run vectors)");
+        foreach (var c in cases.EnumerateArray())
+        {
+            string name = Json.FromUnits(c.GetProperty("units"));
+            Check.Equal(Json.FromUnits(c.GetProperty("clean")), SpaceField.CleanName(name), $"cleanSpaceName {JsText.Stringify(name)}");
+        }
+    }
+
     /// <summary>The same ops, on the desktop's workspace: lists after every op, all records at checkpoints and at the end.</summary>
     private static void Replay(JsonElement script)
     {
@@ -224,7 +266,7 @@ internal static class VectorTests
         var ids = new Queue<string>();
         foreach (var op in ops)
         {
-            if (op.Str("op") is "add" or "addNow" or "addSheet") ids.Enqueue(op.Str("id")!);
+            if (op.Str("op") is "add" or "addNow" or "addSheet" or "addSpace") ids.Enqueue(op.Str("id")!);
             if (op.Str("ensured") is { } ensured) ids.Enqueue(ensured);
         }
 
@@ -258,6 +300,12 @@ internal static class VectorTests
                 case "addSheet": ws.AddSheet(); break;
                 case "editSheet": Sheet().Text = op.Str("text")!; break;
                 case "deleteSheet": undos.Push(ws.DeleteSheet(Sheet())); break;
+                case "addSpace": ws.AddSpace(SpaceName(op)); break;
+                case "renameSpace": ws.RenameSpace(op.Str("id")!, SpaceName(op)); break;
+                case "deleteSpace": undos.Push(ws.DeleteSpace(op.Str("id")!)); break;
+                // No "space": a move to no space at all, which changes nothing.
+                case "moveTaskToSpace": ws.MoveTaskToSpace(op.Str("id")!, op.Str("space") ?? ""); break;
+                case "moveSheetToSpace": ws.MoveSheetToSpace(op.Str("id")!, op.Str("space") ?? ""); break;
                 case "snapshot": snapshot = ws.ToData(); break;
                 case "restore": ws.Restore(snapshot!); break;
                 case "merge": ws.MergeFrom(Json.Data(op.GetProperty("data")), op.Str("base")); break;
@@ -268,7 +316,19 @@ internal static class VectorTests
         }
         Check.True(ids.Count == 0, "every id was used");
         Check.Data(Json.Data(script.GetProperty("data")), ws.ToData(), "final records");
+        if (script.TryGetProperty("section", out var section))
+        {
+            // tack.json's tackFocus section, as Tack Focus exported it: key for key the same.
+            using var buffer = new MemoryStream();
+            using (var w = new Utf8JsonWriter(buffer)) TackFile.WriteSection(w, ws.ToData(), "", null);
+            using var mine = JsonDocument.Parse(buffer.ToArray());
+            foreach (string key in new[] { "focus", "tasks", "sheets", "spaces" })
+                Check.Equal(StateFileTests.Ordered(section.GetProperty(key)), StateFileTests.Ordered(mine.RootElement.GetProperty(key)), $"tack.json's section: {key}, key for key");
+        }
     }
+
+    /// <summary>A space op's name, as the script gives it ("name", or "text" like the task ops).</summary>
+    private static string SpaceName(JsonElement op) => op.Str("name") ?? op.Str("text") ?? "";
 
     /// <summary>A file imported into a workspace, as Settings → Import does it.</summary>
     private static void Import(JsonElement c)

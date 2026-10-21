@@ -12,11 +12,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { encode, Hlc, ZERO } from '../../src/model/hlc';
+import { MAIN } from '../../src/model/spaces';
 import type { WorkspaceData } from '../../src/model/types';
 import { Workspace } from '../../src/model/workspace';
 import { DeviceFileError, makeDeviceFile, parseDeviceFile, serializeDeviceFile } from '../../src/sync/devicefile';
-import { DeviceCollision, emptyMeta, SyncEngine, type CycleResult, type SyncMeta } from '../../src/sync/engine';
-import { Cloud, FolderView } from './synchelpers';
+import { DeviceCollision, emptyMeta, READER, SyncEngine, type CycleResult, type SyncFolder, type SyncMeta } from '../../src/sync/engine';
+import { asOldCycle, asOldVersion, beforeSpaces, Cloud, FolderView } from './synchelpers';
+import { unsetSpacesLeftOut } from './vectorjson';
 
 const VECTORS = '../../../tests/vectors/sync-engine.json';
 const DESKTOP_DEVICE = fileURLToPath(new URL('../../../tests/vectors/desktop-device.json', import.meta.url));
@@ -41,7 +43,7 @@ const hlcState = (h: Hlc) => {
 /** Records sorted by id, so both apps compare them the same way. */
 function sorted(data: WorkspaceData): WorkspaceData {
   const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : 1);
-  return { focus: data.focus, tasks: [...data.tasks].sort(byId), sheets: [...data.sheets].sort(byId) };
+  return { focus: data.focus, tasks: [...data.tasks].sort(byId), sheets: [...data.sheets].sort(byId), spaces: [...(data.spaces ?? [])].sort(byId) };
 }
 
 interface CycleVector {
@@ -61,7 +63,14 @@ async function scenario(): Promise<CycleVector[]> {
     const ws = new Workspace(new Hlc(id, () => wall), () => new Date(wall));
     const view = new FolderView(cloud);
     let saved: SyncMeta = emptyMeta('folder');
-    const engine = new SyncEngine(ws, view, {
+    let old = false;
+    // While `old`, a version before spaces: it reads and writes files without space fields.
+    const folder: SyncFolder = {
+      list: () => view.list(),
+      read: async (entry) => (old ? beforeSpaces(await view.read(entry)) : view.read(entry)),
+      write: (name, text) => view.write(name, old ? beforeSpaces(text) : text),
+    };
+    const engine = new SyncEngine(ws, folder, {
       label: () => ({ name: `Device ${id}`, app: 'Tack Focus test' }),
       flush: async () => {},
       saveMeta: async (m) => void (saved = structuredClone(m)),
@@ -74,7 +83,20 @@ async function scenario(): Promise<CycleVector[]> {
       forget() {
         saved = emptyMeta('folder');
       },
+      /** Runs a version before spaces (true) or this one (false). */
+      setOld(value: boolean) {
+        old = value;
+      },
       async sync() {
+        if (old) {
+          // Not recorded: Tack for Windows replays this version's cycles. Its sync state has no
+          // reader, and no writer mark once it has written its file.
+          const meta = structuredClone(saved);
+          const found = asOldCycle(meta);
+          await engine.cycle(meta, wall);
+          saved = asOldVersion(meta, found);
+          return;
+        }
         const before = {
           data: sorted(ws.toData()),
           meta: structuredClone(saved),
@@ -191,6 +213,56 @@ async function scenario(): Promise<CycleVector[]> {
     tick();
     await d.sync();
   }
+
+  // ---- Spaces (the tablet, whose id another device took, sits them out; its file stays). The desk
+  // still runs a version before spaces: it drops what it can't read and writes its file without
+  // it (those cycles aren't recorded: they're not this version's).
+  desk.setOld(true);
+  tick();
+  const work = phone.ws.addSpace('Work');
+  phone.ws.moveTaskToSpace(b.id, work.id);
+  phone.ws.moveSheetToSpace(sheet.id, work.id);
+  phone.ws.renameSpace(MAIN, 'Inbox');
+  for (const d of [phone, desk]) {
+    tick();
+    await d.sync();
+  }
+  // The old desk edits the task the phone moved, and the phone moves another: only a move moves a task.
+  tick();
+  desk.ws.editTask(b.id, 'Draft the drainage report, v2');
+  phone.ws.moveTaskToSpace(a.id, work.id);
+  for (const d of [desk, phone, desk, phone, desk]) {
+    tick();
+    await d.sync();
+  }
+  // The desk upgrades. No file changed since it last read them all, but its old reader dropped the
+  // spaces in them: it reads every file once more, learns them, and from then on skips them again.
+  desk.setOld(false);
+  tick();
+  await desk.sync();
+  tick();
+  await desk.sync();
+  // A space deleted (its tasks show in Main meanwhile), then the deletion undone; a move back to Main.
+  tick();
+  const undoSpace = phone.ws.deleteSpace(work.id);
+  for (const d of [phone, desk]) {
+    tick();
+    await d.sync();
+  }
+  tick();
+  undoSpace();
+  desk.ws.moveSheetToSpace(sheet.id, MAIN);
+  for (const d of [phone, desk, phone, desk]) {
+    tick();
+    await d.sync();
+  }
+  // A name over 100 characters is cut where it's typed, so the other device has the very same.
+  tick();
+  phone.ws.renameSpace(work.id, `${'W'.repeat(99)}${String.fromCharCode(0xd83d, 0xde00)} and more`);
+  for (const d of [phone, desk]) {
+    tick();
+    await d.sync();
+  }
   return cycles;
 }
 
@@ -238,7 +310,68 @@ function deviceFiles() {
     read('written in the future', 'abcd1234', JSON.stringify({ ...good, written: encode(T0 + 400 * 86400000, 0, 'abcd1234') })),
     read('no deleted section', 'abcd1234', JSON.stringify({ ...good, deleted: undefined })),
     read('long name', 'abcd1234', JSON.stringify({ ...good, name: 'x'.repeat(150) })),
+    // Spaces (added later, so the cases above stay as they were).
+    read('spaces, and space fields good and bad', 'abcd1234', JSON.stringify(withSpaces(good, w, now))),
+    read('spaces that are not a list', 'abcd1234', JSON.stringify({ ...good, spaces: { work: { id: 'work' } }, deleted: { ...good.deleted, spaces: ['work'] } })),
+    read('a version before spaces wrote it', 'abcd1234', beforeSpaces(JSON.stringify(withSpaces(good, w, now)))),
   ];
+}
+
+/**
+ * A device file with spaces, and every kind of odd space field: a record is never skipped over
+ * them (the odd field means "in no space"), while a space record that's unsound is.
+ */
+function withSpaces(good: Record<string, any>, w: string, now: number) {
+  const clk = { text: w, completed: w, order: w, deleted: w };
+  const later = encode(now - 500, 0, 'abcd1234');
+  const future = encode(now + 400 * 86400000, 0, 'x');
+  const task = (id: string, text: string, space: unknown, spaceClk: unknown) => ({
+    id, text, created: '2026-10-18T08:00:00.000Z', completed: null, order: 'V', deleted: false,
+    ...(space === undefined ? {} : { space }),
+    clk: { ...clk, ...(spaceClk === undefined ? {} : { space: spaceClk }) },
+  });
+  const sclk = { name: w, order: w, deleted: w };
+  const space = (id: unknown, name: unknown, extra: Record<string, unknown> = {}) => ({ id, name, order: 'V', deleted: false, clk: sclk, ...extra });
+  return {
+    ...good,
+    tasks: [
+      task('gggggggggggg', 'in work', 'work', w),
+      task('hhhhhhhhhhhh', 'space without a clock', 'work', undefined),
+      task('iiiiiiiiiiii', 'clock without a space', undefined, w),
+      task('jjjjjjjjjjjj', 'bad space id', 'no good!', w),
+      task('kkkkkkkkkkkk', 'zero clock', 'work', ZERO),
+      task('llllllllllll', 'clock from the future', 'work', future),
+      task('mmmmmmmmmmmm', 'space not a string', 7, w),
+      task('nnnnnnnnnnnn', 'space not known here', 'nosuchspace', w),
+      task('oooooooooooo', 'back in Main', MAIN, w),
+      task('pppppppppppp', 'clock not a stamp', 'work', 'nope'),
+      task('qqqqqqqqqqqq', 'empty space', '', w),
+      { ...task('rrrrrrrrrrrr', 'duplicate, moved later', 'dev', later) },
+      { ...task('rrrrrrrrrrrr', 'duplicate, moved later', 'work', w) },
+    ],
+    sheets: [
+      { id: 'ssssssssssss', text: 'Note', updated: '2026-10-18T08:00:00.000Z', order: 'V', deleted: false, space: 'work', clk: { text: w, order: w, deleted: w, space: w } },
+      { id: 'uuuuuuuuuuuu', text: 'Odd', updated: '2026-10-18T08:00:00.000Z', order: 'W', deleted: false, space: 'work', clk: { text: w, order: w, deleted: w, space: 'nope' } },
+    ],
+    spaces: [
+      space('work', '  Work \t stuff\n'),
+      space('work', 'Work, renamed later', { clk: { ...sclk, name: later } }),
+      space(MAIN, 'Inbox', { clk: { name: w, order: ZERO, deleted: ZERO } }),
+      space('noname', 5, { order: 'W' }),
+      space('name100', 'y'.repeat(100)),
+      space('name101', 'x'.repeat(101)),
+      space('emoji100', `${'e'.repeat(99)}${String.fromCharCode(0xd83d, 0xde00)}`),
+      space('spaced100', `  ${'z'.repeat(100)}  `),
+      space('bad id!', 'Bad'),
+      space('noclock', 'No clock', { clk: undefined }),
+      space('halfclock', 'Half a clock', { clk: { name: w } }),
+      space('future', 'Future', { clk: { ...sclk, order: future } }),
+      space('oddkeys', 'Odd keys', { order: 'V0', deleted: 'yes' }),
+      space(42, 'Number id'),
+      'not an object',
+    ],
+    deleted: { ...good.deleted, spaces: { gone: w, name100: later, 'bad id': w, worse: 'nope' } },
+  };
 }
 
 describe('shared sync vectors (tests/vectors/sync-engine.json)', () => {
@@ -256,8 +389,28 @@ describe('shared sync vectors (tests/vectors/sync-engine.json)', () => {
     expect(cycles.some((c) => c.after.collision)).toBe(true);
     expect(cycles.some((c) => c.after.result.problems.length)).toBe(true);
     expect(cycles.some((c) => c.after.data.sheets.length > 1)).toBe(true); // a note kept twice
+    // Spaces travel; device files are written with and without them.
+    expect(cycles.some((c) => c.after.data.spaces.some((s) => s.deleted))).toBe(true);
+    expect(cycles.some((c) => c.after.written && !('spaces' in (c.after.written as object)))).toBe(true);
+    expect(cycles.some((c) => c.after.written && 'spaces' in (c.after.written as object))).toBe(true);
+    // The upgraded desk: every file read again once (and marked with the reader), then skipped.
+    const [upgrade, next] = cycles.filter((c) => c.device === 'desk0001' && c.before.meta.files['phone001.json'] && !c.before.meta.files['phone001.json'].reader);
+    expect(next).toBeUndefined();
+    expect(upgrade!.before.data.spaces).toEqual([]);
+    expect(upgrade!.after.result.merged).toEqual(['phone001', 'tablet01']);
+    expect(Object.values(upgrade!.after.meta.files).every((f) => f.reader === READER)).toBe(true);
+    expect(upgrade!.after.data.spaces.map((s) => s.name).sort()).toEqual(['Inbox', 'Work']);
+    // The task the old desk edited kept its space, and got the edit.
+    const moved = upgrade!.after.data.tasks.find((t) => t.text === 'Draft the drainage report, v2')!;
+    expect(moved.space).toBe(upgrade!.after.data.spaces.find((s) => s.name === 'Work')!.id);
+    const after = cycles[cycles.indexOf(upgrade!) + 1]!;
+    expect(after.device).toBe('desk0001');
+    expect(after.after.result.merged).toEqual([]);
+    // A long name: the same, cut, on both devices.
+    const last = cycles.at(-1)!;
+    expect(last.after.data.spaces.find((s) => s.name.startsWith('WWW'))!.name).toBe('W'.repeat(99));
     const vectors = { cycles, deviceFiles: deviceFiles() };
-    await expect(`${JSON.stringify(vectors, null, 1)}\n`).toMatchFileSnapshot(VECTORS);
+    await expect(`${JSON.stringify(unsetSpacesLeftOut(vectors), null, 1)}\n`).toMatchFileSnapshot(VECTORS);
   });
 
   it('reads the device file Tack for Windows writes, record for record', () => {
@@ -266,12 +419,11 @@ describe('shared sync vectors (tests/vectors/sync-engine.json)', () => {
     if (!existsSync(DESKTOP_DEVICE)) return;
     const desktop = JSON.parse(readFileSync(DESKTOP_DEVICE, 'utf8')) as { data: WorkspaceData; seen: Record<string, string>; written: string; text: string };
     const parsed = parseDeviceFile(desktop.text, 'desk0001', T0 + 86400000);
-    const ours = parseDeviceFile(
-      serializeDeviceFile(makeDeviceFile(desktop.data, { device: 'desk0001', name: parsed.name, app: parsed.app, written: desktop.written, seen: desktop.seen })),
-      'desk0001',
-      T0 + 86400000,
-    );
+    const text = serializeDeviceFile(makeDeviceFile(desktop.data, { device: 'desk0001', name: parsed.name, app: parsed.app, written: desktop.written, seen: desktop.seen }));
+    const ours = parseDeviceFile(text, 'desk0001', T0 + 86400000);
     expect({ ...parsed, ...sorted(parsed) }).toEqual({ ...ours, ...sorted(ours) });
+    // Byte for byte, spaces and all.
+    expect(text).toBe(desktop.text);
     expect(parsed.focus).not.toEqual({ id: null, clk: ZERO });
   });
 });

@@ -62,6 +62,9 @@ public sealed class TaskItem : Observable
     /// <summary>Deleted tasks are kept as tombstones so the deletion can reach other devices.</summary>
     internal bool IsDeleted { get; set; }
 
+    /// <summary>The space it was put in ("" if never: Main). See <see cref="Spaces.Effective"/>.</summary>
+    internal string Space { get; set; } = "";
+
     internal TaskClocks Clk { get; set; }
 
     internal void SetCompleted(string? iso)
@@ -74,7 +77,7 @@ public sealed class TaskItem : Observable
         if (wasDone != IsDone) OnPropertyChanged(nameof(IsDone));
     }
 
-    internal TaskData ToData() => new(Id, _text, CreatedIso, _completedIso, Order, IsDeleted, Clk);
+    internal TaskData ToData() => new(Id, _text, CreatedIso, _completedIso, Order, IsDeleted, Space, Clk);
 
     /// <summary>Takes every field from a record (loading or merging; not a new edit).</summary>
     internal void Apply(TaskData data)
@@ -88,6 +91,7 @@ public sealed class TaskItem : Observable
         if (data.Completed != _completedIso) SetCompleted(data.Completed);
         Order = data.Order;
         IsDeleted = data.Deleted;
+        Space = data.Space;
         Clk = data.Clk;
     }
 

@@ -24,6 +24,7 @@ internal static class StateFileTests
         yield return ("a Tack 1.1 file gets the very records Tack Focus gives it", LegacyRecordsMatchTackFocus);
         yield return ("Tack 1.1 can still read the new file", OlderVersionsReadNewFile);
         yield return ("a Tack Focus export opens as tack.json and saves back the same records", RoundTrip);
+        yield return ("a Tack Focus export with spaces opens as tack.json and saves back the same section, key for key", RoundTripWithSpaces);
         yield return ("saving and opening again changes nothing", FixedPoint);
         yield return ("hand edits to the top level win, as fresh edits", HandEdits);
         yield return ("a damaged tackFocus section never stops tack.json from loading", DamagedSection);
@@ -129,6 +130,37 @@ internal static class StateFileTests
         if (Program.Update) File.WriteAllText(fixture, normalized, new UTF8Encoding(false));
         else Check.Equal(Lf(File.ReadAllText(fixture)), normalized, "tests/vectors/desktop-export.json is up to date (run with --update)");
     }
+
+    private static void RoundTripWithSpaces()
+    {
+        // Exported by Tack Focus with spaces, a deleted one, moves (one back to Main) and a deleted task in a space.
+        string export = Vectors.GetProperty("files").EnumerateArray().First(f => f.Str("name") == "an export with spaces, into a fresh workspace").Str("file")!;
+        using var dir = new TempFolder(export);
+        var (store, ws) = dir.Open();
+        store.Flush();
+
+        using var exported = JsonDocument.Parse(export);
+        using var saved = JsonDocument.Parse(dir.Bytes());
+        var web = exported.RootElement.GetProperty("tackFocus");
+        var desk = saved.RootElement.GetProperty("tackFocus");
+        Check.True(web.GetProperty("spaces").GetArrayLength() > 1 && web.GetProperty("tasks").EnumerateArray().Any(t => t.Has("space")), "the export has spaces and assignments");
+        foreach (string key in new[] { "focus", "tasks", "sheets", "spaces" })
+            Check.Equal(Ordered(web.GetProperty(key)), Ordered(desk.GetProperty(key)), $"the section's {key}, key for key");
+        // The top level still lists every live task, whatever its space.
+        Check.Equal(
+            string.Join(",", exported.RootElement.GetProperty("tasks").EnumerateArray().Select(t => t.Str("id"))),
+            string.Join(",", saved.RootElement.GetProperty("tasks").EnumerateArray().Select(t => t.Str("id"))),
+            "top-level tasks");
+    }
+
+    /// <summary>A JSON value with its keys in the order they were written.</summary>
+    internal static string Ordered(JsonElement e) => e.ValueKind switch
+    {
+        JsonValueKind.Object => "{" + string.Join(",", e.EnumerateObject().Select(p => JsonSerializer.Serialize(p.Name) + ":" + Ordered(p.Value))) + "}",
+        JsonValueKind.Array => "[" + string.Join(",", e.EnumerateArray().Select(Ordered)) + "]",
+        JsonValueKind.String => JsonSerializer.Serialize(e.GetString()),
+        _ => e.GetRawText(),
+    };
 
     private static void FixedPoint()
     {
@@ -269,11 +301,11 @@ internal static class StateFileTests
         Check.Data(ws.ToData(), ws2.ToData(), "opening it again: line breaks that differ are no hand edit");
 
         // The same note from Tack Focus changes nothing; an edit there reaches the TextBox with "\r\n" and no copy.
-        Check.True(!ws2.MergeFrom(new WorkspaceData([], [record], FocusData.None), record.Clk.Text), "the same note: nothing new");
+        Check.True(!ws2.MergeFrom(new WorkspaceData([], [record], FocusData.None, []), record.Clk.Text), "the same note: nothing new");
         string phone = Stamp.Encode(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 60_000, 0, "phone");
         var edited = record with { Text = record.Text + "\n- ties", Clk = record.Clk with { Text = phone } };
         int sheets = ws2.Sheets.Count;
-        Check.True(ws2.MergeFrom(new WorkspaceData([], [edited], FocusData.None), record.Clk.Text), "an edit from Tack Focus");
+        Check.True(ws2.MergeFrom(new WorkspaceData([], [edited], FocusData.None, []), record.Clk.Text), "an edit from Tack Focus");
         Check.Equal("Site visit\r\n- rebar\r\n- formwork\r\n- ties", ws2.SheetById(site.Id)!.Text, "reaches the TextBox with \"\\r\\n\"");
         Check.Equal(edited, ws2.ToData().Sheets.First(s => s.Id == site.Id), "and the record is Tack Focus's");
         Check.Equal(sheets, ws2.Sheets.Count, "no copy");
@@ -318,8 +350,8 @@ internal static class StateFileTests
         long wall = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         string old = Stamp.Encode(wall - (long)TimeSpan.FromDays(91).TotalMilliseconds, 0, "x");
         string recent = Stamp.Encode(wall - (long)TimeSpan.FromDays(10).TotalMilliseconds, 0, "x");
-        var tombstone = (string id, string clk) => new TaskData(id, "", "2026-01-01T00:00:00.000+00:00", null, "V", true, new TaskClocks(clk, clk, clk, clk));
-        var data = new WorkspaceData([tombstone("oldoldoldold", old), tombstone("recentrecent", recent)], [], FocusData.None);
+        var tombstone = (string id, string clk) => new TaskData(id, "", "2026-01-01T00:00:00.000+00:00", null, "V", true, "", TaskClocks.All(clk));
+        var data = new WorkspaceData([tombstone("oldoldoldold", old), tombstone("recentrecent", recent)], [], FocusData.None, []);
         var ws = new Workspace(new Settings(), new Hlc("x"), data);
         Check.True(ws.TaskById("oldoldoldold") == null, "a deletion 91 days old is forgotten");
         Check.True(ws.TaskById("recentrecent") != null, "a deletion 10 days old is kept");

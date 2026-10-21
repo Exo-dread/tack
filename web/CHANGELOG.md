@@ -1,5 +1,12 @@
 # Tack Focus changelog
 
+## 0.3.0 (21 October 2026)
+
+- **Groundwork for spaces** (Work, Dev, Personal), with nothing visible yet: tasks and notes can
+  carry the space they're in, and spaces sync like everything else, so every device understands them
+  before the screens arrive. Files and storage are unchanged until a space exists, and older versions
+  keep syncing. After updating, Tack reads every other device's file once more and writes its own once.
+
 ## 0.2.1 (21 October 2026)
 
 - **Sync shrugs off bad files.** Text that only half spells a character is cleaned up when read

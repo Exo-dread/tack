@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.0 (2026-10-21)
+
+The groundwork for spaces, so every device understands them before the screens for them arrive.
+Nothing looks different yet.
+
+- **Groundwork for spaces** (Work, Dev, Personal), with nothing visible yet. Tasks and notes can
+  carry the space they're in, and spaces themselves sync like tasks do, so once the screens for them
+  arrive, every device already understands them. Files are unchanged until a space exists, and older
+  versions keep syncing (they simply show everything together). After updating, Tack reads every
+  other device's file once more and writes its own once, so nothing older versions left out is missed.
+
 ## 1.3.1 (2026-10-21)
 
 Sync is sturdier: a damaged or crafted file in the sync folder can't stop it any more. From a

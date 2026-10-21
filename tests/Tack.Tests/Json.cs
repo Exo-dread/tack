@@ -17,6 +17,7 @@ internal static class Json
 
     public static string FromUnits(JsonElement units) => new(units.EnumerateArray().Select(u => (char)u.GetInt32()).ToArray());
 
+    /// <summary>A task. As in files, "space" and its clock are there only once it's in a space: missing means ("", Zero).</summary>
     public static TaskData? Task(JsonElement e) => e.ValueKind == JsonValueKind.Null ? null : new TaskData(
         e.Str("id")!,
         e.Str("text")!,
@@ -24,11 +25,13 @@ internal static class Json
         e.Str("completed"),
         e.Str("order")!,
         e.GetProperty("deleted").GetBoolean(),
+        e.Str("space") ?? "",
         new TaskClocks(
             e.GetProperty("clk").Str("text")!,
             e.GetProperty("clk").Str("completed")!,
             e.GetProperty("clk").Str("order")!,
-            e.GetProperty("clk").Str("deleted")!));
+            e.GetProperty("clk").Str("deleted")!,
+            e.GetProperty("clk").Str("space") ?? Stamp.Zero));
 
     public static SheetData? Sheet(JsonElement e) => e.ValueKind == JsonValueKind.Null ? null : new SheetData(
         e.Str("id")!,
@@ -36,17 +39,33 @@ internal static class Json
         e.Str("updated")!,
         e.Str("order")!,
         e.GetProperty("deleted").GetBoolean(),
+        e.Str("space") ?? "",
         new SheetClocks(
             e.GetProperty("clk").Str("text")!,
+            e.GetProperty("clk").Str("order")!,
+            e.GetProperty("clk").Str("deleted")!,
+            e.GetProperty("clk").Str("space") ?? Stamp.Zero));
+
+    public static SpaceData? Space(JsonElement e) => e.ValueKind == JsonValueKind.Null ? null : new SpaceData(
+        e.Str("id")!,
+        e.Str("name")!,
+        e.Str("order")!,
+        e.GetProperty("deleted").GetBoolean(),
+        new SpaceClocks(
+            e.GetProperty("clk").Str("name")!,
             e.GetProperty("clk").Str("order")!,
             e.GetProperty("clk").Str("deleted")!));
 
     public static FocusData Focus(JsonElement e) => new(e.Str("id"), e.Str("clk")!);
 
+    /// <summary>Records; "spaces" is there only if there are any.</summary>
     public static WorkspaceData Data(JsonElement e) => new(
         e.GetProperty("tasks").EnumerateArray().Select(t => Task(t)!).ToList(),
         e.GetProperty("sheets").EnumerateArray().Select(s => Sheet(s)!).ToList(),
-        Focus(e.GetProperty("focus")));
+        Focus(e.GetProperty("focus")),
+        e.TryGetProperty("spaces", out var spaces) && spaces.ValueKind == JsonValueKind.Array
+            ? spaces.EnumerateArray().Select(s => Space(s)!).ToList()
+            : []);
 
     /// <summary>The lists as both apps show them: focus task, open, done, sheets (ids).</summary>
     public static string Views(JsonElement e)
