@@ -60,8 +60,9 @@ export interface AuthRecord {
   /** When Tack last went to Microsoft's page to renew (ms), so it never loops. */
   lastRenewVisit: number;
   /**
-   * That visit came back, whatever Microsoft answered. One that didn't (Tack was opened before it
-   * did, or you went Back from Microsoft's page) may be tried again sooner.
+   * That visit came back settled: renewed, or with Microsoft asking for a sign-in. One that didn't
+   * (Tack was opened before it did, you went Back from Microsoft's page, or it failed on the way)
+   * may be tried again sooner.
    */
   visitReturned: boolean;
   /** Microsoft wants you to sign in again (password changed, session ended, consent removed...). */

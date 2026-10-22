@@ -196,6 +196,24 @@ describe('how soon a renewal visit is tried again', () => {
     expect(auth.tokens!.refreshExpires).toBeGreaterThan(Date.now() + 20 * HOUR);
     expect(back.renewalDueAtStart()).toBe(false);
   });
+
+  it('counts a renewal that failed on the way back (or was cut short by opening Tack) as not back', async () => {
+    const backend = await dueSoon({});
+    const leaving = await SyncController.create({} as Workspace, store, backend, config, ms.fetch);
+    expect(await leaving.renewBeforeStart()).toBe(true);
+    await vi.waitFor(() => expect(assigned).toHaveLength(1));
+    const answer = ms.handle({ method: 'GET', url: assigned[0]!, headers: {}, body: null }, false);
+    if (answer === 'abort') throw new Error('abort');
+    location.hash = answer.headers.location!.slice(answer.headers.location!.indexOf('#'));
+
+    // The exchange for tokens never gets through: the page was reloaded, or the network dropped.
+    const cut: typeof fetch = (input, init) =>
+      String(input instanceof Request ? input.url : input).includes('/token') ? Promise.reject(new TypeError('Load failed')) : ms.fetch(input, init);
+    const back = await SyncController.create({} as Workspace, store, backend, config, cut);
+    expect(await back.handleReturn()).toBe('failed');
+    // Tried again after the short gap, well before the sign-in runs out.
+    expect((await backend.getMeta<AuthRecord>('auth'))!.visitReturned).toBe(false);
+  });
 });
 
 /**

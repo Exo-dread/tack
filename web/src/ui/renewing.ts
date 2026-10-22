@@ -15,7 +15,19 @@ const OFFER_AFTER = 8000;
 /** Then: Tack opens by itself. */
 const GIVE_UP_AFTER = 25_000;
 
-const open = () => location.reload();
+/** Tack is being opened afresh (Open Tack now, or the wait ran out): this page is on its way out. */
+let reloading = false;
+
+const open = () => {
+  reloading = true;
+  location.reload();
+};
+
+/**
+ * Has this page set off to open Tack afresh? Then it goes no further: some browsers let it run a
+ * moment longer (and the sign-in it was waiting for may fail meanwhile, as the reload cuts it off).
+ */
+export const isReloading = () => reloading;
 
 /**
  * Says `text` after a moment, and `slow` with a way to open Tack after a while. The live region
@@ -38,6 +50,8 @@ function notice(text: string, slow: string): () => void {
     }, OFFER_AFTER),
   ];
   return () => {
+    // On the way out, the words stay up until the new page takes over.
+    if (reloading) return;
     timers.forEach(clearTimeout);
     region.remove();
   };

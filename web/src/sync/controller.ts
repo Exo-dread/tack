@@ -155,10 +155,10 @@ export class SyncController {
         console.error('Sign-in failed', result.error);
         this.update({ message: 'Couldn’t sign in with Microsoft. Please try again.' });
       } else {
-        // A quiet renewal that failed on the way (network, a Microsoft hiccup): the refresh token
-        // may still work, and the next quiet moment tries again (after the full gap: it came back).
+        // A quiet renewal that failed on the way (network, a Microsoft hiccup, or cut short by
+        // opening Tack meanwhile): the refresh token may still work, and it's tried again after
+        // the short gap, well before that runs out.
         console.warn('Renewal failed', result.error);
-        if (result.kind === 'renew' && this.record.enabled) await this.saveAuth({ visitReturned: true });
       }
       return result.error.kind === 'cancelled' ? null : 'failed';
     }

@@ -9,7 +9,7 @@ import { prefs, setPrefs } from './store/prefs';
 import { SyncController } from './sync/controller';
 import { isSignInReturn } from './sync/msauth';
 import { App, dropUntouchedWelcome, seedWelcome } from './ui/app';
-import { showLeaving, showReturning } from './ui/renewing';
+import { isReloading, showLeaving, showReturning } from './ui/renewing';
 import { registerServiceWorker } from './ui/sw';
 
 async function boot(): Promise<void> {
@@ -56,6 +56,8 @@ async function boot(): Promise<void> {
     if (await sync.renewBeforeStart()) return;
     stay();
   }
+  // "Open Tack now" (or the wait ran out) meanwhile: a fresh page is on its way, so not this one.
+  if (isReloading()) return;
   sync.onJoin = () => dropUntouchedWelcome(ws);
 
   if (!prefs().seeded && ws.tasks.size === 0 && ws.sheets.size === 0) {
