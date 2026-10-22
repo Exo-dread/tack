@@ -27,7 +27,7 @@ export type SyncPhase =
   | 'synced'
   /** On, waiting for a connection. */
   | 'offline'
-  /** On, waiting to renew the sign-in with a quick visit to Microsoft (next time the app opens, or Reconnect). */
+  /** On, waiting to renew the sign-in with a quick visit to Microsoft (at a quiet moment, or Reconnect). */
   | 'renew'
   /** On, but Microsoft wants you to sign in again. */
   | 'signin'
@@ -62,6 +62,8 @@ const QUIET_FAILURES = 3;
 const RENEW_AHEAD = 4 * HOUR;
 /** At most one visit to Microsoft's page for renewal in this long. */
 const VISIT_GAP = 6 * HOUR;
+/** ...or in this long, if the last one never came back (Tack was opened before it did): well before the sign-in runs out. */
+const RETRY_GAP = HOUR;
 /** Coming back after this long counts as a quiet moment. */
 const AWAY = 5 * MINUTE;
 /** Setting off to Microsoft takes seconds: still here after this long, the visit didn't happen. */
@@ -148,13 +150,14 @@ export class SyncController {
     if ('error' in result) {
       if (result.error.kind === 'interaction') {
         // Microsoft wants you on its page: say so, and don't visit again by itself.
-        if (this.record.enabled) await this.saveAuth({ needsSignIn: true });
+        if (this.record.enabled) await this.saveAuth({ needsSignIn: true, visitReturned: true });
       } else if (result.kind === 'sign-in' && result.error.kind !== 'cancelled') {
         console.error('Sign-in failed', result.error);
         this.update({ message: 'Couldn’t sign in with Microsoft. Please try again.' });
       } else {
-        // A quiet renewal that failed on the way (network, a Microsoft hiccup): the refresh token
-        // may still work, and the next quiet moment tries again.
+        // A quiet renewal that failed on the way (network, a Microsoft hiccup, or cut short by
+        // opening Tack meanwhile): the refresh token may still work, and it's tried again after
+        // the short gap, well before that runs out.
         console.warn('Renewal failed', result.error);
       }
       return result.error.kind === 'cancelled' ? null : 'failed';
@@ -164,11 +167,11 @@ export class SyncController {
       // A renewal must come back as the same account, and only while sync is on.
       if (!this.record.enabled) return null;
       if (!known || known.id !== result.account.id || known.tenant !== result.account.tenant) {
-        await this.saveAuth({ needsSignIn: true });
+        await this.saveAuth({ needsSignIn: true, visitReturned: true });
         return 'failed';
       }
       // The frame was refused but this visit worked: it's the browser, so visit from now on.
-      await this.saveAuth({ tokens: result.tokens, needsSignIn: false, frameWorks: this.auth.frameRefused ? false : this.auth.frameWorks, frameRefused: 0 });
+      await this.saveAuth({ tokens: result.tokens, needsSignIn: false, frameWorks: this.auth.frameRefused ? false : this.auth.frameWorks, frameRefused: 0, visitReturned: true });
       return 'renewed';
     }
     const again = this.record.enabled;
@@ -183,13 +186,18 @@ export class SyncController {
     return again ? 'signed-in-again' : 'signed-in';
   }
 
+  /** Is a renewal visit due before the app starts (see `renewBeforeStart`)? */
+  renewalDueAtStart(): boolean {
+    return this.visitDue(Date.now() + RENEW_AHEAD);
+  }
+
   /**
    * If a renewal visit is due, starts it (the page goes to Microsoft and comes straight back)
    * and returns true: the app shouldn't start this time round. Done before anything shows, so
-   * nothing you type can be lost to it.
+   * nothing you type can be lost to it. False if it isn't due, or Microsoft can't be reached.
    */
   async renewBeforeStart(): Promise<boolean> {
-    if (!this.visitDue(Date.now() + RENEW_AHEAD)) return false;
+    if (!this.renewalDueAtStart()) return false;
     return this.visit();
   }
 
@@ -280,7 +288,8 @@ export class SyncController {
     this.hiddenAt = 0;
     if (away && this.quietNow() && this.visitDue(Date.now())) {
       void this.store.flushAll().then(() => {
-        if (this.store.allSaved && this.quietNow()) void this.visit().then((going) => going || this.schedule(0));
+        // Still quiet once Microsoft is known to be reachable (that takes a moment), or not now.
+        if (this.store.allSaved && this.quietNow()) void this.visit(false, () => this.quietNow()).then((going) => going || this.schedule(0));
       });
       return;
     }
@@ -326,7 +335,7 @@ export class SyncController {
       // Frames don't work here, or one was refused since the last visit.
       (a.frameWorks === false || a.frameRefused > a.lastRenewVisit) &&
       a.tokens.refreshExpires < deadline &&
-      Date.now() - a.lastRenewVisit > VISIT_GAP &&
+      Date.now() - a.lastRenewVisit > (a.visitReturned ? VISIT_GAP : RETRY_GAP) &&
       navigator.onLine &&
       !isSignInReturn() &&
       window.top === window
@@ -334,13 +343,26 @@ export class SyncController {
   }
 
   /**
-   * Goes to Microsoft and straight back to renew. Returns false (and stays) if it can't even
-   * record that it's going, so a storage problem can never leave an empty page or a loop.
+   * Goes to Microsoft and straight back to renew. Returns false (and stays) if Microsoft can't be
+   * reached, or if it can't even record that it's going, so a storage problem can never leave an
+   * empty page or a loop.
    */
-  private async visit(asked = false): Promise<boolean> {
+  private async visit(asked = false, still: () => boolean = () => true): Promise<boolean> {
     this.setLeaving(true);
+    // Out of reach (Wi-Fi without internet, a connection still coming up): going anyway would put
+    // the browser's own error page where Tack was. Stay, and go another time (nothing recorded).
+    if (!(await this.msal!.reachable())) {
+      console.warn('Microsoft can’t be reached: the sign-in renews another time');
+      this.setLeaving(false);
+      if (asked) this.update({ message: 'Couldn’t reach Microsoft just now. Check your connection, then try again.' });
+      return false;
+    }
+    if (!still()) {
+      this.setLeaving(false);
+      return false;
+    }
     try {
-      await this.saveAuth({ lastRenewVisit: Date.now() });
+      await this.saveAuth({ lastRenewVisit: Date.now(), visitReturned: false });
     } catch (error) {
       console.warn('Can’t renew the sign-in right now', error);
       this.setLeaving(false);

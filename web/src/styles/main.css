@@ -203,6 +203,15 @@ a { color: var(--accent); }
   color: var(--text-2);
 }
 
+/* On the way to Microsoft and back for the daily sign-in renewal (ui/renewing.ts). Nothing else is
+   on screen yet, so like the boot message it shows over the page's own background. */
+.renewing {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+.renewing .button { display: block; margin: 16px auto 0; }
+
 [hidden] { display: none !important; }
 
 /* ============================================================== shell */
