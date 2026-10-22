@@ -406,6 +406,15 @@ export class App {
     this.input.focus();
   }
 
+  /**
+   * Nothing on screen that a reload would drop: no task being edited, no sheet open, and a task
+   * half typed in the box is kept as its draft (which comes back with the page).
+   */
+  get settled(): boolean {
+    const text = this.input.value;
+    return (!text.trim() || loadDraft() === text) && !this.tasks.isEditing && !document.querySelector('dialog[open]');
+  }
+
   // ================================================================== summary
 
   private renderSummary(): void {

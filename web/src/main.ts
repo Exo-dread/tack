@@ -57,7 +57,12 @@ async function boot(): Promise<void> {
   const app = new App(ws, store, sync);
   document.documentElement.classList.add('ready');
   void store.startup();
-  registerServiceWorker(store);
+  registerServiceWorker(store, {
+    settled: () => app.settled,
+    // A reload on the way to Microsoft would cut the sign-in's renewal short.
+    leaving: () => sync.leaving,
+    renewing: () => sync.visiting,
+  });
   sync.start();
   if (returned === 'signed-in' || returned === 'signed-in-again') app.syncTurnedOn(returned === 'signed-in-again');
 }

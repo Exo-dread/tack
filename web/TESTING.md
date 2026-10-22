@@ -23,7 +23,7 @@ exchanging tasks with Tack for Windows' own sync code through a folder on disk. 
 with the service worker blocked: in WebKit, Playwright can't intercept requests from a page a
 worker controls, and they must never reach the real Microsoft.
 
-**Unit tests (227, including 40 runs of the sync simulation)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
+**Unit tests (229, including 40 runs of the sync simulation)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
 random inserts, clock monotonicity and skew, .NET date parsing, every workspace mutation and its
 undo, snapshot restore, two- and three-device merges with a randomised convergence test, concurrent
 note edits (conflict copies), and tack.json import/export against a file shaped exactly like
@@ -37,7 +37,7 @@ spaces.
 reproduce exactly (`tests/Tack.Tests`), and reads back the file the desktop saved for its round-trip
 export to check nothing was lost on the way.
 
-**End-to-end tests (189 across three projects, 18 skipped where they don't apply)** run against `vite build` + `vite preview`, so the real
+**End-to-end tests (216 across three projects, 18 skipped where they don't apply)** run against `vite build` + `vite preview`, so the real
 service worker and bundle are tested:
 
 | Project | Engine | Emulates |
@@ -63,7 +63,11 @@ while typing), adding into the space on show, moving tasks and sheets with Undo,
 task's space, the "Now in …" line, Done and Clear per space, notes per space (blank paper until you
 write, and Undo there making no sheet), the sheet strip left as it always was with Main alone,
 deleting a space with Undo, renaming and reordering, the space on show surviving a reload,
-and axe scans with spaces on screen in light and dark.
+and axe scans with spaces on screen in light and dark; and updates of the app, against a server of
+the test's own that puts up a new version (visibility emulated: headless pages never hide): in at
+once when opened untouched, even if it took over while the app was still starting; held while you
+are using the app or are in the task box, then applied when you leave or come back; a draft in the
+box coming back with the page; never while the draft isn't the one kept.
 
 Gestures are driven with synthetic pointer events (Playwright can only tap), so they test the
 gesture logic, not a real finger. WebKit on Windows is close to Safari's engine but isn't iOS:
@@ -110,6 +114,8 @@ Emulation can't cover these. Each takes a minute.
 ### Updates
 - [ ] With the app installed, deploy a change, open the app online, leave it, come back: it has
       updated, and nothing typed before leaving was lost.
+- [ ] Android (installed): deploy a change, open the app from its icon and don't touch it: within a
+      few seconds it reloads into the new version by itself, with no pull to refresh.
 
 ### Sync
 
