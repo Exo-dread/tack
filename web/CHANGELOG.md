@@ -1,5 +1,13 @@
 # Tack Focus changelog
 
+## 0.4.1 (22 October 2026)
+
+- **Updates arrive by themselves.** A new version used to apply only as you left the app, and a
+  phone can put the app to sleep before that happens, so you could come back to the old version
+  until a reload. Now it also applies when you open Tack Focus or come back to it, before you've
+  touched anything, or straight away while you're elsewhere. Never while you're editing a task or
+  have a sheet open, and a half-typed task comes back as it was.
+
 ## 0.4.0 (22 October 2026)
 
 - **Spaces** (Work, Dev, Personal), now on screen. Make one in Settings → Spaces → *New space*,
