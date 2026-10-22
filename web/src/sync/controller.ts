@@ -64,6 +64,8 @@ const RENEW_AHEAD = 4 * HOUR;
 const VISIT_GAP = 6 * HOUR;
 /** Coming back after this long counts as a quiet moment. */
 const AWAY = 5 * MINUTE;
+/** Setting off to Microsoft takes seconds: still here after this long, the visit didn't happen. */
+const LEAVE_WITHIN = 30_000;
 const POLL = MINUTE;
 const AFTER_EDIT = 3000;
 
@@ -199,6 +201,8 @@ export class SyncController {
     document.addEventListener('visibilitychange', () => this.onVisibility());
     window.addEventListener('online', () => this.schedule(0));
     window.addEventListener('offline', () => this.status.enabled && this.update({ phase: 'offline' }));
+    // Back from the back/forward cache after setting off to Microsoft: not on the way any more.
+    window.addEventListener('pageshow', (e) => e.persisted && this.setLeaving(false));
     this.schedule(1500);
   }
 
@@ -290,6 +294,26 @@ export class SyncController {
     return !typing && this.store.allSaved && !document.querySelector('dialog[open]');
   }
 
+  /** On the way to Microsoft to renew: a reload now would cut the renewal short. */
+  get leaving(): boolean {
+    return this._leaving;
+  }
+
+  /** On the way to Microsoft to renew, or due to go (at the next quiet moment). */
+  get visiting(): boolean {
+    return this._leaving || this.visitDue(Date.now());
+  }
+
+  private _leaving = false;
+  private leaveTimer: ReturnType<typeof setTimeout> | undefined;
+
+  private setLeaving(on: boolean): void {
+    clearTimeout(this.leaveTimer);
+    this._leaving = on;
+    // Going takes seconds: still here long after, the way there was cut short (cancelled, say).
+    if (on) this.leaveTimer = setTimeout(() => (this._leaving = false), LEAVE_WITHIN);
+  }
+
   /** Is a renewal visit to Microsoft due (the token runs out by `deadline` and frames don't work here)? */
   private visitDue(deadline: number): boolean {
     const a = this.auth;
@@ -314,14 +338,17 @@ export class SyncController {
    * record that it's going, so a storage problem can never leave an empty page or a loop.
    */
   private async visit(asked = false): Promise<boolean> {
+    this.setLeaving(true);
     try {
       await this.saveAuth({ lastRenewVisit: Date.now() });
     } catch (error) {
       console.warn('Can’t renew the sign-in right now', error);
+      this.setLeaving(false);
       return false;
     }
     void this.msal!.renewByVisit(this.auth.account!).catch((error) => {
       console.error('Renewal visit failed to start', error);
+      this.setLeaving(false);
       if (!asked) location.reload(); // boots normally: the visit is no longer due
     });
     return true;
