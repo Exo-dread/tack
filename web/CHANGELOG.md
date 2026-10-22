@@ -1,6 +1,6 @@
 # Tack Focus changelog
 
-## Unreleased
+## 0.4.2 (22 October 2026)
 
 - **No more blank screen while the OneDrive sign-in renews.** Once a day, where the browser can't
   renew it in the background, Tack Focus pops over to Microsoft as it opens, and that used to leave
