@@ -409,7 +409,7 @@ export class Settings {
       syncing: 'Syncing\u2026',
       synced: 'Up to date',
       offline: 'Offline. Changes are kept here and sync when you\u2019re back online.',
-      renew: 'Paused until Tack checks in with Microsoft, which it does by itself the next time you open it.',
+      renew: 'Paused until Tack checks in with Microsoft. It will try again by itself.',
       signin: 'Microsoft asked you to sign in again.',
     };
     const actions: Record<string, [string, () => void]> = {
@@ -431,7 +431,8 @@ export class Settings {
           lastEnded = st.phase;
         }
         const shown = st.phase === 'syncing' && !busy ? 'synced' : st.phase;
-        const text = shown === 'error' ? (st.message ?? 'Sync stopped.') : (texts[shown] ?? 'Up to date');
+        // A problem says what it is; so does Reconnect when Microsoft can't be reached.
+        const text = shown === 'error' ? (st.message ?? 'Sync stopped.') : ((shown === 'renew' && st.message) || (texts[shown] ?? 'Up to date'));
         if (phase.textContent !== text) phase.textContent = text;
         when.textContent = shown === 'synced' && st.lastSync ? ` \u00b7 ${ago(st.lastSync)}` : '';
         status.classList.toggle('warn', shown === 'signin' || shown === 'error');

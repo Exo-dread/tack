@@ -7,14 +7,16 @@ import { createHash } from 'node:crypto';
  *  - sign-in: /authorize redirects back with a code (or an error for prompt=none without a
  *    session, or in a frame where third-party cookies are blocked); /token checks PKCE and the
  *    redirect URI, and issues single-page-app refresh tokens that expire 24 hours after sign-in
- *    no matter how often they're used;
+ *    no matter how often they're used; the OpenID discovery document answers (Tack asks for it
+ *    to see whether Microsoft can be reached before a renewal visit);
  *  - Graph: needs a valid access token; the app folder, children (with paging), folder creation
  *    with conflict behaviour, simple uploads, and item metadata with pre-signed download links;
  *  - downloads: pre-signed links that refuse a bearer token (like OneDrive personal's host) and
  *    expire;
  *  - CORS: every answer carries Access-Control-Allow-Origin, preflights are answered.
  *
- * Faults can be injected per request pattern.
+ * Faults can be injected per request pattern, and answers held back (a slow or stuck Microsoft:
+ * browser tests' routes wait on `held` before answering).
  */
 
 export interface FakeRequest {
@@ -48,6 +50,14 @@ interface Fault {
   retryAfter?: number;
 }
 
+interface Hold {
+  match: RegExp;
+  method?: string;
+  /** Held this long; without it, until `release()`. */
+  ms?: number;
+  times: number;
+}
+
 export const CONSUMERS = '9188040d-6c67-4c5b-b112-36a304b66dad';
 export const AUTHORITY = 'https://login.microsoftonline.com/common';
 const GRAPH = 'https://graph.microsoft.com/v1.0';
@@ -69,7 +79,9 @@ export class FakeMicrosoft {
   clock: () => number = () => Date.now();
   readonly log: (FakeRequest & { frame: boolean })[] = [];
   readonly faults: Fault[] = [];
+  readonly holds: Hold[] = [];
 
+  private readonly waiting = new Set<() => void>();
   private codes = new Map<string, { challenge: string; redirect: string; nonce: string; oid: string }>();
   private refresh = new Map<string, { expires: number; oid: string }>();
   private access = new Map<string, number>();
@@ -79,6 +91,36 @@ export class FakeMicrosoft {
   /** Fails the next `times` requests matching `match` (by status, or by dropping the connection). */
   fail(match: RegExp, options: { status?: number; abort?: boolean; times?: number; method?: string; retryAfter?: number } = {}): void {
     this.faults.push({ match, times: 1, ...options });
+  }
+
+  /**
+   * Holds back the answers to the next `times` requests matching `match`: for `ms` (a slow
+   * Microsoft), or without it until `release()` (a stuck one). The request is answered as usual,
+   * only later; browser tests' routes wait on `held` for this.
+   */
+  hold(match: RegExp, options: { ms?: number; times?: number; method?: string } = {}): void {
+    this.holds.push({ match, times: 1, ...options });
+  }
+
+  /** Lets every answer held back now go. */
+  release(): void {
+    for (const go of [...this.waiting]) go();
+  }
+
+  /** If a hold matches this request: a promise that resolves when its answer may go. */
+  held(req: { method: string; url: string }): Promise<void> | null {
+    const hold = this.holds.find((h) => h.times > 0 && h.match.test(req.url) && (!h.method || h.method === req.method));
+    if (!hold) return null;
+    hold.times--;
+    return new Promise((resolve) => {
+      const go = () => {
+        clearTimeout(timer);
+        this.waiting.delete(go);
+        resolve();
+      };
+      const timer = hold.ms === undefined ? undefined : setTimeout(go, hold.ms);
+      this.waiting.add(go);
+    });
   }
 
   // ---------------------------------------------------------------- inspecting the drive
@@ -170,6 +212,10 @@ export class FakeMicrosoft {
     const url = new URL(req.url);
     if (url.href.startsWith(`${AUTHORITY}/oauth2/v2.0/authorize`)) return this.authorize(url, frame);
     if (url.href.startsWith(`${AUTHORITY}/oauth2/v2.0/token`)) return this.token(req, cors);
+    if (url.href === `${AUTHORITY}/v2.0/.well-known/openid-configuration`) {
+      const configuration = { issuer: 'https://login.microsoftonline.com/{tenantid}/v2.0', authorization_endpoint: `${AUTHORITY}/oauth2/v2.0/authorize`, token_endpoint: `${AUTHORITY}/oauth2/v2.0/token` };
+      return { status: 200, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify(configuration) };
+    }
     if (url.href.startsWith(DOWNLOADS)) return this.download(req, url, cors);
     if (url.href.startsWith(GRAPH)) return this.graph(req, url, cors);
     return { status: 404, headers: cors, body: 'unknown host' };

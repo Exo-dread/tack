@@ -1,5 +1,14 @@
 # Tack Focus changelog
 
+## Unreleased
+
+- **No more blank screen while the OneDrive sign-in renews.** Once a day, where the browser can't
+  renew it in the background, Tack Focus pops over to Microsoft as it opens, and that used to leave
+  an empty screen for as long as Microsoft took. Now it says "Renewing your OneDrive sign-in…",
+  offers *Open Tack now* if it's slow, opens by itself after 25 seconds, and stays put when
+  Microsoft can't be reached (Wi-Fi without internet, say) instead of landing on the browser's
+  error page; a renewal cut short is tried again an hour later.
+
 ## 0.4.1 (22 October 2026)
 
 - **Updates arrive by themselves.** A new version used to apply only as you left the app, and a

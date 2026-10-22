@@ -59,11 +59,16 @@ export interface AuthRecord {
   frameRefused: number;
   /** When Tack last went to Microsoft's page to renew (ms), so it never loops. */
   lastRenewVisit: number;
+  /**
+   * That visit came back, whatever Microsoft answered. One that didn't (Tack was opened before it
+   * did, or you went Back from Microsoft's page) may be tried again sooner.
+   */
+  visitReturned: boolean;
   /** Microsoft wants you to sign in again (password changed, session ended, consent removed...). */
   needsSignIn: boolean;
 }
 
-export const emptyAuth = (): AuthRecord => ({ account: null, tokens: null, frameWorks: null, frameRefused: 0, lastRenewVisit: 0, needsSignIn: false });
+export const emptyAuth = (): AuthRecord => ({ account: null, tokens: null, frameWorks: null, frameRefused: 0, lastRenewVisit: 0, visitReturned: true, needsSignIn: false });
 
 /** A sign-in in progress across the page load it needs (kept in localStorage for that moment only). */
 interface Pending {
@@ -81,6 +86,8 @@ const CONSUMER_TENANT = '9188040d-6c67-4c5b-b112-36a304b66dad';
 const DAY = 86_400_000;
 const FRAME_TIMEOUT = 10_000;
 const REQUEST_TIMEOUT = 30_000;
+/** Microsoft's sign-in service answers a small request within this long, or counts as out of reach. */
+const REACH_TIMEOUT = 5000;
 
 export class AuthError extends Error {
   constructor(
@@ -115,6 +122,26 @@ export class MicrosoftAuth {
     const url = await this.authorizeUrl('renew', { prompt: 'none', loginHint: account.username, tenant: account.tenant });
     location.assign(url);
     return new Promise<never>(() => {});
+  }
+
+  /**
+   * Can Microsoft's sign-in service be reached right now? Asked before a renewal visit: one that
+   * can't get there leaves the browser's own error page in Tack's place, and navigator.onLine says
+   * yes on Wi-Fi without internet or while a phone's connection is still coming up. Any answer
+   * counts (only a network failure or no answer at all doesn't), and nothing about you is sent.
+   */
+  async reachable(): Promise<boolean> {
+    try {
+      await this.http(`${this.config.authority}/v2.0/.well-known/openid-configuration`, {
+        mode: 'no-cors',
+        credentials: 'omit',
+        cache: 'no-store',
+        signal: AbortSignal.timeout(REACH_TIMEOUT),
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async authorizeUrl(

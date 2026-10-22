@@ -141,6 +141,28 @@ describe('signing in to Microsoft', () => {
     expect(failed && 'error' in failed ? [failed.kind, failed.error.kind] : null).toEqual(['renew', 'interaction']);
   });
 
+  it('can tell whether Microsoft can be reached before going there, sending nothing about you', async () => {
+    expect(await auth.reachable()).toBe(true);
+    const asked = ms.log.at(-1)!;
+    expect([asked.method, asked.url, asked.body]).toEqual(['GET', `${AUTHORITY}/v2.0/.well-known/openid-configuration`, null]);
+    expect(asked.headers.authorization).toBeUndefined();
+
+    ms.fail(/well-known/, { abort: true }); // no way through (Wi-Fi without internet, say)
+    expect(await auth.reachable()).toBe(false);
+    ms.fail(/well-known/, { status: 503 }); // there, if unwell: an answer is an answer
+    expect(await auth.reachable()).toBe(true);
+    // Without cookies, without needing Microsoft's permission to read the answer, never from a
+    // cache, and called off if no answer comes in time (which counts as out of reach).
+    let options: RequestInit | undefined;
+    const silent = new MicrosoftAuth(auth.config, (_url, init) => {
+      options = init;
+      return Promise.reject(new DOMException('The operation timed out.', 'TimeoutError'));
+    });
+    expect(await silent.reachable()).toBe(false);
+    expect(options).toMatchObject({ mode: 'no-cors', credentials: 'omit', cache: 'no-store' });
+    expect(options!.signal).toBeInstanceOf(AbortSignal);
+  });
+
   it('reads the ID token claims', () => {
     const jwt = `x.${Buffer.from(JSON.stringify({ name: 'Zoë', preferred_username: 'z@example.com' })).toString('base64url')}.`;
     expect(decodeJwt(jwt)).toEqual({ name: 'Zoë', preferred_username: 'z@example.com' });
