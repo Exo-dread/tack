@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.6.0 (2026-10-23)
+
+An optional radial launcher around the orb, for the apps and folders you open all day. It's off
+until you turn it on; off, Tack is exactly as before.
 
 - **Radial launcher (optional, off by default).** Turn it on in Settings → Launcher. Shift+click the orb
   for six shortcut positions around it (apps, folders, websites, or groups of up to eight), or Shift+drag
