@@ -1,3 +1,4 @@
+import { MAX_NOTE_TEXT, MAX_PASTE_LINES } from '../model/limits';
 import { continueList, noteLinesToTasks, sheetTitle, shorten } from '../model/text';
 import type { Sheet } from '../model/types';
 import type { Origin, Workspace } from '../model/workspace';
@@ -41,6 +42,7 @@ export class NotesView {
   ) {
     this.editor = h('textarea.editor', {
       'aria-label': 'Note',
+      maxlength: String(MAX_NOTE_TEXT),
       placeholder: 'Scrap paper. Type anything; it saves as you go.',
       autocapitalize: 'sentences',
       spellcheck: 'true',
@@ -308,6 +310,10 @@ export class NotesView {
     const lines = noteLinesToTasks(source);
     if (lines.length === 0) {
       this.ctx.toasts.show('Put the cursor on a line, or select some text, to make a task');
+      return;
+    }
+    if (lines.length > MAX_PASTE_LINES) {
+      this.ctx.toasts.show(`Make up to ${MAX_PASTE_LINES.toLocaleString('en')} tasks at once`);
       return;
     }
     // Into the sheet's own space.

@@ -1,3 +1,4 @@
+import { MAX_TASK_TEXT } from '../model/limits';
 import { ALL } from '../model/spaces';
 import { cleanTaskText, shorten } from '../model/text';
 import type { Task } from '../model/types';
@@ -536,6 +537,7 @@ export class TasksView {
 
     const input = h('textarea.edit', {
       rows: 1,
+      maxlength: String(MAX_TASK_TEXT),
       enterkeyhint: 'done',
       autocapitalize: 'sentences',
       spellcheck: 'true',

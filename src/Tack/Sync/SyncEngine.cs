@@ -133,6 +133,16 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
         if (adopted != null) news |= ws.MergeFrom(new WorkspaceData(adopted.Tasks, adopted.Sheets, adopted.Focus, adopted.Spaces));
         foreach (var file in fresh.OrderBy(f => f.Device, StringComparer.Ordinal))
         {
+            // Taking this file in would leave this device holding more than its own file may carry
+            // (each file is within the limits, but not several, or one on top of all this device has):
+            // it's set aside, noted until it changes, so this device's file stays one its peers take.
+            if (OverBudget(file))
+            {
+                string fileName = DeviceFile.FileName(file.Device);
+                meta.Files[fileName] = meta.Files[fileName] with { Problem = "unreadable" };
+                result.Problems.Add((file.Device, DeviceFileProblem.Unreadable));
+                continue;
+            }
             // Every changed file is merged, even one that seems already had through another device:
             // merges are idempotent, and skipping on another file's word would let one bad file
             // hide a device's changes from everyone.
@@ -148,6 +158,8 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
                 if (d != me) meta.Seen[d] = Later(meta.Seen.GetValueOrDefault(d), Stamp.IsLater(w, file.Written) ? file.Written : w);
             result.Merged.Add(file.Device);
         }
+        // Claims passed on stay within what every reader takes (a crafted file may make up a thousand).
+        DeviceFile.TrimSeen(meta.Seen, me, present);
 
         if (meta.Own.Written == null && meta.Own.Pending == null && present.Count > 0) hooks.Joined?.Invoke();
 
@@ -160,9 +172,17 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             // what this device knew at "written", and anything later is news for the next write.
             string written = ws.Clock.Now();
             var (name, app) = hooks.Label();
-            byte[] bytes = DeviceFile.Write(ws.ToData(), me, name, app, written, meta.Seen);
+            var data = ws.ToData();
+            byte[] bytes = DeviceFile.Write(data, me, name, app, written, meta.Seen);
             // Every device refuses a file this big, so writing it would only look like syncing.
-            if (bytes.Length > DeviceFile.MaxBytes) throw new SyncException(SyncErrorKind.TooLarge, "This PC's sync file would be over 20 MB");
+            if (data.Tasks.Count + data.Sheets.Count + data.Spaces.Count > DeviceFile.MaxRecords || bytes.Length > DeviceFile.MaxBytes)
+            {
+                // Noted as not written by this version, so the next cycle tries (and says so) again
+                // rather than finding nothing new and reporting all is well.
+                meta.Own = meta.Own with { Writer = null };
+                await hooks.SaveMetaAsync(meta);
+                throw new SyncException(SyncErrorKind.TooLarge, "This PC holds more than sync can carry");
+            }
             meta.Own = meta.Own with { Pending = written, Writer = Writer };
             await hooks.SaveMetaAsync(meta);
             var entry = await folder.WriteAsync(DeviceFile.FileName(me), bytes);
@@ -174,6 +194,18 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
         meta.LastSync = nowMs;
         result.Peers.AddRange(meta.Files.Values.Select(s => new PeerInfo(s.Device, s.Name, s.App, (long)Stamp.Time(s.Written))));
         return result;
+    }
+
+    /// <summary>
+    /// Would taking <paramref name="file"/> in leave this device holding more than it takes from
+    /// elsewhere: over <see cref="DeviceFile.MaxTaken"/> records (deleted ones included, as its own
+    /// file counts them), or <see cref="DeviceFile.MaxSpaces"/> spaces? Only a file that adds records
+    /// can; one that changes what's here never does (overBudget in engine.ts).
+    /// </summary>
+    private bool OverBudget(DeviceFile file)
+    {
+        var (added, spaces) = ws.WouldAdd(new WorkspaceData(file.Tasks, file.Sheets, file.Focus, file.Spaces));
+        return (added > 0 && ws.RecordCount + added > DeviceFile.MaxTaken) || (spaces > 0 && ws.SpaceCount + spaces > DeviceFile.MaxSpaces);
     }
 
     /// <summary>A file the listing already shows to be too big to be Tack's.</summary>

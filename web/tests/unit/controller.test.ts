@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Workspace } from '../../src/model/workspace';
+import { Hlc } from '../../src/model/hlc';
+import { Workspace } from '../../src/model/workspace';
 import { MemoryBackend } from '../../src/store/db';
 import type { Store } from '../../src/store/persist';
 import { SyncController } from '../../src/sync/controller';
-import { emptyAuth, SCOPES, type AuthRecord } from '../../src/sync/msauth';
+import { AuthError, emptyAuth, SCOPES, type AuthRecord } from '../../src/sync/msauth';
 import { AUTHORITY, CONSUMERS, FakeMicrosoft } from '../fakes/microsoft';
 
 /**
@@ -277,5 +278,136 @@ describe('a renewal visit when you come back to the app', () => {
     answer();
     await new Promise((r) => setTimeout(r, 50));
     expect(page.assigned).toHaveLength(0);
+  });
+});
+
+/*
+ * The second audit (24 October 2026): Tack never hammers a user's Microsoft account. When Microsoft
+ * says "slow down", nothing local (an edit, switching apps) brings the next request forward; a
+ * hidden frame that keeps timing out is tried less and less often, then handed to a visit.
+ */
+describe('waiting as long as Microsoft asks', () => {
+  const config = { clientId: '11111111-2222-3333-4444-555555555555', authority: AUTHORITY, redirectUri: 'https://tackfocus.app/', silentRedirectUri: 'https://tackfocus.app/auth/', scopes: SCOPES };
+  const account = { username: 'ada@outlook.com', name: 'Ada', tenant: CONSUMERS, id: 'oid-ada' };
+  const HOUR = 3600_000;
+  const GRAPH = 'https://graph.microsoft.com/v1.0';
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  /** A page on screen, signed in (the refresh token good for `refreshFor`), sync on, Graph answering through `http`. */
+  async function running(http: typeof fetch, refreshFor = 20 * HOUR) {
+    const page = stubPage();
+    vi.stubGlobal('navigator', { onLine: true, userAgent: 'test' });
+    vi.stubGlobal('fetch', http); // the controller's OneDrive folder uses the page's fetch
+    const backend = new MemoryBackend();
+    await backend.putMeta('sync', { enabled: true, meta: null });
+    const tokens = { accessToken: 'a', accessExpires: Date.now() + 10 * HOUR, refreshToken: 'r', refreshExpires: Date.now() + refreshFor };
+    await backend.putMeta('auth', { ...emptyAuth(), account, tokens });
+    const ws = new Workspace(new Hlc('dev12345'));
+    const store = { flushAll: async () => {}, flush: async () => {}, status: 'saved', allSaved: true } as unknown as Store;
+    const sync = await SyncController.create(ws, store, backend, config, http);
+    return { page, backend, ws, sync };
+  }
+
+  /** A healthy Graph with an app folder and devices/, keeping uploads; `requests` says when it was asked. */
+  function graph(): { http: typeof fetch; requests: number[] } {
+    const files = new Map<string, string>();
+    const requests: number[] = [];
+    const json = (v: unknown) => new Response(JSON.stringify(v), { status: 200, headers: { 'content-type': 'application/json' } });
+    const http: typeof fetch = async (input, init) => {
+      requests.push(Date.now());
+      const url = String(input);
+      if (url === `${GRAPH}/me/drive/special/approot`) return json({ id: 'root', name: 'Tack Focus', parentReference: { driveId: 'd' } });
+      if (url.startsWith(`${GRAPH}/me/drive/items/root/children`)) return json({ value: [{ id: 'dev', name: 'devices', folder: {} }, { id: 'm', name: 'tack-sync.json', file: {} }, { id: 'r', name: 'README.txt', file: {} }] });
+      if (url.startsWith(`${GRAPH}/me/drive/items/dev/children`)) return json({ value: [...files.keys()].map((name) => ({ id: name, name, file: {}, cTag: `c${files.get(name)!.length}`, size: files.get(name)!.length })) });
+      const m = /items\/dev:\/(.+):\/content$/.exec(url);
+      if (m && init?.method === 'PUT') {
+        const name = decodeURIComponent(m[1]!);
+        files.set(name, String(init.body));
+        return json({ id: name, name, cTag: `c${String(init.body).length}` });
+      }
+      return new Response('{}', { status: 404 });
+    };
+    return { http, requests };
+  }
+
+  it('Retry-After holds against edits, switching apps and Sync now (L4)', async () => {
+    const requests: number[] = [];
+    let throttling = true;
+    const healthy = graph();
+    const http: typeof fetch = async (input, init) => {
+      if (!throttling) return healthy.http(input, init);
+      requests.push(Date.now());
+      return new Response(JSON.stringify({ error: { code: 'activityLimitReached', message: 'slow down' } }), { status: 429, headers: { 'Retry-After': '120', 'content-type': 'application/json' } });
+    };
+    const { page, ws, sync } = await running(http);
+    sync.start();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(requests).toHaveLength(1); // the first sync: 429, Retry-After 120 s
+    const first = requests[0]!;
+    // Within the next two minutes: an edit every ten seconds, the app hidden and shown, Sync now.
+    for (let s = 0; s < 100; s += 10) {
+      ws.addTask(`task ${s}`);
+      await vi.advanceTimersByTimeAsync(10_000);
+    }
+    page.doc.visibilityState = 'hidden';
+    page.handlers.get('visibilitychange')!();
+    await vi.advanceTimersByTimeAsync(1);
+    page.doc.visibilityState = 'visible';
+    page.handlers.get('visibilitychange')!();
+    sync.syncNow();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(requests.filter((t) => t > first && t < first + 120_000)).toEqual([]);
+    // Then it goes again.
+    throttling = false;
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(healthy.requests.length).toBeGreaterThan(0);
+    expect(sync.status.phase).toBe('synced');
+  });
+
+  it('a hidden frame that keeps timing out is tried less often, then a visit takes over (L5)', async () => {
+    const g = graph();
+    // Signed in 21 hours ago: renewing ahead of time is due (four hours before the end).
+    const { backend, ws, sync } = await running(g.http, 3 * HOUR);
+    let frames = 0;
+    const msal = (sync as unknown as { msal: { renewInFrame: () => Promise<never> } }).msal;
+    vi.spyOn(msal, 'renewInFrame').mockImplementation(() => {
+      frames++;
+      return new Promise((_, reject) => setTimeout(() => reject(new AuthError('failed', 'Silent renewal timed out')), 10_000));
+    });
+    sync.start();
+    // An hour on screen, typing now and then: it used to try once a minute, and after every edit.
+    for (let i = 0; i < 60; i++) {
+      if (i % 5 === 0) ws.addTask(`t${i}`);
+      await vi.advanceTimersByTimeAsync(60_000);
+    }
+    expect(frames).toBe(3); // at once, after 15 minutes, after 30 more
+    const auth = (await backend.getMeta<AuthRecord>('auth'))!;
+    expect(auth.frameRefused).toBeGreaterThan(0);
+    // ...so a renewal visit is due at the next quiet moment, well before the sign-in runs out.
+    expect(sync.renewalDueAtStart()).toBe(true);
+  });
+
+  it('a frame that works resets it all', async () => {
+    const g = graph();
+    const { backend, sync } = await running(g.http, 3 * HOUR);
+    await backend.putMeta('auth', { ...(await backend.getMeta<AuthRecord>('auth'))!, frameTimeouts: 2, frameTimedOut: Date.now() - 31 * 60_000 });
+    const fresh = { accessToken: 'b', accessExpires: Date.now() + HOUR, refreshToken: 'r2', refreshExpires: Date.now() + 24 * HOUR };
+    const msal = (sync as unknown as { msal: { renewInFrame: () => Promise<unknown> } }).msal;
+    const renew = vi.spyOn(msal, 'renewInFrame').mockResolvedValue({ account, tokens: fresh });
+    sync.start();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(renew).toHaveBeenCalledTimes(1);
+    const auth = (await backend.getMeta<AuthRecord>('auth'))!;
+    expect([auth.frameTimeouts, auth.frameWorks, auth.tokens!.refreshToken]).toEqual([0, true, 'r2']);
   });
 });

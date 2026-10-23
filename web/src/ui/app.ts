@@ -1,4 +1,5 @@
 import { encode } from '../model/hlc';
+import { MAX_PASTE_LINES } from '../model/limits';
 import { ALL } from '../model/spaces';
 import { pastedLines } from '../model/text';
 import { dayKey, msUntilMidnight } from '../model/time';
@@ -116,6 +117,10 @@ export class App {
       const lines = pastedLines(text);
       if (lines.length <= 1) return;
       e.preventDefault();
+      if (lines.length > MAX_PASTE_LINES) {
+        this.toasts.show(`Paste up to ${MAX_PASTE_LINES.toLocaleString('en')} lines at once`);
+        return;
+      }
       this.tasks.primeEnter(this.input.getBoundingClientRect());
       // Into the space on show (from All, Main).
       const { added, undo } = this.ws.addTasks(lines, this.spaces.here);

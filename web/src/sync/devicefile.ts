@@ -1,5 +1,6 @@
 import { focusRecord, isObject, readFocus, readSheetRecord, readSpaceRecord, readTaskRecord, sheetRecord, spaceRecord, taskRecord } from '../model/file';
 import { isPlausibleStamp, ZERO, type Stamp } from '../model/hlc';
+import { MAX_NOTE_TEXT, MAX_RECORDS, MAX_SPACES, MAX_TAKEN, MAX_TASK_TEXT } from '../model/limits';
 import { mergeSheet, mergeSpace, mergeTask } from '../model/merge';
 import { MAX_SPACE_NAME } from '../model/spaces';
 import { wellFormedValues } from '../model/text';
@@ -30,17 +31,15 @@ export const DEVICE_VERSION = 1;
 /** Device files bigger than this can't be Tack's (thousands of tasks are well under 2 MB). */
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
 /**
- * Limits inside a device file, far beyond any real use. A file over them is refused whole (and
- * set aside), and an over-long record is skipped, so a damaged or crafted file can't swell every
- * device's own file for good. Tack for Windows uses the same numbers. (A space name is the one
- * thing cut rather than skipped: every device keeps names to MAX_SPACE_NAME wherever they come
- * from, so no device can hold a name its peers would refuse.)
+ * Limits inside a device file (model/limits.ts), far beyond any real use. A file over them is
+ * refused whole (and set aside), and an over-long record is skipped, so a damaged or crafted file
+ * can't swell every device's own file for good. Tack for Windows uses the same numbers. (A space
+ * name is the one thing cut rather than skipped: every device keeps names to MAX_SPACE_NAME
+ * wherever they come from, so no device can hold a name its peers would refuse.) More `seen`
+ * entries than MAX_SEEN are ignored rather than refused (see trimSeen).
  */
-export const MAX_RECORDS = 200_000; // tasks + sheets + spaces + deletions
 export const MAX_SEEN = 1_000;
-export const MAX_TASK_TEXT = 100_000;
-export const MAX_NOTE_TEXT = 1_000_000;
-export { MAX_SPACE_NAME };
+export { MAX_NOTE_TEXT, MAX_RECORDS, MAX_SPACE_NAME, MAX_SPACES, MAX_TAKEN, MAX_TASK_TEXT };
 
 const DEVICE_ID = /^[0-9A-Za-z]{4,32}$/;
 const FILE_NAME = /^([0-9A-Za-z]{4,32})\.json$/;
@@ -158,9 +157,11 @@ export function parseDeviceFile(text: string, device: string, now = Date.now()):
   const rawSpaces = Array.isArray(doc.spaces) ? doc.spaces : [];
   const count = (map: unknown) => (isObject(map) ? Object.keys(map).length : 0);
   const records = doc.tasks.length + doc.sheets.length + rawSpaces.length + count(deleted.tasks) + count(deleted.sheets) + count(deleted.spaces);
-  if (records > MAX_RECORDS || count(doc.seen) > MAX_SEEN) {
-    throw new DeviceFileError('unreadable');
-  }
+  if (records > MAX_RECORDS) throw new DeviceFileError('unreadable');
+  // More `seen` claims than any device writes: the claims are ignored, not the file. Versions
+  // before trimSeen passed a crafted file's claims on, and refusing their files would stop sync
+  // between them for good.
+  const seenOk = count(doc.seen) <= MAX_SEEN;
 
   // Duplicate ids (only a hand edit makes them) merge rather than one silently replacing the other.
   const tasks = new Map<string, Task>();
@@ -190,7 +191,7 @@ export function parseDeviceFile(text: string, device: string, now = Date.now()):
     name: typeof doc.name === 'string' ? doc.name.slice(0, 100) : '',
     app: typeof doc.app === 'string' ? doc.app.slice(0, 100) : '',
     written: doc.written,
-    seen: Object.fromEntries(entries(doc.seen, now).filter(([k]) => isDeviceId(k))),
+    seen: seenOk ? Object.fromEntries(entries(doc.seen, now).filter(([k]) => isDeviceId(k))) : {},
     focus: readFocus(doc.focus, now),
     tasks: [...tasks.values()],
     sheets: [...sheets.values()],
@@ -202,6 +203,21 @@ export function parseDeviceFile(text: string, device: string, now = Date.now()):
 function entries(raw: unknown, now: number): [string, Stamp][] {
   if (!isObject(raw)) return [];
   return Object.entries(raw).filter((e): e is [string, Stamp] => RECORD_ID.test(e[0]) && isPlausibleStamp(e[1], now));
+}
+
+/**
+ * Keeps this device's `seen` (changed in place) within MAX_SEEN before it goes into its file, so
+ * every reader takes the file: only a crafted file's made-up claims, passed on, ever make it
+ * longer. Devices with a file in the folder (`present`: file names) stay first, then the latest
+ * claims. Dropping a claim costs little: at worst a note edited on both sides is kept twice.
+ * Tack for Windows trims the same way (DeviceFile.TrimSeen).
+ */
+export function trimSeen(seen: Record<string, Stamp>, me: string, present: ReadonlySet<string>): void {
+  const ids = Object.keys(seen).filter((d) => d !== me && isDeviceId(d));
+  if (ids.length <= MAX_SEEN) return;
+  const here = (d: string) => (present.has(fileName(d)) ? 1 : 0);
+  ids.sort((a, b) => here(b) - here(a) || (seen[a]! < seen[b]! ? 1 : seen[a]! > seen[b]! ? -1 : a < b ? -1 : 1));
+  for (const d of ids.slice(MAX_SEEN)) delete seen[d];
 }
 
 function sortedMap(map: Record<string, Stamp>, without: string): Record<string, Stamp> {

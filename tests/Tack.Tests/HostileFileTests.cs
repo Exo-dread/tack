@@ -26,13 +26,22 @@ internal static class HostileFileTests
         yield return ("hostile files, M1: such text in this PC's own tack.json doesn't stop Tack opening", HalfCharactersAtStartup);
         yield return ("hostile files, M2: ids like \"constructor\" sync like any other", BuiltInNames);
         yield return ("hostile files, M3: one file vouching for another can't hide that device's changes", Vouching);
-        yield return ("hostile files, M4: limits on records, devices seen and text", Limits);
+        yield return ("hostile files, M4: limits on records and text; more devices seen are ignored", Limits);
         yield return ("hostile files, M4: only real dates, sane clocks and order keys", Fields);
         yield return ("hostile files, M4: won't write an own file every device would refuse", TooLargeToWrite);
         yield return ("hostile files, L1: never reads a file the listing shows to be too big", NeverReadsTooBig);
         yield return ("hostile files, L1: a file that fails to read costs only that file", OneFailedRead);
         yield return ("hostile files, L7: an empty \"completed\" means not done", EmptyCompleted);
         yield return ("hostile files, L8: clocks don't adopt stamps more than a year and a day ahead", ClockWindow);
+        yield return ("second audit, M1: a file claiming a thousand devices seen can't stop honest devices syncing", SeenFlood);
+        yield return ("second audit, M1: trimming seen keeps the devices in the folder, then the latest", TrimsSeen);
+        yield return ("second audit, M2: a file that would fill this PC is set aside, its own file stays readable", RecordsBudget);
+        yield return ("second audit, M2: files are taken in while there is room, together", RecordsBudgetTogether);
+        yield return ("second audit, M2: an own file every device would refuse is never written, and said every cycle", TooLargeEveryCycle);
+        yield return ("second audit, M2: never reads more of a file than a device file may hold", BoundedRead);
+        yield return ("second audit, L1: imports no more than a device can pass on", ImportLimits);
+        yield return ("second audit, L1: imports skip text longer than any device reads", ImportLongText);
+        yield return ("second audit, L2: imported dates are kept only as every device reads them", ImportDates);
     }
 
     // ---------------------------------------------------------------- M1
@@ -152,8 +161,12 @@ internal static class HostileFileTests
         string atLimit = Craft("mmmm0001", Now, text: "x", tasksJson: "[" + string.Join(",", Enumerable.Repeat("{}", DeviceFile.MaxRecords)) + "]");
         DeviceFile.Parse(Encoding.UTF8.GetBytes(atLimit), "mmmm0001", Now); // fine at the limit
 
+        // More "seen" claims than any device writes (a file passing on a crafted one's, before that
+        // was trimmed): the claims are ignored, the records still read.
         string seen = "\"seen\":{" + string.Join(",", Enumerable.Range(0, DeviceFile.MaxSeen + 1).Select(i => $"\"dev{i:D5}\":\"{Stamp.Encode(Now, 0, "x")}\"")) + "}";
-        Check.Equal(DeviceFileProblem.Unreadable, ProblemOf(() => DeviceFile.Parse(Encoding.UTF8.GetBytes(Craft("mmmm0001", Now, text: "x", extra: seen)), "mmmm0001", Now)), "too many devices seen");
+        var relayed = DeviceFile.Parse(Encoding.UTF8.GetBytes(Craft("mmmm0001", Now, text: "x", extra: seen)), "mmmm0001", Now);
+        Check.Equal(0, relayed.Seen.Count, "too many devices seen: the claims are ignored");
+        Check.Equal("x", string.Join(",", relayed.Tasks.Select(t => t.Text)), "and the records still read");
 
         string longText = Craft("mmmm0001", Now, text: new string('x', DeviceFile.MaxTaskText + 1));
         Check.Equal(0, DeviceFile.Parse(Encoding.UTF8.GetBytes(longText), "mmmm0001", Now).Tasks.Count, "an over-long task is skipped");
@@ -234,6 +247,206 @@ internal static class HostileFileTests
         Check.Equal((double)(Now + 30 * Day), Stamp.Time(h.Now()), "nearer stamps are");
     }
 
+    // ---------------------------------------------------------------- second audit (24 October 2026)
+    // Limits on what a device writes and takes in, so that no file within every reader's limits, alone
+    // or with others, can make an honest device write a file its peers refuse (as synchostile.test.ts).
+
+    private static void SeenFlood()
+    {
+        var folder = new Folder();
+        folder.Put("phon0001.json", Craft("phon0001", Now, text: "before"));
+        var (desk, deskMeta) = Device("desk0001");
+        var (pc, pcMeta) = Device("pcpc0001");
+        Cycle(desk, folder, deskMeta);
+        Cycle(pc, folder, pcMeta);
+        // Within every limit: exactly MaxSeen made-up devices.
+        string claims = "\"seen\":{" + string.Join(",", Enumerable.Range(0, DeviceFile.MaxSeen).Select(i => $"\"zz{i:D6}\":\"{Stamp.Encode(Now - 5000, 0, "q")}\"")) + "}";
+        folder.Put("evil0001.json", Craft("evil0001", Now, text: "from evil", extra: claims));
+        Cycle(desk, folder, deskMeta);
+        Cycle(pc, folder, pcMeta);
+        foreach (string id in new[] { "desk0001", "pcpc0001" })
+        {
+            var own = DeviceFile.Parse(folder.Files[$"{id}.json"].Bytes, id, Now); // every device takes it
+            Check.True(own.Seen.Count <= DeviceFile.MaxSeen, $"{id} passes on no more than any reader takes");
+        }
+
+        folder.Files.Remove("evil0001.json");
+        folder.Put("phon0001.json", Craft("phon0001", Now + 1000, text: "after"));
+        Cycle(desk, folder, deskMeta, Now + 1000);
+        var result = Cycle(pc, folder, pcMeta, Now + 1000);
+        Cycle(desk, folder, deskMeta, Now + 2000);
+        Check.True(pc.Open.Any(t => t.Text == "after"), "the phone's next change still arrives");
+        Check.Equal(0, result.Problems.Count, "and no device's file is set aside");
+        Check.Equal(0, Cycle(desk, folder, deskMeta, Now + 2000).Problems.Count, "on either side");
+    }
+
+    private static void TrimsSeen()
+    {
+        var seen = Enumerable.Range(0, DeviceFile.MaxSeen + 5).ToDictionary(i => $"zz{i:D6}", i => Stamp.Encode(Now + i, 0, "q"));
+        seen["real0001"] = Stamp.Encode(Now - 1000, 0, "real0001"); // older than every made-up claim, but its file is there
+        DeviceFile.TrimSeen(seen, "mine0001", new HashSet<string> { DeviceFile.FileName("real0001") });
+        Check.Equal(DeviceFile.MaxSeen, seen.Count, "trimmed to what every reader takes");
+        Check.True(seen.ContainsKey("real0001"), "a device in the folder stays");
+        Check.True(Enumerable.Range(0, 6).All(i => !seen.ContainsKey($"zz{i:D6}")), "the oldest made-up claims went");
+        var few = new Dictionary<string, string> { ["aaaa0001"] = Stamp.Encode(Now, 0, "aaaa0001") };
+        DeviceFile.TrimSeen(few, "mine0001", new HashSet<string>());
+        Check.Equal(1, few.Count, "under the limit nothing changes");
+    }
+
+    /// <summary>A crafted file within every limit: one task and <paramref name="deletions"/> made-up deletions.</summary>
+    private static string Deletions(string device, int deletions, string prefix = "d")
+    {
+        string at = Stamp.Encode(Now - 5000, 0, device);
+        string map = "{" + string.Join(",", Enumerable.Range(0, deletions).Select(i => $"\"{prefix}{i}\":\"{at}\"")) + "}";
+        return Craft(device, Now, text: $"from {device}").Replace("\"deleted\":{\"tasks\":{}", $"\"deleted\":{{\"tasks\":{map}", StringComparison.Ordinal);
+    }
+
+    private static void RecordsBudget()
+    {
+        var folder = new Folder();
+        folder.Put("phon0001.json", Craft("phon0001", Now, text: "before"));
+        string evil = Deletions("evil0002", DeviceFile.MaxRecords - 1);
+        DeviceFile.Parse(Encoding.UTF8.GetBytes(evil), "evil0002", Now); // within every limit
+        folder.Put("evil0002.json", evil);
+        var (ws, meta) = Device("desk0001");
+        var result = Cycle(ws, folder, meta);
+        Check.True(result.Problems.Contains(("evil0002", DeviceFileProblem.Unreadable)), "set aside");
+        Check.True(ws.RecordCount < 10, "and not taken in");
+        DeviceFile.Parse(folder.Files["desk0001.json"].Bytes, "desk0001", Now); // every device takes this PC's file
+        Check.Equal("before", string.Join(",", ws.Open.Select(t => t.Text)), "the rest still syncs");
+    }
+
+    private static void RecordsBudgetTogether()
+    {
+        var folder = new Folder();
+        int half = DeviceFile.MaxTaken / 2;
+        folder.Put("aaaa0001.json", Deletions("aaaa0001", half, "a"));
+        folder.Put("bbbb0001.json", Deletions("bbbb0001", half, "b"));
+        var (ws, meta) = Device("desk0001");
+        var result = Cycle(ws, folder, meta);
+        Check.Equal("aaaa0001", string.Join(",", result.Merged), "the first fits");
+        Check.True(result.Problems.Contains(("bbbb0001", DeviceFileProblem.Unreadable)), "the second would take this PC past what it takes in");
+        DeviceFile.Parse(folder.Files["desk0001.json"].Bytes, "desk0001", Now);
+        var again = Cycle(ws, folder, meta);
+        Check.True(again.Problems.Contains(("bbbb0001", DeviceFileProblem.Unreadable)), "still set aside");
+        Check.Equal(1, folder.Reads.GetValueOrDefault("bbbb0001.json"), "and not read again until it changes");
+    }
+
+    private static void TooLargeEveryCycle()
+    {
+        var folder = new Folder();
+        var (ws, meta) = Device("desk0001");
+        // Holding more than any file may carry (merged before this was checked, say).
+        string at = Stamp.Encode(Now - 5000, 0, "evil0003");
+        ws.MergeFrom(new WorkspaceData(Enumerable.Range(0, DeviceFile.MaxRecords + 1).Select(i => DeviceFile.DeadTask($"d{i}", at)).ToList(), [], FocusData.None, []));
+        SyncErrorKind? Kind()
+        {
+            try
+            {
+                Cycle(ws, folder, meta);
+                return null;
+            }
+            catch (SyncException ex)
+            {
+                return ex.Kind;
+            }
+        }
+        Check.Equal<SyncErrorKind?>(SyncErrorKind.TooLarge, Kind(), "refused as too large");
+        Check.True(!folder.Files.ContainsKey("desk0001.json"), "nothing written");
+        Check.Equal<SyncErrorKind?>(SyncErrorKind.TooLarge, Kind(), "and said again on the next cycle, which finds nothing new");
+        Check.True(meta.Own.Pending == null, "nothing pending");
+    }
+
+    private static void BoundedRead()
+    {
+        string dir = Directory.CreateTempSubdirectory("tack-hostile-").FullName;
+        try
+        {
+            var local = new LocalSyncFolder(dir);
+            local.Prepare();
+            string path = Path.Combine(local.Devices, "bigbig01.json");
+            File.WriteAllText(path, "x");
+            var entry = local.ListAsync().GetAwaiter().GetResult().Single(); // listed small...
+            using (var fs = new FileStream(path, FileMode.Create)) fs.SetLength(DeviceFile.MaxBytes + 1L); // ...grown since
+            Check.Equal(DeviceFileProblem.Unreadable, ProblemOf(() => local.ReadAsync(entry).GetAwaiter().GetResult()), "refused unread");
+            File.WriteAllText(path, "{}");
+            Check.Equal("{}", Encoding.UTF8.GetString(local.ReadAsync(entry).GetAwaiter().GetResult()), "an ordinary file reads as before");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
+    private static string DesktopFile(IEnumerable<string> tasks) => "{\"version\":1,\"tasks\":[" + string.Join(",", tasks) + "],\"sheets\":[]}";
+
+    private static string DesktopTask(string id, string text, string created = "2026-10-20T09:00:00Z", string? completed = null) =>
+        $"{{\"id\":\"{id}\",\"text\":{JsonSerializer.Serialize(text)},\"created\":{JsonSerializer.Serialize(created)}"
+        + (completed != null ? $",\"completed\":{JsonSerializer.Serialize(completed)}" : "") + ",\"now\":false}";
+
+    private static void ImportLimits()
+    {
+        var (ws, _) = Device("desk0001");
+        // Holding nearly all a device takes in (deletions, say: Undo after a huge import leaves those).
+        string at = Stamp.Encode(Now - 5000, 0, "desk0001");
+        ws.MergeFrom(new WorkspaceData(Enumerable.Range(0, DeviceFile.MaxTaken - 2 - ws.RecordCount).Select(i => DeviceFile.DeadTask($"d{i}", at)).ToList(), [], FocusData.None, []));
+        byte[] fits = Encoding.UTF8.GetBytes(DesktopFile([DesktopTask("i0", "one"), DesktopTask("i1", "two")]));
+        var (message, _) = FileImport.Run(ws, fits, null);
+        Check.Equal("Imported 2 tasks", message, "up to the limit is fine");
+        Check.Equal(DeviceFile.MaxTaken, ws.RecordCount, "and taken in");
+        Check.Equal("Nothing new in that file", FileImport.Run(ws, fits, null).Message, "the same again adds nothing, so it's fine too");
+        var (refused, undo) = FileImport.Run(ws, Encoding.UTF8.GetBytes(DesktopFile([DesktopTask("i2", "one more")])), null);
+        Check.Equal("This file holds more tasks and notes than Tack can keep in sync.", refused, "one more is refused");
+        Check.True(undo == null && ws.RecordCount == DeviceFile.MaxTaken, "and nothing changes");
+        var (huge, _) = FileImport.Run(Device("desk0002").Ws, Encoding.UTF8.GetBytes(DesktopFile(Enumerable.Repeat("{}", DeviceFile.MaxRecords + 1))), null);
+        Check.Equal("This file holds more tasks and notes than Tack can keep in sync.", huge, "a file with more records than any device may hold");
+    }
+
+    private static void ImportLongText()
+    {
+        var (ws, _) = Device("desk0001");
+        string file = "{\"version\":1,\"tasks\":[" + DesktopTask("a1", new string('x', DeviceFile.MaxTaskText + 1)) + "," + DesktopTask("a2", "kept") + "],"
+            + $"\"sheets\":[{{\"id\":\"s1\",\"text\":\"{new string('n', DeviceFile.MaxNoteText + 1)}\",\"updated\":\"2026-10-20T09:00:00Z\"}}]}}";
+        FileImport.Run(ws, Encoding.UTF8.GetBytes(file), null);
+        Check.Equal("kept", string.Join(",", ws.Open.Select(t => t.Text)), "an over-long task is skipped");
+        Check.True(ws.Sheets.All(s => s.Id != "s1"), "and an over-long note");
+
+        string at = Stamp.Encode(Now, 0, "bbbb2222");
+        string Record(string id, string text) => $"{{\"id\":\"{id}\",\"text\":\"{text}\",\"created\":\"2026-10-20T09:00:00Z\",\"completed\":null,\"order\":\"V\",\"deleted\":false,"
+            + $"\"clk\":{{\"text\":\"{at}\",\"completed\":\"{at}\",\"order\":\"{at}\",\"deleted\":\"{Stamp.Zero}\"}}}}";
+        var (ws2, _) = Device("desk0002");
+        string withClocks = "{\"version\":1,\"tasks\":[],\"sheets\":[],\"tackFocus\":{\"format\":1,\"focus\":{\"id\":null,\"clk\":\"" + Stamp.Zero + "\"},\"tasks\":["
+            + Record("b1", new string('x', DeviceFile.MaxTaskText + 1)) + "," + Record("b2", "kept") + "],\"sheets\":[]}}";
+        FileImport.Run(ws2, Encoding.UTF8.GetBytes(withClocks), null);
+        Check.Equal("kept", string.Join(",", ws2.Open.Select(t => t.Text)), "in files with clocks too");
+    }
+
+    private static void ImportDates()
+    {
+        var folder = new Folder();
+        var (desk, deskMeta) = Device("desk0001");
+        var (pc, pcMeta) = Device("pcpc0001");
+        string file = "{\"version\":1,\"tasks\":[" + DesktopTask("a1", "done one", created: " 2026-10-20T09:00:00Z", completed: "2026-10-21") + "],"
+            + "\"sheets\":[{\"id\":\"s1\",\"text\":\"note\",\"updated\":\"2026-10-21 10:00\"}]}";
+        FileImport.Run(desk, Encoding.UTF8.GetBytes(file), null);
+        var t = desk.ToData().Tasks.Single(x => x.Id == "a1");
+        Check.True(TackFile.IsFileDate(t.Created) && TackFile.IsFileDate(t.Completed), $"dates every device reads ({t.Created}, {t.Completed})");
+        Check.True(TackFile.IsFileDate(desk.ToData().Sheets.Single(s => s.Id == "s1").Updated), "the note's too");
+        desk.AddTask("nudge"); // an import of a file without clocks is no news on its own
+        Cycle(desk, folder, deskMeta);
+        Cycle(pc, folder, pcMeta);
+        Cycle(desk, folder, deskMeta);
+        Check.Equal("done one", string.Join(",", desk.Done.Select(x => x.Text)), "still done here");
+        Check.Equal("done one", string.Join(",", pc.Done.Select(x => x.Text)), "and done on the other device");
+        Check.Equal(t.Created, pc.ToData().Tasks.Single(x => x.Id == "a1").Created, "created the same everywhere");
+
+        var (ws, _) = Device("desk0002");
+        FileImport.Run(ws, Encoding.UTF8.GetBytes(DesktopFile([DesktopTask("a1", "x", created: "2026-10-20T09:00:00.1234567+01:00", completed: "2026-10-21T10:00:00+01:00")])), null);
+        var kept = ws.ToData().Tasks.Single();
+        Check.Equal("2026-10-20T09:00:00.1234567+01:00", kept.Created, "dates already as every device reads them are kept as written");
+        Check.Equal<string?>("2026-10-21T10:00:00+01:00", kept.Completed, "completed too");
+    }
+
     // ---------------------------------------------------------------- helpers
 
     /// <summary>A hand-made device file with one live task (its text as JSON-escaped source).</summary>
@@ -254,6 +467,8 @@ internal static class HostileFileTests
         using var doc = JsonDocument.Parse(json);
         return TackFile.ReadTaskRecord(doc.RootElement, Now, clean: true)!;
     }
+
+    private static DeviceFileProblem ProblemOf(Func<object> parse) => ProblemOf(() => { parse(); });
 
     private static DeviceFileProblem ProblemOf(Action parse)
     {

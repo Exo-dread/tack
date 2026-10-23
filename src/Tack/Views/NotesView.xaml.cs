@@ -239,9 +239,14 @@ public partial class NotesView : UserControl
         string source = Editor.SelectionLength > 0 ? Editor.SelectedText : CurrentLine().Text;
         var lines = source.Replace("\r", "").Split('\n')
             .Select(l => ListPrefix.Replace(l, "").Trim())
-            .Where(l => l.Length > 0)
+            .Where(l => l.Length > 0 && JsText.CleanTaskText(l).Length <= DeviceFile.MaxTaskText)
             .ToList();
         if (lines.Count == 0) return;
+        if (lines.Count > DeviceFile.MaxPasteLines)
+        {
+            _panel.ShowToast($"Make up to {DeviceFile.MaxPasteLines:N0} tasks at once");
+            return;
+        }
 
         // The tasks go in the sheet's own space.
         string space = _view.ActiveSheet is { } sheet ? _view.SpaceOf(sheet) : _view.NewItemSpace;

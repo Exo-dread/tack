@@ -1,5 +1,6 @@
 import { Hlc, ZERO, type Stamp } from './hlc';
 import { newId } from './ids';
+import { MAX_TASK_TEXT } from './limits';
 import { cloneSheet, cloneSpace, cloneTask, mergeFocus, mergeSheet, mergeSpace, mergeTask, type ConcurrentText } from './merge';
 import { keyAfter, keyBefore, keyBetween, keysAt } from './order';
 import { ALL, cleanSpaceName, isSpaceId, MAIN, normalSheet, normalTask, spaceLabel } from './spaces';
@@ -215,7 +216,8 @@ export class Workspace {
    */
   addTask(rawText: string, options: { asNow?: boolean; space?: string } = {}): Task | null {
     const text = cleanTaskText(rawText);
-    if (!text) return null;
+    // Longer than any device reads from a sync file: it would stay on this one alone.
+    if (!text || text.length > MAX_TASK_TEXT) return null;
     return this.batch(() => {
       const top = this.open[0]?.order;
       const space = this.placeIn(options.space);
@@ -258,7 +260,7 @@ export class Workspace {
   editTask(id: string, rawText: string): void {
     const t = this.tasks.get(id);
     const text = cleanTaskText(rawText);
-    if (!t || !text || t.text === text) return;
+    if (!t || !text || text.length > MAX_TASK_TEXT || t.text === text) return;
     this.batch(() => this.setTaskField(t, 'text', text));
   }
 

@@ -1,7 +1,7 @@
 import { decode, stampTime, ZERO, type Stamp } from '../model/hlc';
 import type { Sheet } from '../model/types';
 import type { Workspace } from '../model/workspace';
-import { deviceOfFile, DeviceFileError, fileName, makeDeviceFile, MAX_FILE_BYTES, parseDeviceFile, serializeDeviceFile, stampOf, type DeviceFile } from './devicefile';
+import { deviceOfFile, DeviceFileError, fileName, makeDeviceFile, MAX_FILE_BYTES, MAX_RECORDS, MAX_SPACES, MAX_TAKEN, parseDeviceFile, serializeDeviceFile, stampOf, trimSeen, type DeviceFile } from './devicefile';
 
 /**
  * Sync through a shared folder that every device can read and write (OneDrive's app folder, or
@@ -47,8 +47,10 @@ export type SyncErrorKind =
   | 'denied'
   /** The service had a problem; try again later. */
   | 'server'
-  /** This device's own file would be over the size every device accepts, so it isn't written. */
-  | 'toolarge';
+  /** This device's own file would be over what every device accepts (records or size), so it isn't written. */
+  | 'toolarge'
+  /** The folder holds far more files than Tack keeps there (something else filled it): listing it all would hammer Microsoft. */
+  | 'crowded';
 
 export class SyncError extends Error {
   constructor(
@@ -58,6 +60,12 @@ export class SyncError extends Error {
   ) {
     super(message);
   }
+}
+
+/** A Retry-After header (in seconds) as ms, if it's there and sensible. */
+export function retryAfterMs(response: Response): number | undefined {
+  const seconds = Number(response.headers.get('Retry-After'));
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
 }
 
 /** What a device remembers about another device's file. */
@@ -256,6 +264,16 @@ export class SyncEngine {
     try {
       if (adopted) this.ws.merge({ tasks: adopted.tasks, sheets: adopted.sheets, focus: adopted.focus, spaces: adopted.spaces }, 'remote');
       for (const file of fresh.sort((a, b) => (a.device < b.device ? -1 : 1))) {
+        // Taking this file in would leave this device holding more than its own file may carry
+        // (each file is within the limits, but not several, or one on top of all this device
+        // has): it's set aside, noted until it changes, so this device's file stays one its
+        // peers take.
+        if (overBudget(this.ws, file)) {
+          const name = fileName(file.device);
+          meta.files[name] = { ...meta.files[name]!, problem: 'unreadable' };
+          result.problems.push({ device: file.device, reason: 'unreadable' });
+          continue;
+        }
         // Every changed file is merged, even one that seems already had through another device:
         // merges are idempotent, and skipping on another file's word would let one bad file
         // hide a device's changes from everyone.
@@ -274,6 +292,8 @@ export class SyncEngine {
     } finally {
       off();
     }
+    // Claims passed on stay within what every reader takes (a crafted file may make up a thousand).
+    trimSeen(meta.seen, me, present);
 
     if (meta.own.written === null && meta.own.pending === null && present.size > 0) this.hooks.joined?.();
 
@@ -284,10 +304,17 @@ export class SyncEngine {
       // The clock and the records together, with no await between: the file holds exactly what
       // this device knew at `written`, and anything later is news for the next write.
       const written = this.ws.hlc.now();
-      const file = makeDeviceFile(this.ws.toData(), { device: me, ...this.hooks.label(), written, seen: meta.seen });
+      const data = this.ws.toData();
+      const file = makeDeviceFile(data, { device: me, ...this.hooks.label(), written, seen: meta.seen });
       const text = serializeDeviceFile(file);
       // Every device refuses a file this big, so writing it would only look like syncing.
-      if (new TextEncoder().encode(text).length > MAX_FILE_BYTES) throw new SyncError('toolarge', 'This device’s sync file would be over 20 MB');
+      if (data.tasks.length + data.sheets.length + (data.spaces?.length ?? 0) > MAX_RECORDS || new TextEncoder().encode(text).length > MAX_FILE_BYTES) {
+        // Noted as not written by this version, so the next cycle tries (and says so) again
+        // rather than finding nothing new and reporting all is well.
+        delete meta.own.writer;
+        await this.hooks.saveMeta(meta);
+        throw new SyncError('toolarge', 'This device holds more than sync can carry');
+      }
       meta.own.pending = written;
       meta.own.writer = WRITER;
       await this.hooks.saveMeta(meta);
@@ -301,6 +328,18 @@ export class SyncEngine {
     result.peers = Object.values(meta.files).map((s) => ({ device: s.device, name: s.name, app: s.app, written: stampTime(s.written) }));
     return result;
   }
+}
+
+/**
+ * Would taking `file` in leave this device holding more than it takes from elsewhere: over
+ * MAX_TAKEN records (deleted ones included, as its own file counts them), or MAX_SPACES spaces?
+ * Only a file that adds records can; one that changes what's here never does.
+ */
+function overBudget(ws: Workspace, file: DeviceFile): boolean {
+  const adds = (list: { id: string }[], have: ReadonlyMap<string, unknown>) => list.reduce((n, r) => n + (have.has(r.id) ? 0 : 1), 0);
+  const spaces = adds(file.spaces, ws.spaces);
+  const added = adds(file.tasks, ws.tasks) + adds(file.sheets, ws.sheets) + spaces;
+  return (added > 0 && ws.tasks.size + ws.sheets.size + ws.spaces.size + added > MAX_TAKEN) || (spaces > 0 && ws.spaces.size + spaces > MAX_SPACES);
 }
 
 /** A file the listing already shows to be too big to be Tack's. */

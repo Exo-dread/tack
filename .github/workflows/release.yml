@@ -16,6 +16,21 @@ jobs:
       TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0             # every branch too, so origin/main is known to the check below
+          persist-credentials: false # gh reads GH_TOKEN from its env; nothing here needs git's
+
+      # Branch protection only guards main; a tag can point anywhere. Releases are tagged on main
+      # after the pull request merges (CONTRIBUTING.md), so a tag on any other commit is refused
+      # before anything is built. HEAD is the commit the tag resolved to: the one build.ps1 builds.
+      - name: Only release commits that are already on main
+        shell: pwsh
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "::error::Tag $env:TAG points at a commit that isn't on main. Merge the release pull request first, then tag main."
+            exit 1
+          }
 
       - uses: actions/setup-dotnet@v4
         with:

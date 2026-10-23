@@ -23,6 +23,12 @@ internal interface IImportTarget
     TaskData? FindTask(string id);
 
     SheetData? FindSheet(string id);
+
+    /// <summary>Every task, sheet and space held, deleted ones included (as a device file counts them).</summary>
+    int RecordCount { get; }
+
+    /// <summary>How many records taking <paramref name="data"/> in would add, and how many of those are spaces.</summary>
+    (int Records, int Spaces) WouldAdd(WorkspaceData data);
 }
 
 /// <summary>
@@ -66,20 +72,47 @@ internal static partial class TackFile
         if (doc.ValueKind != JsonValueKind.Object) throw new TackFileException("This doesn't look like a Tack file.");
         try
         {
-            if (doc.TryGetProperty("tackFocus", out var extra) && ReadSection(extra, nowMs, clean: true) is { } data)
+            if (doc.TryGetProperty("tackFocus", out var extra) && extra.ValueKind == JsonValueKind.Object && IsArray(extra, "tasks") && IsArray(extra, "sheets"))
             {
-                // Files with clocks merge field by field; for notes, a differing text is kept as a copy
-                // beside the newer one (base Zero: treat every difference as concurrent).
-                return (data, Stamp.Zero);
+                // A file with more records than any device may hold is refused before reading them.
+                if (Length(extra, "tasks") + Length(extra, "sheets") + Length(extra, "spaces") > DeviceFile.MaxRecords) throw new TackFileException(TooMany);
+                if (ReadSection(extra, nowMs, clean: true) is { } data)
+                {
+                    // Text longer than any device reads is skipped, as in device files (on import only:
+                    // this PC's own tack.json keeps whatever it has).
+                    data = data with
+                    {
+                        Tasks = data.Tasks.Where(t => t.Text.Length <= DeviceFile.MaxTaskText).ToList(),
+                        Sheets = data.Sheets.Where(s => s.Text.Length <= DeviceFile.MaxNoteText).ToList(),
+                    };
+                    // Files with clocks merge field by field; for notes, a differing text is kept as a copy
+                    // beside the newer one (base Zero: treat every difference as concurrent).
+                    return (WithinLimits(data, ws), Stamp.Zero);
+                }
             }
 
             if (!IsArray(doc, "tasks") && !IsArray(doc, "sheets")) throw new TackFileException("This doesn't look like a Tack file.");
-            return (ReadDesktop(doc, ws, lastModified), null);
+            if (Length(doc, "tasks") + Length(doc, "sheets") > DeviceFile.MaxRecords) throw new TackFileException(TooMany);
+            return (WithinLimits(ReadDesktop(doc, ws, lastModified), ws), null);
         }
         catch (Exception ex) when (IsUnreadableText(ex))
         {
             throw new TackFileException("This file has text Tack can't read.");
         }
+    }
+
+    private const string TooMany = "This file holds more tasks and notes than Tack can keep in sync.";
+
+    /// <summary>
+    /// What an import would add, if this PC can take it: no more records in all than a device takes
+    /// from elsewhere (<see cref="DeviceFile.MaxTaken"/>, deleted ones included), so its sync file stays
+    /// one every device reads, Undo included (Undo keeps what it removes as deletions while syncing).
+    /// </summary>
+    private static WorkspaceData WithinLimits(WorkspaceData data, IImportTarget ws)
+    {
+        var (added, _) = ws.WouldAdd(data);
+        if (added > 0 && ws.RecordCount + added > DeviceFile.MaxTaken) throw new TackFileException(TooMany);
+        return data;
     }
 
     /// <summary>
@@ -322,20 +355,25 @@ internal static partial class TackFile
         foreach (var (index, r) in rawTasks)
         {
             string text = JsText.CleanTaskText(JsString(r, "text"));
-            if (text.Length == 0) continue;
+            // Text longer than any device reads is skipped, as in device files.
+            if (text.Length == 0 || text.Length > DeviceFile.MaxTaskText) continue;
             string id = Ids.ForImport(Str(r, "id"), usedIds, text);
             long created = IsoTime.ParseMs(JsString(r, "created")) ?? 0;
             long? completed = Truthy(r, "completed") ? IsoTime.ParseMs(JsString(r, "completed")) : null;
             string @base = Stamp.FromTime(created);
             var existing = ws.FindTask(id);
             bool sameDone = existing != null && (existing.Completed != null && existing.Completed.Length > 0) == (completed != null);
-            string? rawCreated = Str(r, "created");
+            string? rawCreated = Str(r, "created"), rawCompleted = Str(r, "completed");
             tasks.Add(new TaskData(
                 id,
                 text,
-                rawCreated != null && IsoTime.ParseMs(rawCreated) != null ? rawCreated : LocalText(created),
+                // Dates as written only if every device reads them so (IsFileDate): any other a device
+                // reads as missing, which would reopen a finished task everywhere. Else the date they mean.
+                IsFileDate(rawCreated) ? rawCreated! : LocalText(created),
                 // Both finished: keep this device's completion time rather than flipping between them.
-                completed != null ? (sameDone && !string.IsNullOrEmpty(existing!.Completed) ? existing.Completed : JsString(r, "completed")) : null,
+                completed is long done
+                    ? (sameDone && !string.IsNullOrEmpty(existing!.Completed) ? existing.Completed : IsFileDate(rawCompleted) ? rawCompleted! : LocalText(done))
+                    : null,
                 keys.TryGetValue(index, out var k) ? k : existing?.Order ?? OrderKey.Mid,
                 existing?.Deleted ?? false,
                 // Files without clocks know nothing of spaces: the task stays where it is here.
@@ -357,10 +395,11 @@ internal static partial class TackFile
         foreach (var (_, r) in rawSheets)
         {
             string text = JsText.NoteText(JsString(r, "text"));
+            if (text.Length > DeviceFile.MaxNoteText) continue;
             string id = Ids.ForImport(Str(r, "id"), usedIds, text);
             long updatedAt = IsoTime.ParseMs(JsString(r, "updated")) ?? 0;
             string? rawUpdated = Str(r, "updated");
-            string updated = rawUpdated != null && IsoTime.ParseMs(rawUpdated) != null ? rawUpdated : LocalText(updatedAt);
+            string updated = IsFileDate(rawUpdated) ? rawUpdated! : LocalText(updatedAt);
             var existing = ws.FindSheet(id);
             if (existing != null && existing.Text != text && Stamp.Node(existing.Clk.Text) != "")
             {
@@ -415,6 +454,9 @@ internal static partial class TackFile
 
     private static bool IsArray(JsonElement obj, string name) =>
         obj.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array;
+
+    /// <summary>The length of an array property (0 if it's missing or not an array).</summary>
+    private static int Length(JsonElement obj, string name) => IsArray(obj, name) ? obj.GetProperty(name).GetArrayLength() : 0;
 
     /// <summary>The objects of an array property, with their positions.</summary>
     private static List<(int Index, JsonElement Value)> Objects(JsonElement obj, string name)

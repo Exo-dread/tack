@@ -41,17 +41,47 @@ internal sealed record DeviceFile(
     public const int MaxBytes = 20 * 1024 * 1024;
 
     /// <summary>
-    /// Limits inside a device file (the same as devicefile.ts), far beyond any real use. A file over
-    /// them is refused whole and an over-long record is skipped, so a damaged or crafted file can't
-    /// swell every device's own file for good. (A space name is the one thing cut rather than
-    /// skipped: every device keeps names to <see cref="MaxSpaceName"/> wherever they come from, so
-    /// no device can hold a name its peers would refuse.)
+    /// Limits inside a device file (the same as devicefile.ts and limits.ts), far beyond any real
+    /// use. A file over them is refused whole and an over-long record is skipped, so a damaged or
+    /// crafted file can't swell every device's own file for good. (A space name is the one thing cut
+    /// rather than skipped: every device keeps names to <see cref="MaxSpaceName"/> wherever they come
+    /// from, so no device can hold a name its peers would refuse.) More "seen" entries than
+    /// <see cref="MaxSeen"/> are ignored rather than refused (see <see cref="TrimSeen"/>).
     /// </summary>
     public const int MaxRecords = 200_000; // tasks + sheets + spaces + deletions
     public const int MaxSeen = 1_000;
     public const int MaxTaskText = 100_000;
     public const int MaxNoteText = 1_000_000;
     public const int MaxSpaceName = SpaceField.MaxName;
+
+    /// <summary>
+    /// Records a device holds before it takes no more from elsewhere (other devices' files, imports):
+    /// the rest is room for its own edits and deletions, so its own file always stays within
+    /// <see cref="MaxRecords"/>. Spaces (deleted ones included) it takes in: every live one is a
+    /// button on screen. Lines one paste (or one "Make task" from a note) turns into tasks.
+    /// </summary>
+    public const int MaxTaken = MaxRecords - 20_000;
+    public const int MaxSpaces = 1_000;
+    public const int MaxPasteLines = 10_000;
+
+    /// <summary>
+    /// Keeps this device's "seen" (changed in place) within <see cref="MaxSeen"/> before it goes into
+    /// its file, so every reader takes the file: only a crafted file's made-up claims, passed on, ever
+    /// make it longer. Devices with a file in the folder (<paramref name="present"/>: file names) stay
+    /// first, then the latest claims. Dropping a claim costs little: at worst a note edited on both
+    /// sides is kept twice. Tack Focus trims the same way (trimSeen in devicefile.ts).
+    /// </summary>
+    public static void TrimSeen(Dictionary<string, string> seen, string me, IReadOnlySet<string> present)
+    {
+        var ids = seen.Keys.Where(d => d != me && IsDeviceId(d)).ToList();
+        if (ids.Count <= MaxSeen) return;
+        foreach (string d in ids.OrderByDescending(d => present.Contains(FileName(d)))
+                     .ThenByDescending(d => seen[d], StringComparer.Ordinal)
+                     .ThenBy(d => d, StringComparer.Ordinal)
+                     .Skip(MaxSeen)
+                     .ToList())
+            seen.Remove(d);
+    }
 
     private static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
@@ -225,8 +255,12 @@ internal sealed record DeviceFile(
             // Spaces are optional (Tack 1.3 writes none); anything but an array counts as none.
             int spaceCount = IsArray(doc, "spaces") ? doc.GetProperty("spaces").GetArrayLength() : 0;
             if (doc.GetProperty("tasks").GetArrayLength() + doc.GetProperty("sheets").GetArrayLength() + spaceCount
-                + Count(deletedMaps, "tasks") + Count(deletedMaps, "sheets") + Count(deletedMaps, "spaces") > MaxRecords || Count(doc, "seen") > MaxSeen)
+                + Count(deletedMaps, "tasks") + Count(deletedMaps, "sheets") + Count(deletedMaps, "spaces") > MaxRecords)
                 throw new DeviceFileException(DeviceFileProblem.Unreadable);
+            // More "seen" claims than any device writes: the claims are ignored, not the file. Versions
+            // before TrimSeen passed a crafted file's claims on, and refusing their files would stop
+            // sync between them for good.
+            bool seenOk = Count(doc, "seen") <= MaxSeen;
 
             // Duplicate ids (only a hand edit makes them) merge rather than one silently replacing the other.
             var tasks = new Dictionary<string, TaskData>();
@@ -259,7 +293,10 @@ internal sealed record DeviceFile(
             }
 
             var seen = new Dictionary<string, string>();
-            foreach (var (d, stamp) in Entries(doc, "seen", nowMs)) if (IsDeviceId(d)) seen[d] = stamp;
+            if (seenOk)
+            {
+                foreach (var (d, stamp) in Entries(doc, "seen", nowMs)) if (IsDeviceId(d)) seen[d] = stamp;
+            }
             return new DeviceFile(
                 (int)version,
                 device,

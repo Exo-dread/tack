@@ -105,6 +105,14 @@ public partial class TasksView : UserControl
             .Select(l => ListMarker.Replace(ListMarker.Replace(l, ""), "").Trim())
             .Where(l => l.Length > 0)
             .ToList();
+        if (lines.Count > DeviceFile.MaxPasteLines)
+        {
+            e.CancelCommand();
+            _panel.ShowToast($"Paste up to {DeviceFile.MaxPasteLines:N0} lines at once");
+            return;
+        }
+        // A line longer than any device reads from a sync file would stay on this PC alone.
+        lines.RemoveAll(l => JsText.CleanTaskText(l).Length > DeviceFile.MaxTaskText);
         if (lines.Count <= 1)
         {
             if (text.Contains('\n'))

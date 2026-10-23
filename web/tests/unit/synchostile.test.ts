@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isFileDate, readSheetRecord, readTaskRecord, readFile } from '../../src/model/file';
+import { FileError, importFile, isFileDate, readSheetRecord, readTaskRecord, readFile } from '../../src/model/file';
 import { encode, Hlc, isStamp, MAX_AHEAD_MS, stampTime, ZERO } from '../../src/model/hlc';
 import { isOrderKey, MAX_ORDER_KEY } from '../../src/model/order';
 import { wellFormed } from '../../src/model/text';
 import { Workspace } from '../../src/model/workspace';
-import { DeviceFileError, makeDeviceFile, MAX_FILE_BYTES, MAX_RECORDS, MAX_SEEN, MAX_TASK_TEXT, parseDeviceFile, serializeDeviceFile } from '../../src/sync/devicefile';
+import { deadTask, DeviceFileError, fileName, makeDeviceFile, MAX_FILE_BYTES, MAX_NOTE_TEXT, MAX_RECORDS, MAX_SEEN, MAX_TAKEN, MAX_TASK_TEXT, parseDeviceFile, serializeDeviceFile, trimSeen } from '../../src/sync/devicefile';
 import { seenBy } from '../../src/sync/engine';
 import { Cloud, DAY, Device, records, settle, visible, type Clock } from './synchelpers';
 
@@ -160,11 +160,15 @@ describe('M3: one file vouching for another device', () => {
 });
 
 describe('M4: limits inside a file', () => {
-  it('refuses a file with more records, or more devices seen, than any real one has', () => {
+  it('refuses a file with more records than any real one has, and ignores more devices seen', () => {
     const many = craft('mmmm0001', NOW, { tasks: new Array(MAX_RECORDS + 1).fill({}) });
     expect(() => parseDeviceFile(JSON.stringify(many), 'mmmm0001', NOW)).toThrowError(DeviceFileError);
+    // More `seen` claims than any device writes (a file passing on a crafted one's, before that
+    // was trimmed): the claims are ignored, the records still read.
     const seen = Object.fromEntries(Array.from({ length: MAX_SEEN + 1 }, (_, i) => [`dev${String(i).padStart(5, '0')}`, encode(NOW, 0, 'x')]));
-    expect(() => parseDeviceFile(JSON.stringify(craft('mmmm0001', NOW, { seen })), 'mmmm0001', NOW)).toThrowError(DeviceFileError);
+    const relayed = parseDeviceFile(JSON.stringify(craft('mmmm0001', NOW, { seen })), 'mmmm0001', NOW);
+    expect(relayed.seen).toEqual({});
+    expect(relayed.tasks.map((t) => t.text)).toEqual(['from mmmm0001']);
     // Right at the limits it's fine.
     expect(() => parseDeviceFile(JSON.stringify(craft('mmmm0001', NOW, { tasks: new Array(MAX_RECORDS).fill({}) })), 'mmmm0001', NOW)).not.toThrow();
   });
@@ -275,5 +279,195 @@ describe('a bad file never stops sync', () => {
     expect(r.problems).toEqual([{ device: 'mmmm0001', reason: 'unreadable' }]);
     expect(visible(desk.ws).open).toEqual(['fine']);
     expect(r.wrote).toBe(true);
+  });
+});
+
+/*
+ * The second audit (24 October 2026): limits on what a device writes and takes in, so that no file
+ * within every reader's limits, alone or with others, can make an honest device write a file its
+ * peers refuse. The same cases run against Tack for Windows (HostileFileTests.cs).
+ */
+
+/** `n` made-up deletions, all at `at` (each about 45 bytes in a file). */
+const deletions = (n: number, at: string, prefix = 'd') => {
+  const out: Record<string, string> = {};
+  for (let i = 0; i < n; i++) out[`${prefix}${i}`] = at;
+  return out;
+};
+
+/** Does every other device take this device's file? */
+const takes = (cloud: Cloud, d: Device, now: number) => {
+  try {
+    parseDeviceFile(cloud.files.get(`${d.id}.json`)!.text, d.id, now);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+describe('M1 (second audit): a file claiming to have seen a thousand devices', () => {
+  it("can't stop honest devices syncing, even after it's gone", async () => {
+    const { cloud, clock, devices, tick } = world('phone', 'desk');
+    const [phone, desk] = devices as [Device, Device];
+    phone.ws.addTask('before');
+    await settle(devices);
+    // Within every limit: exactly MAX_SEEN made-up devices.
+    const seen = Object.fromEntries(Array.from({ length: MAX_SEEN }, (_, i) => [`zz${String(i).padStart(6, '0')}`, encode(clock.now - 5000, 0, 'q')]));
+    putFile(cloud, 'evil0001.json', craft('evil0001', clock.now, { seen }));
+    tick();
+    await phone.sync();
+    await desk.sync();
+    for (const d of devices) {
+      expect(Object.keys(fileOf(cloud, d).seen).length).toBeLessThanOrEqual(MAX_SEEN);
+      expect(takes(cloud, d, clock.now)).toBe(true);
+    }
+
+    cloud.files.delete('evil0001.json');
+    tick();
+    phone.ws.addTask('after');
+    await settle(devices);
+    expect(visible(desk.ws).open.sort()).toEqual(['after', 'before', 'from evil0001']);
+    expect(desk.log.at(-1)!.problems).toEqual([]);
+  });
+
+  it('keeps the devices in the folder, then the latest claims', () => {
+    const at = (ms: number, node: string) => encode(NOW + ms, 0, node);
+    const seen: Record<string, string> = {};
+    for (let i = 0; i < MAX_SEEN + 5; i++) seen[`zz${String(i).padStart(6, '0')}`] = at(i, 'q');
+    seen.real0001 = at(-1000, 'real0001'); // older than every made-up claim, but its file is there
+    trimSeen(seen, 'mine0001', new Set([fileName('real0001')]));
+    expect(Object.keys(seen)).toHaveLength(MAX_SEEN);
+    expect(seen.real0001).toBeDefined();
+    // The oldest made-up claims went.
+    for (let i = 0; i < 6; i++) expect(seen[`zz${String(i).padStart(6, '0')}`]).toBeUndefined();
+    const few = { aaaa0001: at(0, 'aaaa0001') };
+    trimSeen(few, 'mine0001', new Set());
+    expect(few).toEqual({ aaaa0001: at(0, 'aaaa0001') });
+  });
+});
+
+describe('M2 (second audit): files that would fill a device', () => {
+  it("are set aside, so this device's own file stays one its peers take", async () => {
+    const { cloud, clock, devices, tick } = world('phone', 'desk');
+    const [phone, desk] = devices as [Device, Device];
+    phone.ws.addTask('before');
+    await settle(devices);
+    // Within every limit: one task and MAX_RECORDS - 1 deletions.
+    const doc = craft('evil0002', clock.now, { deleted: { tasks: deletions(MAX_RECORDS - 1, encode(clock.now - 5000, 0, 'evil0002')), sheets: {} } });
+    expect(() => parseDeviceFile(JSON.stringify(doc), 'evil0002', clock.now)).not.toThrow();
+    putFile(cloud, 'evil0002.json', doc);
+    tick();
+    const r = await phone.sync();
+    expect(r.problems).toEqual([{ device: 'evil0002', reason: 'unreadable' }]);
+    expect(phone.ws.tasks.size).toBe(1);
+    await desk.sync();
+
+    cloud.files.delete('evil0002.json');
+    tick();
+    phone.ws.addTask('after');
+    await settle(devices);
+    expect(takes(cloud, phone, clock.now)).toBe(true);
+    expect(visible(desk.ws).open.sort()).toEqual(['after', 'before']);
+  });
+
+  it('takes files in while there is room, together', async () => {
+    const { cloud, clock, devices } = world('desk');
+    const [desk] = devices as [Device];
+    const half = Math.floor(MAX_TAKEN / 2);
+    const at = encode(clock.now - 5000, 0, 'q');
+    putFile(cloud, 'aaaa0001.json', craft('aaaa0001', clock.now, { deleted: { tasks: deletions(half, at, 'a'), sheets: {} } }));
+    putFile(cloud, 'bbbb0001.json', craft('bbbb0001', clock.now, { deleted: { tasks: deletions(half, at, 'b'), sheets: {} } }));
+    const r = await desk.sync();
+    // The first fits; the second would take the desk past what it takes in.
+    expect(r.merged).toEqual(['aaaa0001']);
+    expect(r.problems).toEqual([{ device: 'bbbb0001', reason: 'unreadable' }]);
+    expect(takes(cloud, desk, clock.now)).toBe(true);
+    // Set aside until it changes.
+    expect((await desk.sync()).problems).toEqual([{ device: 'bbbb0001', reason: 'unreadable' }]);
+    expect(desk.view.reads.get('bbbb0001.json')).toBe(1);
+  });
+
+  it('says so on every cycle while its own file would be refused, and writes none', async () => {
+    const { cloud, clock, devices } = world('phone');
+    const [phone] = devices as [Device];
+    // Holding more than any file may carry (merged before this was checked, say).
+    const at = encode(clock.now - 5000, 0, 'evil0003');
+    phone.ws.merge({ tasks: Array.from({ length: MAX_RECORDS + 1 }, (_, i) => deadTask(`d${i}`, at)), sheets: [], focus: { id: null, clk: ZERO } }, 'remote');
+    await expect(phone.sync()).rejects.toMatchObject({ kind: 'toolarge' });
+    expect(cloud.files.has(`${phone.id}.json`)).toBe(false);
+    // The next cycle finds nothing new, but still says so rather than "synced".
+    await expect(phone.sync()).rejects.toMatchObject({ kind: 'toolarge' });
+    expect(phone.saved.own.pending).toBeNull();
+  });
+});
+
+describe('L1 (second audit): imports, pastes and edits', () => {
+  const ws = () => new Workspace(new Hlc('aaaa1111', () => NOW), () => new Date(NOW));
+  const desktopTasks = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `i${i}`, text: 'x', created: '2026-10-20T09:00:00Z', now: false }));
+
+  it('imports no more than a device can pass on, and says so', () => {
+    const w = ws();
+    // Holding nearly all a device takes in (deletions, say: Undo after a huge import leaves those).
+    const at = encode(NOW - 5000, 0, 'aaaa1111');
+    w.merge({ tasks: Array.from({ length: MAX_TAKEN - 2 }, (_, i) => deadTask(`d${i}`, at)), sheets: [], focus: { id: null, clk: ZERO } }, 'storage');
+    // Up to the limit is fine, and importing the same again adds nothing, so it's fine too.
+    const fits = JSON.stringify({ version: 1, tasks: desktopTasks(2), sheets: [] });
+    importFile(w, fits);
+    expect(w.tasks.size).toBe(MAX_TAKEN);
+    expect(() => importFile(w, fits)).not.toThrow();
+    // One more is refused, and nothing changes.
+    const more = JSON.stringify({ version: 1, tasks: [{ id: 'one', text: 'one more', created: '2026-10-20T09:00:00Z' }], sheets: [] });
+    expect(() => importFile(w, more)).toThrowError(new FileError('This file holds more tasks and notes than Tack can keep in sync.'));
+    expect(w.tasks.size).toBe(MAX_TAKEN);
+    // A file with more records than any device may hold is refused before reading them.
+    expect(() => importFile(ws(), JSON.stringify({ version: 1, tasks: new Array(MAX_RECORDS + 1).fill({}), sheets: [] }))).toThrowError(FileError);
+  });
+
+  it('skips text longer than any device reads, in both kinds of file', () => {
+    const long = 'x'.repeat(MAX_TASK_TEXT + 1);
+    const w = ws();
+    importFile(w, JSON.stringify({ version: 1, tasks: [{ id: 'a1', text: long, created: '2026-10-20T09:00:00Z' }, { id: 'a2', text: 'kept', created: '2026-10-20T09:00:00Z' }], sheets: [{ id: 's1', text: 'n'.repeat(MAX_NOTE_TEXT + 1), updated: '2026-10-20T09:00:00Z' }] }));
+    expect(visible(w).open).toEqual(['kept']);
+    expect(w.sheets.has('s1')).toBe(false);
+    const at = encode(NOW, 0, 'bbbb2222');
+    const record = (id: string, text: string) => ({ id, text, created: '2026-10-20T09:00:00Z', completed: null, order: 'V', deleted: false, clk: { text: at, completed: at, order: at, deleted: ZERO } });
+    const w2 = ws();
+    importFile(w2, JSON.stringify({ version: 1, tasks: [], sheets: [], tackFocus: { format: 1, focus: { id: null, clk: ZERO }, tasks: [record('b1', long), record('b2', 'kept')], sheets: [] } }));
+    expect(visible(w2).open).toEqual(['kept']);
+  });
+
+  it('adds or edits no task longer than any device reads', () => {
+    const w = ws();
+    expect(w.addTask('x'.repeat(MAX_TASK_TEXT + 1))).toBeNull();
+    const t = w.addTask('short')!;
+    w.editTask(t.id, 'y'.repeat(MAX_TASK_TEXT + 1));
+    expect(w.tasks.get(t.id)!.text).toBe('short');
+    expect(w.addTask('z'.repeat(MAX_TASK_TEXT))).not.toBeNull();
+  });
+});
+
+describe('L2 (second audit): dates in imported desktop files', () => {
+  it('are kept only as every device reads them, so a finished task stays finished everywhere', async () => {
+    const { devices } = world('phone', 'desk');
+    const [phone, desk] = devices as [Device, Device];
+    await settle(devices);
+    importFile(phone.ws, JSON.stringify({ version: 1, tasks: [{ id: 'a1', text: 'done one', created: ' 2026-10-20T09:00:00Z', completed: '2026-10-21', now: false }], sheets: [{ id: 's1', text: 'note', updated: 'October 21, 2026 10:00' }] }));
+    const t = phone.ws.tasks.get('a1')!;
+    expect(isFileDate(t.created)).toBe(true);
+    expect(isFileDate(t.completed)).toBe(true);
+    expect(isFileDate(phone.ws.sheets.get('s1')!.updated)).toBe(true);
+    expect(visible(phone.ws).done).toEqual(['done one']);
+    phone.ws.addTask('nudge'); // an import of a file without clocks is no news on its own
+    await settle(devices);
+    expect(visible(phone.ws).done).toEqual(['done one']);
+    expect(visible(desk.ws).done).toEqual(['done one']);
+    expect(desk.ws.tasks.get('a1')!.created).toBe(t.created);
+  });
+
+  it('as written, when they already are', () => {
+    const w = new Workspace(new Hlc('aaaa1111', () => NOW), () => new Date(NOW));
+    importFile(w, JSON.stringify({ version: 1, tasks: [{ id: 'a1', text: 'x', created: '2026-10-20T09:00:00.1234567+01:00', completed: '2026-10-21T10:00:00+01:00' }], sheets: [] }));
+    expect(w.tasks.get('a1')!.created).toBe('2026-10-20T09:00:00.1234567+01:00');
+    expect(w.tasks.get('a1')!.completed).toBe('2026-10-21T10:00:00+01:00');
   });
 });
