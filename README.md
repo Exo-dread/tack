@@ -76,6 +76,7 @@ To start Tack with Windows, turn on **Settings → Start with Windows**.
 | **Import** | **Settings → Import** merges a tack.json from [Tack Focus](web/README.md) (its Settings → Export), another PC or a backup. Undo puts it back. |
 | **Pin** | 📌 keeps the panel open over other apps. Unpinned, it folds away when you click elsewhere. |
 | **Orb menu** | Right-click the orb for Open, Settings and Quit. |
+| **Launcher** (optional, off by default) | **Settings → Launcher**: Shift+click the orb for a ring of your own shortcuts (apps, folders, websites, groups), or Shift+drag to one and let go; keep dragging past an app to pick the display it opens on. See [docs/LAUNCHER.md](docs/LAUNCHER.md). |
 
 If another app already uses Ctrl+Alt+Space, Tack picks a free fallback on first run (Win+Ctrl+T, then
 Win+Alt+N) and the welcome tasks tell you which. You can change it in **Settings → Shortcut**.

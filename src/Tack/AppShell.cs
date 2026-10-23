@@ -6,6 +6,7 @@ using System.Windows.Interop;
 using System.Windows.Threading;
 using Tack.Controls;
 using Tack.Interop;
+using Tack.Launcher;
 using Tack.Model;
 using Tack.Services;
 using Tack.Windows;
@@ -33,6 +34,7 @@ internal sealed class AppShell : IDisposable
     private readonly PanelWindow _panel;
     private readonly HotkeyManager _hotkey;
     private readonly ShellWatcher _watcher;
+    private readonly LauncherModule _launcher;
     private readonly DispatcherTimer _peekDelay;
     private readonly DispatcherTimer _collapseCheck;
     private readonly DispatcherTimer _trimDelay;
@@ -55,6 +57,8 @@ internal sealed class AppShell : IDisposable
         // What's on show (a space, or everything): the panel, the orb's count and ring, and the peek.
         _view = new SpaceView(ws);
         _orb = new OrbWindow();
+        // The optional radial launcher (off by default). Created before the panel, whose Settings page shows it.
+        _launcher = new LauncherModule(store.Folder, () => _orb.Center);
         _peek = new PeekWindow();
         _panel = new PanelWindow(ws, _view, this);
         _hotkey = new HotkeyManager();
@@ -92,7 +96,15 @@ internal sealed class AppShell : IDisposable
 
         _view.SummaryChanged += (_, _) => RefreshOrb();
         _ws.Settings.PropertyChanged += OnSettingChanged;
+
+        _orb.Launcher = _launcher.Enabled ? _launcher : null;
+        _launcher.EnabledChanged += () => _orb.Launcher = _launcher.Enabled ? _launcher : null;
+        _launcher.Opened += () => { _peekDelay.Stop(); _peek.Dismiss(); _trimDelay.Stop(); };
+        _launcher.Closed += () => { if (!_expanded) _trimDelay.Start(); };
     }
+
+    /// <summary>The optional radial launcher (Settings → Launcher).</summary>
+    internal LauncherModule Launcher => _launcher;
 
     public string DataFolder => _store.Folder;
 
@@ -178,6 +190,7 @@ internal sealed class AppShell : IDisposable
 
     public void Dispose()
     {
+        _launcher.Dispose();
         _hotkey.Dispose();
         _watcher.Dispose();
     }
@@ -198,6 +211,7 @@ internal sealed class AppShell : IDisposable
             BringPanelForward();
             return;
         }
+        _launcher.ForceClose();
         _expanded = true;
         _peekDelay.Stop();
         _peek.Dismiss();
@@ -362,7 +376,7 @@ internal sealed class AppShell : IDisposable
 
     private void OnOrbHover(bool hot)
     {
-        if (hot && !_expanded && !_orb.IsDragging) _peekDelay.Start();
+        if (hot && !_expanded && !_orb.IsDragging && !_launcher.IsOpen) _peekDelay.Start();
         else
         {
             _peekDelay.Stop();
@@ -372,7 +386,7 @@ internal sealed class AppShell : IDisposable
 
     private void ShowPeek()
     {
-        if (_expanded || !_orb.IsVisible || _orb.IsDragging) return;
+        if (_expanded || !_orb.IsVisible || _orb.IsDragging || _launcher.IsOpen) return;
         _ws.RefreshDay();
         _peek.ShowFor(_orb, _view, HotkeyActive ? _ws.Settings.Hotkey : "");
     }
@@ -400,6 +414,7 @@ internal sealed class AppShell : IDisposable
 
         if (hide)
         {
+            _launcher.ForceClose();
             _peek.Dismiss();
             _orb.Hide();
             if (_expanded && _ws.Settings.Pinned) _panel.Hide();
@@ -429,6 +444,7 @@ internal sealed class AppShell : IDisposable
                 // A monitor was added, removed or rearranged: make sure the orb is still reachable.
                 _orb.Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
                 {
+                    _launcher.ForceClose(); // its layout was for the old arrangement
                     if (_expanded) return;
                     var (x, y) = InitialOrbCenter();
                     _orb.MoveCenterTo(x, y);

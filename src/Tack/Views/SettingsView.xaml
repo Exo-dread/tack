@@ -190,6 +190,10 @@
                 <TextBlock x:Name="SpacesHint" Style="{StaticResource Hint}" Margin="2,8,8,0"
                            Text="Spaces keep work, development and personal tasks apart. Everything starts in Main; click a name to rename it. Once there's a second space, a strip under the header switches between them (Alt+1 to Alt+9, Alt+0 for All)." />
 
+                <!-- Optional radial launcher (Tack.Launcher): an on/off switch, and its shortcuts once it's on. -->
+                <TextBlock Text="Launcher" Style="{StaticResource SectionLabel}" />
+                <ContentControl x:Name="LauncherHost" Focusable="False" />
+
                 <TextBlock Text="Sync" Style="{StaticResource SectionLabel}" />
                 <Border Style="{StaticResource Card}" Padding="14,10">
                     <StackPanel>

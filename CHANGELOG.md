@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Radial launcher (optional, off by default).** Turn it on in Settings → Launcher. Shift+click the orb
+  for six shortcut positions around it (apps, folders, websites, or groups of up to eight), or Shift+drag
+  to one and let go. Keep dragging past an app or folder to pick the display it opens on, from a small map
+  of your real display arrangement (best effort: some apps put themselves back, and apps running as
+  administrator can't be moved). Shortcuts can also always ask, or remember a display. Works at screen
+  edges and corners, on any monitor and scaling, with the keyboard, and with reduced motion. Kept in its
+  own launcher.json; tack.json and sync are unchanged. Off, Tack is exactly as before. See docs/LAUNCHER.md.
+
 ## 1.5.0 (2026-10-22)
 
 Spaces arrive on screen: keep work, development and personal tasks apart, or ignore them and
