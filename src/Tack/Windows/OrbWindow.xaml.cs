@@ -5,6 +5,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using Tack.Controls;
 using Tack.Interop;
+using Tack.Launcher;
 using static Tack.Interop.NativeMethods;
 
 namespace Tack.Windows;
@@ -20,6 +21,7 @@ public partial class OrbWindow : Window
 
     private IntPtr _hwnd;
     private bool _pressed, _dragging;
+    private bool _launcherPress; // a Shift+press handed to the radial launcher
     private (int X, int Y) _pressCursor;
     private double _grabX, _grabY;
     private (int X, int Y)? _intendedCenter;
@@ -38,8 +40,18 @@ public partial class OrbWindow : Window
         Orb.MouseLeftButtonDown += OnPress;
         Orb.MouseMove += OnDrag;
         Orb.MouseLeftButtonUp += OnRelease;
-        Orb.LostMouseCapture += (_, _) => { if (_pressed) OnRelease(this, null); };
+        Orb.LostMouseCapture += (_, _) =>
+        {
+            if (_pressed) OnRelease(this, null);
+            else if (_launcherPress) { _launcherPress = false; Launcher?.CancelGesture(); }
+        };
     }
+
+    /// <summary>
+    /// The optional radial launcher. Null while it's turned off, and then the orb behaves exactly as it
+    /// always has; when on, it only takes presses made with Shift held (ordinary clicks and drags are untouched).
+    /// </summary>
+    internal IOrbLauncher? Launcher { get; set; }
 
     public IntPtr Handle => _hwnd;
 
@@ -128,6 +140,16 @@ public partial class OrbWindow : Window
 
     private void OnPress(object sender, MouseButtonEventArgs e)
     {
+        if (Launcher is { } launcher && launcher.WantsPress())
+        {
+            var at = ScreenGeometry.CursorPosition();
+            _launcherPress = true;
+            Orb.CaptureMouse();
+            Anim.Scale(Orb, 0.94, 90);
+            e.Handled = true;
+            launcher.Press(at.X, at.Y);
+            return;
+        }
         StopSnap();
         _pressed = true;
         _pressCursor = ScreenGeometry.CursorPosition();
@@ -141,6 +163,12 @@ public partial class OrbWindow : Window
 
     private void OnDrag(object sender, MouseEventArgs e)
     {
+        if (_launcherPress)
+        {
+            var at = ScreenGeometry.CursorPosition();
+            Launcher?.Move(at.X, at.Y);
+            return;
+        }
         if (!_pressed) return;
         var cursor = ScreenGeometry.CursorPosition();
         if (!_dragging)
@@ -159,6 +187,15 @@ public partial class OrbWindow : Window
 
     private void OnRelease(object sender, MouseButtonEventArgs? e)
     {
+        if (_launcherPress && e != null)
+        {
+            _launcherPress = false; // before releasing capture, so LostMouseCapture doesn't cancel
+            if (Orb.IsMouseCaptured) Orb.ReleaseMouseCapture();
+            Anim.Scale(Orb, 1.0, 120);
+            var at = ScreenGeometry.CursorPosition();
+            Launcher?.Release(at.X, at.Y);
+            return;
+        }
         if (!_pressed) return;
         _pressed = false;
         if (Orb.IsMouseCaptured) Orb.ReleaseMouseCapture();

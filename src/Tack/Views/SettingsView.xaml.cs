@@ -58,6 +58,8 @@ public partial class SettingsView : UserControl
         shell.Sync.StatusChanged += ShowSync;
         ShowSync();
 
+        LauncherHost.Content = new Tack.Launcher.LauncherSettingsView(shell.Launcher, shell, panel);
+
         BuildSwatches();
         Refresh();
     }
