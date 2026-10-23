@@ -66,6 +66,13 @@ colours, priorities or due dates, and there are still no tags.
   Work while the phone shows Personal. A space deleted on another device just shows Main.
 - **Deleting a space loses nothing.** Its tasks and notes fall back to Main, and Undo restores it all.
 
+### The launcher: optional, and kept apart
+The radial launcher is the one feature that isn't about *what was I doing?*: a ring of shortcuts around the
+orb for the apps and folders you open all day, because the orb is already where your hand goes. So it's held
+to stricter rules than anything else: off by default, reached only with Shift (ordinary clicks and drags of
+the orb are untouched), settings in its own `launcher.json` that tack.json and sync never see, and, off,
+nothing loaded beyond checking that file. Details: [LAUNCHER.md](LAUNCHER.md).
+
 ### Progress that resets itself
 The orb's ring is *today's* finished share of work: done today ÷ (done today + still open). It needs no
 reset button, no streaks, no stats screen. Each morning it starts empty again.
@@ -133,6 +140,7 @@ src/Tack
 ├── Sync/                  The data model shared with Tack Focus: clocks, sort keys, merges, device files, the sync engine
 ├── Interop/               Win32/DWM: glass, monitors & DPI, global hotkey, shell watcher
 ├── Windows/               OrbWindow, PeekWindow, PanelWindow
+├── Launcher/              The optional radial launcher: Core/ (platform-neutral, tested), its window, settings card, launching
 ├── Views/                 TasksView, NotesView, SettingsView (UserControls inside the panel)
 ├── Controls/              OrbVisual (custom-drawn), animation helpers, converters
 └── Themes/                Theme.xaml (typography and every control style), Dark.xaml / Light.xaml (palettes)
@@ -147,13 +155,14 @@ keeps them in step, and with no space besides Main (or in All) it hands the view
 collections, which is what keeps the panel exactly as it was until a second space exists.
 
 ### Windows
-Three top-level windows, each doing one job:
+Three top-level windows (four with the launcher open), each doing one job:
 
 | Window | Kind | Why |
 |---|---|---|
 | Orb | Layered (per-pixel alpha), topmost, `WS_EX_NOACTIVATE` | Round shape, click-through corners, never steals focus |
 | Peek | Layered, topmost, click-through | Informational only; can't get in the way |
 | Panel | Normal window with DWM backdrop, topmost | Real acrylic, native corners/shadow, resizable |
+| Launcher (optional) | Layered, topmost; created when opened, closed after | Exists only while it's open |
 
 ### Placement across monitors
 All placement is done in **physical pixels** through `SetWindowPos`, never WPF's `Left`/`Top`

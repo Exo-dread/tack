@@ -59,7 +59,7 @@ Everything one device knows, written as one file, replaced whole (`web/src/sync/
 | `written` | The writer's clock when it wrote the file. |
 | `seen` | For each other device, the latest version of its file merged into this one. |
 | `focus`, `tasks`, `sheets` | Live records, exactly as in tack.json's `tackFocus` section. A task or sheet carries `space` (and `clk.space`) only once it has been put in a space. |
-| `spaces` | Live spaces (Work, Dev...), only if there are any. Nothing shows them yet. |
+| `spaces` | Live spaces (Work, Dev...), only if there are any (on screen since Tack 1.5.0 and Tack Focus 0.4.0). |
 | `deleted` | Deleted records as `id → clock of the deletion`, about 45 bytes each, never their text (`spaces` only if a space was deleted). |
 
 With no spaces and nothing put in one, a file is byte for byte what Tack 1.3 and Tack Focus 0.2 write,
@@ -229,7 +229,7 @@ token, then a hidden frame, then asks you to call a redirect or popup: the same 
   unless you tick "Stay signed in" at Microsoft, its tokens are discarded when the browser (or an
   installed app, on phones) closes ([MSAL caching](https://github.com/AzureAD/microsoft-authentication-library-for-js/blob/dev/lib/msal-browser/docs/caching.md)),
   more sign-ins rather than fewer.
-- It's 272 KB minified (71 KB gzipped), nearly twice all of Tack Focus's own JavaScript (39 KB gzipped).
+- It's 272 KB minified (71 KB gzipped), half as much again as all of Tack Focus's own JavaScript (48 KB gzipped).
 
 So Tack Focus uses a small, tested implementation of the same protocol (`web/src/sync/msauth.ts`:
 authorization code + PKCE, no secret, no library) and this ladder:
@@ -241,10 +241,13 @@ authorization code + PKCE, no secret, no library) and this ladder:
 3. **A quick visit to Microsoft's page** (`prompt=none`: it either signs you straight back in or
    comes back with an error, never a form), after Microsoft refused the hidden frame. Only at a quiet
    moment: when the app starts, before anything shows (so nothing you type can be lost), or when you
-   come back to it after five minutes away; at most once every six hours. If that visit works where
-   the frame didn't, it's the browser (Safari and iPhone, Firefox, Brave), and Tack visits from then
-   on: expect about a second of Microsoft's page, roughly once a day. After every full sign-in it
-   tries the frame again.
+   come back to it after five minutes away; at most once every six hours (an hour, if the last visit
+   was cut short). If that visit works where the frame didn't, it's the browser (Safari and iPhone,
+   Firefox, Brave), and Tack visits from then on: expect about a second of Microsoft's page, roughly
+   once a day. After every full sign-in it tries the frame again. If the visit is slow, Tack shows
+   "Renewing your OneDrive sign-in…" instead of a blank page, offers *Open Tack now* after 8 seconds
+   and opens by itself after 25; when Microsoft can't be reached (Wi-Fi without internet) it stays put
+   rather than landing on the browser's error page.
 4. **"Sign in again"** only if Microsoft says you're no longer signed in there (password changed,
    signed out, consent removed, the session expired) or a renewal comes back as a different
    account: a dot on Settings, one tap. A renewal that just failed on the way (no connection) is
@@ -253,7 +256,7 @@ authorization code + PKCE, no secret, no library) and this ladder:
 | Where | What you'll see |
 |---|---|
 | Android (Chrome), Chrome/Edge on a computer | Nothing, as long as you stay signed in to Microsoft in that browser. |
-| iPhone/iPad (Safari, Home Screen app), Firefox, Brave | A brief visit to Microsoft when you open Tack, about once a day. No tapping. |
+| iPhone/iPad (Safari, Home Screen app), Firefox, Brave | A brief visit to Microsoft when you open Tack, about once a day. No tapping. If it's slow, Tack says so and lets you in. |
 | Anywhere, after you sign out of Microsoft or change your password | One "Sign in again". |
 | Tack for Windows | Nothing ever: it doesn't sign in at all. |
 
@@ -351,8 +354,8 @@ The same, in plain words, is at https://tackfocus.app/privacy/ (`web/public/priv
 | Phase | What | Server? |
 |---|---|---|
 | 1 (done) | Local-first apps, sync-ready model, merge engine, tack.json import/export | none |
-| 2 (built, in review) | Device-file sync engine in both apps; OneDrive for Tack Focus; folder sync for Tack for Windows; Settings → Sync | none |
-| 3 | Go live: app registration, then real-device checks (TESTING.md) | none |
+| 2 (done) | Device-file sync engine in both apps; OneDrive for Tack Focus; folder sync for Tack for Windows; Settings → Sync | none |
+| 3 (live since 20 October 2026) | App registration, Tack Focus 0.2.0 and Tack 1.3.0; real-device checks under way (TESTING.md, "Not verified yet" above) | none |
 | 4 | Optional end-to-end encryption; Google Drive; the token Worker only if wanted | optional |
 
 Google Drive later: its app data folder is hidden from Drive for desktop, so Tack for Windows would

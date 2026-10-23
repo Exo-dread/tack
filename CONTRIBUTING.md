@@ -13,6 +13,8 @@ Visual Studio 2022, Rider and VS Code all work; open `Tack.sln`.
 dotnet run --project src/Tack
 ```
 
+For Tack Focus (`web/`): Node 22, then `cd web; npm install; npm run dev` (see [web/README.md](web/README.md)).
+
 **Keep your real data out of the way while developing:** create an empty `TackData` folder next to the
 built exe (for example `src/Tack/bin/Debug/net8.0-windows/TackData`). Tack then stores everything there
 (portable mode) instead of in `%LOCALAPPDATA%\Tack`. Delete the folder's contents to see the first-run
@@ -36,12 +38,13 @@ so both can run side by side (with its own `TackData` folder, as above).
 | `src/Tack/Views/` | Tasks, Notes and Settings pages shown inside the panel |
 | `src/Tack/Controls/` | Custom-drawn orb, animation helpers, converters |
 | `src/Tack/Themes/` | `Theme.xaml` (fonts and every control style), `Dark.xaml` / `Light.xaml` (colour palettes) |
-| `tests/Tack.Tests/` | Tests for the sync model and tack.json (a plain console app: no test packages) |
+| `tests/Tack.Tests/` | Tests for the sync model, tack.json, spaces, hostile sync files and the launcher (its logic, plus its window and settings card off screen). A plain console app: no test packages |
 | `tests/vectors/` | Shared test vectors: `sync.json` (model) and `sync-engine.json` (sync cycles, device files) from Tack Focus, `desktop-export.json` and `desktop-device.json` from Tack for Windows, `legacy-1.1.json` written by Tack 1.1 |
 | `tools/make_icon.py` | Regenerates `Assets/Tack.ico` and `docs/icon.png` (needs Pillow) |
 | `build.ps1` | Builds the release zips into `artifacts/` |
 | `web/` | Tack Focus, the web and mobile app (TypeScript, no runtime dependencies). See [web/README.md](web/README.md) |
-| `docs/SYNC.md` | The design for syncing Tack Focus and Tack for Windows through your own cloud storage |
+| `docs/` | `DESIGN.md` (why Tack is the way it is), `SYNC.md` (how sync works, live since 1.3.0 / 0.2.0), `LAUNCHER.md` (the radial launcher), `ONEDRIVE-SETUP.md` (the Microsoft app registration) |
+| `.github/workflows/` | `ci.yml` (build and tests), `release.yml` (Tack downloads on a tag), `web.yml` (Tack Focus tests and deploy to tackfocus.app) |
 
 ## House rules
 
@@ -61,7 +64,7 @@ so both can run side by side (with its own `TackData` folder, as above).
 ## Testing
 
 ```powershell
-dotnet run --project tests/Tack.Tests -c Release            # sync model and tack.json tests
+dotnet run --project tests/Tack.Tests -c Release            # sync model, tack.json, spaces, launcher
 cd web; npm test                                            # Tack Focus, including the shared vectors
 ```
 
@@ -87,3 +90,6 @@ Bump `<Version>` in `src/Tack/Tack.csproj`, add the version's section to `CHANGE
 `## 1.2.0 (date)`), merge that pull request, then push a tag such as `v1.2.0` on `main`. The
 [release workflow](.github/workflows/release.yml) builds the downloads with `build.ps1` and publishes them
 to a GitHub Release whose text is that CHANGELOG section (`tools/release-notes.ps1`).
+
+**Tack Focus** has no tags: bump `version` in `web/package.json`, add a section to `web/CHANGELOG.md`,
+and merging to `main` deploys it to tackfocus.app ([web/DEPLOY.md](web/DEPLOY.md)).
