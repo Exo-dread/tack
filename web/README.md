@@ -1,8 +1,8 @@
 # Tack Focus
 
-Tack's tasks and notes as a web app for phones, tablets and browsers, made for **tackfocus.app**.
-Install it to your home screen and it opens like an app, works offline, and keeps everything on
-your device. It's the pocket companion to [Tack for Windows](../README.md): same orb, same "Now",
+Tack's tasks, notes and spaces as a web app for phones, tablets and browsers, live at
+[tackfocus.app](https://tackfocus.app). Install it to your home screen and it opens like an app,
+works offline, and keeps everything on your device. It's the pocket companion to [Tack for Windows](../README.md): same orb, same "Now",
 same notes, same `tack.json`.
 
 ## What it does
@@ -33,15 +33,30 @@ same notes, same `tack.json`.
 - **Light and dark**, six accents (each with a deeper shade for light mode), haptic ticks on phones,
   and full respect for *reduce motion*.
 - **Phones get a dock, wide screens get both.** Above 900 px, Tasks and Notes sit side by side.
+- **Updates itself.** A new version applies quietly when you open Tack Focus or come back to it,
+  before you've touched anything, or while you're away. Never while you're editing a task or have a
+  sheet open, and a half-typed task comes back as it was.
 - **Your data stays yours.** IndexedDB on the device, a daily snapshot for the last seven days,
   export to (and import from) `tack.json`, which Tack for Windows reads.
-- **Sync, if you want it** (switched on once the Microsoft app registration exists; see
-  [../docs/SYNC.md](../docs/SYNC.md)). Settings → Sync → *Turn on sync*, sign in with Microsoft
-  once, and Tack Focus and Tack for Windows keep each other up to date through a folder in your own
-  OneDrive. No Tack server, nothing to press.
+- **Sync, if you want it.** Settings → Sync → *Turn on sync*, sign in with Microsoft once, and Tack Focus
+  and Tack for Windows keep each other up to date through a folder in your own OneDrive. No Tack server,
+  nothing to press. Where the browser won't renew the sign-in in the background (iPhone, Firefox), Tack
+  pops over to Microsoft about once a day as it opens; if that's slow it says "Renewing your OneDrive
+  sign-in…", offers *Open Tack now*, and opens by itself after 25 seconds. See [../docs/SYNC.md](../docs/SYNC.md).
 
 Everything has a non-gesture route: tapping a task opens it with Focus / Move / Delete tools, and the
-keyboard covers the rest (see Settings → Keyboard shortcuts).
+keyboard covers the rest (also listed in Settings → Keyboard shortcuts):
+
+| Keys | Does |
+|---|---|
+| N or / | New task (jumps to the task box) |
+| Enter / Ctrl+Enter (⌘+Enter) | Add a task / add it as your focus |
+| 1 / 2 / , | Tasks / Notes / Settings |
+| ↑ ↓, Alt+↑ / Alt+↓ | Move between tasks; move a task |
+| Ctrl+Enter, Ctrl+D, Delete | Focus on a task, mark it done, delete it |
+| Ctrl+Z | Undo |
+| Ctrl+Enter, F5 (Notes) | Make a task from the line; insert the date and time |
+| Alt+1 … Alt+9 / Alt+0 | The 1st … 9th space / All, once there are spaces (on a Mac, outside text fields) |
 
 ## Design notes
 
@@ -58,8 +73,8 @@ keyboard covers the rest (see Settings → Keyboard shortcuts).
 
 ## Architecture
 
-TypeScript and the web platform; **no runtime dependencies**. The whole app is about 35 KB of
-JavaScript and CSS, gzipped.
+TypeScript and the web platform; **no runtime dependencies**. The whole app is about 56 KB of
+JavaScript and CSS, gzipped (48 KB of it JavaScript).
 
 ```
 web/
@@ -69,10 +84,11 @@ web/
 │   ├── model/              Pure, tested, no DOM
 │   │   ├── workspace.ts    Every mutation; views (now/open/done, per space); batched change events
 │   │   ├── spaces.ts       Spaces: names, ids, where a task or sheet shows
-│   │   ├── merge.ts        Field-by-field merge (tabs today, devices tomorrow)
+│   │   ├── merge.ts        Field-by-field merge (between tabs and between devices)
 │   │   ├── hlc.ts          Hybrid logical clocks
 │   │   ├── order.ts        Fractional sort keys
 │   │   ├── file.ts         tack.json import/export (desktop-compatible)
+│   │   ├── welcome.ts      The first-run tasks, and leaving them behind when joining sync
 │   │   └── text.ts, time.ts, ids.ts, types.ts
 │   ├── sync/               Optional sync through your OneDrive (docs/SYNC.md)
 │   │   ├── engine.ts       One sync cycle: read others' device files, merge, write ours
@@ -94,7 +110,9 @@ web/
 │   │   ├── sheet.ts        Small bottom sheets (the switcher, Move to…) and the ⋯ menu
 │   │   ├── motion.ts       Springs (CSS linear()), FLIP, reduced motion
 │   │   ├── viewport.ts     Keeps the app inside the visible area above the keyboard
-│   │   └── orb.ts, toast.ts, haptics.ts, theme.ts, icons.ts, install.ts, sw.ts, dom.ts
+│   │   ├── renewing.ts     What shows while the OneDrive sign-in renews at Microsoft
+│   │   ├── sw.ts           Registers the service worker; applies updates at a safe moment
+│   │   └── orb.ts, toast.ts, haptics.ts, theme.ts, icons.ts, install.ts, dom.ts
 │   ├── styles/main.css     Tokens (dark/light/accents), layout, components
 │   └── sw.js               Service worker (precache list injected at build)
 ├── public/                 Manifest, icons, robots.txt, privacy/ (the privacy page), auth/ (sign-in landing page)

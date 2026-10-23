@@ -6,7 +6,8 @@
 
 <p align="center">
   A tiny, always-on-top home for what you're doing <em>right now</em>.<br/>
-  Tasks and quick notes in a frosted-glass panel that folds into a 40-pixel orb.
+  Tasks and quick notes in a frosted-glass panel that folds into a 40-pixel orb, on Windows,<br/>
+  with <a href="https://tackfocus.app">Tack Focus</a> on your phone.
 </p>
 
 <p align="center">
@@ -42,13 +43,18 @@ and gets out of the way the moment you're done.
   Until you make one, there's nothing extra on screen.
 - **Notes like scrap paper.** Plain-text sheets that save as you type. Lists continue themselves,
   F5 stamps the time, and Ctrl+Enter turns a line into a task.
+- **A launcher, if you want one.** Turn it on in Settings → Launcher, then Shift+click the orb for a ring
+  of your own shortcuts (apps, folders, websites, groups), or Shift+drag to one and let go. Drag on past an
+  app to choose the display it opens on. It's off by default, and while it's off nothing changes.
 - **Windows 11 glass, light or dark.** Native acrylic, rounded corners, your accent colour, smooth and
   short animations. Follows Windows' light/dark mode, or pick one. Crisp on every monitor, at any scaling.
 - **Sized to fit.** The Tasks panel grows and shrinks with your list (then scrolls), Notes keeps its own
   size, and any size you drag to is remembered per tab. Switching tabs never makes the panel jump.
 - **Polite.** Steps aside while a full-screen video, game or slideshow is in front.
+- **On your phone too.** [Tack Focus](#tack-focus-tack-on-your-phone) puts the same tasks, notes and spaces
+  on iPhone and Android, and the two keep in step through your own OneDrive.
 - **Yours.** No account, no telemetry, and Tack never connects to anything. Your data is one readable JSON
-  file. Optional sync with Tack Focus on your phone goes through your own OneDrive folder.
+  file. Sync, if you turn it on, goes through your own OneDrive folder.
 
 ## Download
 
@@ -64,6 +70,9 @@ Grab the latest `Tack-x.y.z-win-x64.zip` from [**Releases**](../../releases/late
 
 To start Tack with Windows, turn on **Settings → Start with Windows**.
 
+On a phone? Tack Focus needs no download: open [tackfocus.app](https://tackfocus.app) and add it to your
+home screen. What's new: [CHANGELOG.md](CHANGELOG.md) (Tack), [web/CHANGELOG.md](web/CHANGELOG.md) (Tack Focus).
+
 ## Using Tack
 
 | | |
@@ -76,10 +85,10 @@ To start Tack with Windows, turn on **Settings → Start with Windows**.
 | **Import** | **Settings → Import** merges a tack.json from [Tack Focus](web/README.md) (its Settings → Export), another PC or a backup. Undo puts it back. |
 | **Pin** | 📌 keeps the panel open over other apps. Unpinned, it folds away when you click elsewhere. |
 | **Orb menu** | Right-click the orb for Open, Settings and Quit. |
-| **Launcher** (optional, off by default) | **Settings → Launcher**: Shift+click the orb for a ring of your own shortcuts (apps, folders, websites, groups), or Shift+drag to one and let go; keep dragging past an app to pick the display it opens on. See [docs/LAUNCHER.md](docs/LAUNCHER.md). |
 
-If another app already uses Ctrl+Alt+Space, Tack picks a free fallback on first run (Win+Ctrl+T, then
-Win+Alt+N) and the welcome tasks tell you which. You can change it in **Settings → Shortcut**.
+If another app already uses Ctrl+Alt+Space, Tack picks a free fallback on first run (Win+Ctrl+T,
+Win+Alt+N, then Ctrl+Alt+Shift+T) and the welcome tasks tell you which. You can change it in
+**Settings → Shortcut**.
 
 ### Tasks
 
@@ -95,6 +104,12 @@ Win+Alt+N) and the welcome tasks tell you which. You can change it in **Settings
 Everything starts in **Main**. To keep work, development and personal tasks apart, add a space in
 **Settings → Spaces → + New space** (rename Main there too, say to "Work"). Spaces are optional:
 until there's a second one, Tack looks exactly as it always has.
+
+<p align="center">
+  <img src="docs/screenshots/spaces.png" width="300" alt="Tack with spaces in the dark theme: a strip under the header reads All, Main, Work, Dev, Personal, with Work on show and its tasks below" />
+  &nbsp;
+  <img src="docs/screenshots/spaces-light.png" width="300" alt="The same space in the light theme, with the add box saying Add to Work" />
+</p>
 
 - Once there's a second space, a slim strip under the header lists **All · Main · Work · …**. Click one
   (or press **Alt+1** to **Alt+9** for the spaces in order, **Alt+0** for All) to show it. The keys work
@@ -116,15 +131,30 @@ until there's a second one, Tack looks exactly as it always has.
   right-click a sheet's name to delete it (or, with spaces, move it to another).
 - Start a line with `- `, `* `, `1. ` or `[ ] ` and Enter continues the list.
 
+### Launcher
+
+Off by default. Turn it on in **Settings → Launcher** and fill its six positions with apps, folders,
+websites or groups of up to eight. Then **Shift+click** the orb for the ring, or **Shift+drag** to a
+shortcut and let go. Plain clicks and drags of the orb are untouched. More: [docs/LAUNCHER.md](docs/LAUNCHER.md).
+
+<p align="center">
+  <img src="docs/screenshots/launcher.png" width="300" alt="The launcher in the dark theme: six shortcuts in a ring around the orb, the top one highlighted and labelled Revit 2024" />
+  &nbsp;
+  <img src="docs/screenshots/launcher-light.png" width="300" alt="The launcher in the light theme" /><br/>
+  <img src="docs/screenshots/launcher-display.png" width="300" alt="Choosing a display: a small map of two displays above the ring, captioned Open Revit 2024 on Display 2 (main)" /><br/>
+  <sub>Drag on past an app or folder and a map of your displays appears: let go on one to open it there
+  (best effort: some apps put themselves back).</sub>
+</p>
+
 ### Keyboard
 
 | Keys | Where | Does |
 |---|---|---|
 | Ctrl+Alt+Space | Anywhere | Open Tack / fold it away |
-| Esc | Panel | Cancel the current edit, then fold away |
+| Esc | Panel | Cancel the current edit or close Settings, then fold away |
 | Ctrl+1 / Ctrl+2 | Panel | Tasks / Notes |
 | Ctrl+, | Panel | Settings |
-| Ctrl+Z | Panel | Undo the last delete |
+| Ctrl+Z | Panel | Undo the last delete, move, clear or paste |
 | Enter / Ctrl+Enter | Add box | Add task / add and focus on it |
 | ↑ / ↓ | Tasks | Move between tasks |
 | Ctrl+Enter | A task | Make it the focus |
@@ -134,15 +164,20 @@ until there's a second one, Tack looks exactly as it always has.
 | Backspace | An empty task | Delete it |
 | Ctrl+Enter | Notes | Send the current line (or selection) to Tasks |
 | F5 | Notes | Insert the date and time |
-| Ctrl+Tab | Notes | Next sheet |
+| Ctrl+N | Notes | New sheet |
+| Ctrl+Tab / Ctrl+Shift+Tab | Notes | Next / previous sheet |
 | Alt+1 … Alt+9 / Alt+0 | Panel | Show the 1st … 9th space / All (once there are spaces) |
+| Shift+click / Shift+drag | The orb | Open the launcher / drag to a shortcut and let go (once it's on) |
+| Arrows or Tab, Enter, 1–6 | Launcher | Move between shortcuts, open one, open a position |
+| M or Shift+Enter, Esc | Launcher | Choose the display it opens on; step back, then close |
 
 ## Your data
 
 Everything lives in `%LOCALAPPDATA%\Tack\tack.json`: plain, indented JSON you can read, back up or
 sync with whatever you like. Saves are debounced, written atomically (temp file, then replace), and the
 previous version is kept as `tack.json.bak`, so a crash or power cut can't corrupt your list. If the file
-is ever unreadable, Tack recovers from the backup and keeps the damaged file aside.
+is ever unreadable, Tack recovers from the backup and keeps the damaged file aside. With the launcher
+on, its shortcuts are kept beside tack.json in `launcher.json` (never in tack.json, never synced).
 
 The file also has a `tackFocus` section: a clock for every change, sort keys and recently deleted
 items, so Tack can merge edits made elsewhere. Older versions of Tack ignore it. **Settings → Import**
@@ -162,6 +197,17 @@ verified: [docs/SYNC.md](docs/SYNC.md).
 instead, which is handy on a USB stick. (Like any single-file .NET app, the portable exe unpacks about 8 MB
 of native WPF libraries into `%TEMP%\.net\Tack` on first launch; it's safe to delete.)
 
+## Tack Focus: Tack on your phone
+
+**[tackfocus.app](https://tackfocus.app)** is Tack's tasks, notes and spaces as an installable web app for
+iPhone, Android and any browser. Open it and add it to your home screen; there's nothing to download. It
+works offline, keeps everything on the device, and new versions arrive by themselves when you open it.
+Turn on sync in both apps and they keep each other up to date through a folder in your own OneDrive, with
+no Tack account and no Tack server. On iPhone and in Firefox, staying signed in takes a quick visit to
+Microsoft about once a day as the app opens; if that's slow, Tack says "Renewing your OneDrive sign-in…"
+and lets you open it anyway. Privacy, in plain words: [tackfocus.app/privacy](https://tackfocus.app/privacy/).
+The code is in [`web/`](web/README.md).
+
 ## Lightweight by design
 
 Measured on Windows 11 with the portable build:
@@ -170,8 +216,8 @@ Measured on Windows 11 with the portable build:
 |---|---|
 | Startup to orb on screen | ~0.4 s normally; a few seconds on the very first launch (one-time unpacking) |
 | CPU while idle | 0%: no timers or polling. Everything is event-driven |
-| Memory when folded and idle | ~2–5 MB working set (Tack hands unused memory back to Windows); ~50 MB committed |
-| Download | ~53 MB zip (one self-contained exe) |
+| Memory when folded and idle | ~2–5 MB working set (Tack hands unused memory back to Windows); ~50 MB committed. The same with the launcher on |
+| Download | ~56 MB zip (one self-contained exe) |
 
 ## Build from source
 
@@ -180,18 +226,13 @@ Requires Windows and the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotn
 ```powershell
 dotnet run --project src/Tack                     # run in debug
 ./build.ps1 -Version 1.0.0                        # release zips in ./artifacts
+cd web; npm install; npm run dev                  # Tack Focus at http://localhost:5173 (Node 22)
 ```
 
 Pushing a tag like `v1.0.0` runs [`release.yml`](.github/workflows/release.yml), which builds the downloads
-and publishes a GitHub Release. See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout, and
-[docs/DESIGN.md](docs/DESIGN.md) for the thinking behind the design.
-
-## Tack Focus: Tack on your phone
-
-[`web/`](web/README.md) holds **Tack Focus**, Tack's tasks and notes as an installable web app for
-iPhone, Android and any browser, at [tackfocus.app](https://tackfocus.app). It works offline, keeps
-everything on the device, and reads and writes the same `tack.json` format. Syncing with Tack for
-Windows through your own OneDrive is built and in review ([docs/SYNC.md](docs/SYNC.md)).
+and publishes a GitHub Release. Tack Focus deploys to tackfocus.app on merge ([web/DEPLOY.md](web/DEPLOY.md)).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout, and [docs/DESIGN.md](docs/DESIGN.md) for the
+thinking behind the design.
 
 ## License
 

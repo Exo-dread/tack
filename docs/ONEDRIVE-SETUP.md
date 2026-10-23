@@ -1,5 +1,8 @@
 # Setting up OneDrive sync (for the Tack project)
 
+> Done for tackfocus.app (sync live since 20 October 2026). This page is for the project's maintainers,
+> and for anyone hosting their own copy of Tack Focus. Using Tack doesn't need any of it.
+
 Sync needs one thing the code can't provide: a **Microsoft app registration**, which tells Microsoft
 "Tack Focus is allowed to ask people for access to its own OneDrive folder". It belongs to the
 Tack project, not to a person, and it's free. Until it exists, Tack Focus simply doesn't offer sync

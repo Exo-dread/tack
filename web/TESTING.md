@@ -5,7 +5,7 @@
 ```bash
 npm test        # Vitest: model, clocks, order keys, merging, tack.json, sync, shared vectors
 npm run vectors # rewrite tests/vectors/sync.json and sync-engine.json (Tack for Windows is checked against them)
-npm run e2e     # Playwright: the production build in three browsers
+npm run e2e     # Playwright: the production build on three emulated devices (WebKit and Chromium)
 ```
 
 If port 4173 is taken (another project's preview server), `E2E_PORT=4183 npm run e2e`.
@@ -25,7 +25,7 @@ through a folder on disk. The sync tests run
 with the service worker blocked: in WebKit, Playwright can't intercept requests from a page a
 worker controls, and they must never reach the real Microsoft.
 
-**Unit tests (235, including 40 runs of the sync simulation)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
+**Unit tests (236, including 40 runs of the sync simulation)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
 random inserts, clock monotonicity and skew, .NET date parsing, every workspace mutation and its
 undo, snapshot restore, two- and three-device merges with a randomised convergence test, concurrent
 note edits (conflict copies), and tack.json import/export against a file shaped exactly like
@@ -75,7 +75,7 @@ Gestures are driven with synthetic pointer events (Playwright can only tap), so 
 gesture logic, not a real finger. WebKit on Windows is close to Safari's engine but isn't iOS:
 no on-screen keyboard, no home-screen mode, no service workers in Playwright's Windows build.
 
-## By hand, on real devices (before the first release)
+## By hand, on real devices (before a release that touches them)
 
 Emulation can't cover these. Each takes a minute.
 
@@ -135,6 +135,9 @@ Microsoft account with OneDrive.
 - [ ] After 24 hours, Android: syncing carries on with nothing to do (hidden-frame renewal).
 - [ ] iPhone (Home Screen app): after 24 hours, opening Tack shows Microsoft's page for a moment and
       comes straight back, no tapping; sync carries on.
+- [ ] iPhone (Home Screen app), after 24 hours, on Wi-Fi with no internet: opening Tack shows
+      "Renewing your OneDrive sign-in…", *Open Tack now* opens it, it never lands on Safari's error
+      page, and sync renews once back online.
 - [ ] Sign out of Microsoft in that browser, wait a day: a dot on Settings, "Sign in again" works.
 - [ ] Turn off on one device: its tasks stay; the others keep syncing.
 - [ ] Work or school account (if you have one): consent, then the same flow.

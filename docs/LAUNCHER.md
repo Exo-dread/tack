@@ -13,7 +13,7 @@ behaves as before, nothing extra is loaded beyond reading a settings file if one
 | **Open (gesture)** | **Shift+press** the orb and, without letting go, drag toward a shortcut (it highlights) and release. Release over nothing, over an empty position or back on the orb, and nothing happens. |
 | **Groups** | Drag onto a group and its shortcuts fan out beyond it; carry on to one and release. Releasing on the group itself just leaves it open. |
 | **Choose a display** | Keep dragging *past* an app or folder (or rest on it a moment) and a small map of your displays appears; drag onto one and release. With clicks: right-click a shortcut, or rest on it. Shortcuts can also always ask, or remember a display (Settings). |
-| **Keyboard** (after Shift+click) | Arrows/Tab move, **Enter** opens, **M** or **Shift+Enter** shows the displays, **1–6** open a position, **Esc** steps back and closes, **Alt+F4** closes. The display map never opens by itself while you use the keys (only when the pointer rests on a shortcut). |
+| **Keyboard** (after Shift+click) | Arrows/Tab move, **Enter** or **Space** opens, **M**, **Shift+Enter** or the Menu key shows the displays, **1–6** (top row or number pad) open a position, **Esc** steps back and closes, **Alt+F4** closes. The display map never opens by itself while you use the keys (only when the pointer rests on a shortcut). |
 | **Narrator** | Each shortcut and display is a button with its name and what it opens; the keyboard focus follows the highlight, and messages ("can't be found", "Opening…") are read out. |
 
 Shift+click and Shift+drag are told apart by movement only: a press that never moves more than 7 DIPs
