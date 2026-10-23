@@ -27,7 +27,10 @@ internal interface IImportTarget
     /// <summary>Every task, sheet and space held, deleted ones included (as a device file counts them).</summary>
     int RecordCount { get; }
 
-    /// <summary>How many records taking <paramref name="data"/> in would add, and how many of those are spaces.</summary>
+    /// <summary>
+    /// How many records taking <paramref name="data"/> in would add, and how many spaces it would
+    /// show that don't show now (new live ones, deleted ones brought back).
+    /// </summary>
     (int Records, int Spaces) WouldAdd(WorkspaceData data);
 }
 

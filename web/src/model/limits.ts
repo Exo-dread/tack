@@ -10,11 +10,17 @@ export const MAX_RECORDS = 200_000;
 export const MAX_TASK_TEXT = 100_000;
 export const MAX_NOTE_TEXT = 1_000_000;
 /**
- * Records a device holds before it takes no more from elsewhere (other devices' files, imports):
- * the rest is room for its own edits and deletions, so its file always stays within MAX_RECORDS.
+ * Records a device holds before it takes no more in bulk from elsewhere (other devices' files,
+ * imports): the rest is room for its own edits and deletions, so its file stays within MAX_RECORDS.
  */
 export const MAX_TAKEN = MAX_RECORDS - 20_000;
-/** Spaces (deleted ones included) a device takes in from elsewhere: every live one is a button on screen. */
+/**
+ * New records one device file may still bring past MAX_TAKEN (a peer's everyday edits), up to
+ * MAX_RECORDS: so devices that share a lot keep syncing, while a file that would add more at once
+ * (a whole workspace, a flood) is held to MAX_TAKEN.
+ */
+export const MAX_TRICKLE = 2_000;
+/** Live spaces a device shows before it takes no more from elsewhere: every one is a button on screen. */
 export const MAX_SPACES = 1_000;
 /** Lines one paste (or one "Make task" from a note) turns into tasks. */
 export const MAX_PASTE_LINES = 10_000;

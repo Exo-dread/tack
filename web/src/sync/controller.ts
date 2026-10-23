@@ -74,8 +74,14 @@ const AFTER_EDIT = 3000;
 const MAX_WAIT = 6 * HOUR;
 /** After a hidden frame timed out, the next waits this long, twice as long each time... */
 const FRAME_RETRY = 15 * MINUTE;
-/** ...and this many in a row count as refused: a visit renews instead, before the sign-in runs out. */
+/**
+ * ...and after this many in a row, a visit renews instead, before the sign-in runs out. That isn't
+ * a refusal: frames still count as working here, and are tried again once a visit has been made.
+ */
 const FRAME_TIMEOUTS = 3;
+
+/** Hidden frames that timed out in a row since the last renewal visit (earlier ones are history). */
+const frameTimeouts = (a: AuthRecord): number => ((a.frameTimedOut ?? 0) > a.lastRenewVisit ? (a.frameTimeouts ?? 0) : 0);
 
 /** Sync was turned off (perhaps in another tab) while something was under way. */
 class TurnedOff extends Error {}
@@ -107,7 +113,7 @@ export class SyncController {
    * coming back to the app and the last exchange on the way out bring a sync forward only to it.
    */
   private notBefore = 0;
-  /** ...and Microsoft's Retry-After, which even "Sync now" waits for. */
+  /** ...and Microsoft's Retry-After (not Tack's own backoff on top), which even "Sync now" waits for. */
   private throttledUntil = 0;
   private hiddenAt = 0;
   private renewing: Promise<void> | null = null;
@@ -349,8 +355,8 @@ export class SyncController {
       !!a.account &&
       !!a.tokens &&
       !a.needsSignIn &&
-      // Frames don't work here, or one was refused since the last visit.
-      (a.frameWorks === false || a.frameRefused > a.lastRenewVisit) &&
+      // Frames don't work here, or one was refused (or a few timed out) since the last visit.
+      (a.frameWorks === false || a.frameRefused > a.lastRenewVisit || frameTimeouts(a) >= FRAME_TIMEOUTS) &&
       a.tokens.refreshExpires < deadline &&
       Date.now() - a.lastRenewVisit > (a.visitReturned ? VISIT_GAP : RETRY_GAP) &&
       navigator.onLine &&
@@ -447,7 +453,7 @@ export class SyncController {
       // wait short. Offline waits for the 'online' event; a spent sign-in for a renewal, perhaps
       // in another tab.
       if (error instanceof SyncError && error.kind !== 'offline' && error.kind !== 'auth') this.notBefore = Date.now() + Math.min(next, MAX_WAIT);
-      if (error instanceof SyncError && error.kind === 'throttled') this.throttledUntil = this.notBefore;
+      if (error instanceof SyncError && error.kind === 'throttled') this.throttledUntil = Date.now() + Math.min(error.retryAfter ?? 30_000, MAX_WAIT);
     }
     // Keep going only while on screen; coming back starts it again.
     if (document.visibilityState === 'visible' || next < POLL) this.schedule(next);
@@ -582,8 +588,9 @@ export class SyncController {
       const a = this.auth;
       if (!a.account || !this.msal || a.frameWorks === false || a.frameRefused > a.lastRenewVisit) return;
       // After a frame timed out, not again for a while (15 minutes, then 30...): each try loads
-      // Microsoft's sign-in page.
-      const timeouts = a.frameTimeouts ?? 0;
+      // Microsoft's sign-in page. After a few, a visit renews instead (visitDue).
+      const timeouts = frameTimeouts(a);
+      if (timeouts >= FRAME_TIMEOUTS) return;
       if (timeouts > 0 && Date.now() - (a.frameTimedOut ?? 0) < FRAME_RETRY * 2 ** (timeouts - 1)) return;
       try {
         const { tokens } = await this.msal.renewInFrame(a.account);
@@ -592,12 +599,11 @@ export class SyncController {
       } catch (error) {
         // Refused by Microsoft: visit at the next quiet moment (which also tells whether it's the
         // browser or the session). A timeout or a failure on the way waits, longer each time, and
-        // a few in a row count as refused, so a visit can renew before the sign-in runs out.
+        // after a few a visit renews before the sign-in runs out. A timeout is never a refusal:
+        // that visit would then stop frames here for good (handleReturn), for one slow evening.
         if (error instanceof AuthError && error.kind === 'interaction') await this.saveAuth({ frameRefused: Date.now(), frameTimeouts: 0 });
-        else if (error instanceof AuthError) {
-          const n = timeouts + 1;
-          await this.saveAuth(n >= FRAME_TIMEOUTS ? { frameRefused: Date.now(), frameTimeouts: 0 } : { frameTimeouts: n, frameTimedOut: Date.now() });
-        } else throw error;
+        else if (error instanceof AuthError) await this.saveAuth({ frameTimeouts: timeouts + 1, frameTimedOut: Date.now() });
+        else throw error;
       }
     })().finally(() => (this.renewing = null));
     return this.renewing;

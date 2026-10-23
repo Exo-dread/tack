@@ -88,6 +88,7 @@ web/
 │   │   ├── hlc.ts          Hybrid logical clocks
 │   │   ├── order.ts        Fractional sort keys
 │   │   ├── file.ts         tack.json import/export (desktop-compatible)
+│   │   ├── limits.ts       How much a device holds and passes on (the same numbers as Tack for Windows)
 │   │   ├── welcome.ts      The first-run tasks, and leaving them behind when joining sync
 │   │   └── text.ts, time.ts, ids.ts, types.ts
 │   ├── sync/               Optional sync through your OneDrive (docs/SYNC.md)

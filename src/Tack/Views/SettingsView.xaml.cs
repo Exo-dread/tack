@@ -440,9 +440,12 @@ public partial class SettingsView : UserControl
         foreach (var (device, problem) in on ? st.Problems : [])
         {
             string who = st.Peers.FirstOrDefault(p => p.Device == device)?.Name is { Length: > 0 } n ? n : "another device";
-            line += problem == Tack.Sync.DeviceFileProblem.Newer
-                ? $"\n{who} has a newer Tack. Update Tack here to keep syncing with it."
-                : $"\nThe sync file from {who} couldn't be read. It'll be written again the next time that device syncs.";
+            line += problem switch
+            {
+                Tack.Sync.DeviceFileProblem.Newer => $"\n{who} has a newer Tack. Update Tack here to keep syncing with it.",
+                Tack.Sync.DeviceFileProblem.Full => $"\n{who} holds more than this PC can take in, so its changes aren't arriving here.",
+                _ => $"\nThe sync file from {who} couldn't be read. It'll be written again the next time that device syncs.",
+            };
         }
         if (SyncStatusText.Text != (line ?? ""))
         {

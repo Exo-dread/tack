@@ -4,7 +4,7 @@ import { encode, Hlc, isStamp, MAX_AHEAD_MS, stampTime, ZERO } from '../../src/m
 import { isOrderKey, MAX_ORDER_KEY } from '../../src/model/order';
 import { wellFormed } from '../../src/model/text';
 import { Workspace } from '../../src/model/workspace';
-import { deadTask, DeviceFileError, fileName, makeDeviceFile, MAX_FILE_BYTES, MAX_NOTE_TEXT, MAX_RECORDS, MAX_SEEN, MAX_TAKEN, MAX_TASK_TEXT, parseDeviceFile, serializeDeviceFile, trimSeen } from '../../src/sync/devicefile';
+import { deadTask, DeviceFileError, fileName, makeDeviceFile, MAX_FILE_BYTES, MAX_NOTE_TEXT, MAX_RECORDS, MAX_SEEN, MAX_SPACES, MAX_TAKEN, MAX_TASK_TEXT, MAX_TRICKLE, parseDeviceFile, serializeDeviceFile, trimSeen } from '../../src/sync/devicefile';
 import { seenBy } from '../../src/sync/engine';
 import { Cloud, DAY, Device, records, settle, visible, type Clock } from './synchelpers';
 
@@ -160,15 +160,17 @@ describe('M3: one file vouching for another device', () => {
 });
 
 describe('M4: limits inside a file', () => {
-  it('refuses a file with more records than any real one has, and ignores more devices seen', () => {
+  it('refuses a file with more records than any real one has, and marks one with more devices seen', () => {
     const many = craft('mmmm0001', NOW, { tasks: new Array(MAX_RECORDS + 1).fill({}) });
     expect(() => parseDeviceFile(JSON.stringify(many), 'mmmm0001', NOW)).toThrowError(DeviceFileError);
     // More `seen` claims than any device writes (a file passing on a crafted one's, before that
-    // was trimmed): the claims are ignored, the records still read.
+    // was trimmed): the file is still read, marked so the engine counts only the claims that matter.
     const seen = Object.fromEntries(Array.from({ length: MAX_SEEN + 1 }, (_, i) => [`dev${String(i).padStart(5, '0')}`, encode(NOW, 0, 'x')]));
     const relayed = parseDeviceFile(JSON.stringify(craft('mmmm0001', NOW, { seen })), 'mmmm0001', NOW);
-    expect(relayed.seen).toEqual({});
+    expect(relayed.seenOver).toBe(true);
+    expect(Object.keys(relayed.seen)).toHaveLength(MAX_SEEN + 1);
     expect(relayed.tasks.map((t) => t.text)).toEqual(['from mmmm0001']);
+    expect(parseDeviceFile(JSON.stringify(craft('mmmm0001', NOW, { seen: { aaaa0001: encode(NOW, 0, 'x') } })), 'mmmm0001', NOW).seenOver).toBeUndefined();
     // Right at the limits it's fine.
     expect(() => parseDeviceFile(JSON.stringify(craft('mmmm0001', NOW, { tasks: new Array(MAX_RECORDS).fill({}) })), 'mmmm0001', NOW)).not.toThrow();
   });
@@ -330,6 +332,31 @@ describe('M1 (second audit): a file claiming to have seen a thousand devices', (
     expect(desk.log.at(-1)!.problems).toEqual([]);
   });
 
+  // The regression review: ignoring every claim of such a file made a device that passes them on
+  // (any version before trimSeen) look as if it had seen nothing, so each note it edited was kept twice.
+  it('still counts its claims about devices in the folder, so a note edited in turn is kept once', async () => {
+    const { cloud, clock, devices, tick } = world('phone', 'desk');
+    const [phone, desk] = devices as [Device, Device];
+    const s = phone.ws.addSheet('Plan: v1');
+    await settle(devices, 2);
+    tick();
+    phone.ws.editSheet(s.id, 'Plan: v2 (phone)');
+    await phone.sync();
+    await desk.sync();
+    tick();
+    desk.ws.editSheet(s.id, 'Plan: v3 (desk, after seeing v2)');
+    await desk.sync();
+    // The desk passes on a crafted file's thousand claims, as versions before trimSeen do.
+    const doc = fileOf(cloud, desk);
+    for (let i = 0; i < MAX_SEEN; i++) doc.seen[`zz${String(i).padStart(6, '0')}`] = encode(clock.now - 5000, 0, 'q');
+    putFile(cloud, `${desk.id}.json`, doc);
+    tick();
+    await phone.sync();
+    expect(visible(phone.ws).sheets).toEqual(['Plan: v3 (desk, after seeing v2)']);
+    // And the made-up claims go no further.
+    expect(Object.keys(fileOf(cloud, phone).seen)).toEqual([desk.id]);
+  });
+
   it('keeps the devices in the folder, then the latest claims', () => {
     const at = (ms: number, node: string) => encode(NOW + ms, 0, node);
     const seen: Record<string, string> = {};
@@ -358,7 +385,7 @@ describe('M2 (second audit): files that would fill a device', () => {
     putFile(cloud, 'evil0002.json', doc);
     tick();
     const r = await phone.sync();
-    expect(r.problems).toEqual([{ device: 'evil0002', reason: 'unreadable' }]);
+    expect(r.problems).toEqual([{ device: 'evil0002', reason: 'full' }]);
     expect(phone.ws.tasks.size).toBe(1);
     await desk.sync();
 
@@ -380,10 +407,10 @@ describe('M2 (second audit): files that would fill a device', () => {
     const r = await desk.sync();
     // The first fits; the second would take the desk past what it takes in.
     expect(r.merged).toEqual(['aaaa0001']);
-    expect(r.problems).toEqual([{ device: 'bbbb0001', reason: 'unreadable' }]);
+    expect(r.problems).toEqual([{ device: 'bbbb0001', reason: 'full' }]);
     expect(takes(cloud, desk, clock.now)).toBe(true);
     // Set aside until it changes.
-    expect((await desk.sync()).problems).toEqual([{ device: 'bbbb0001', reason: 'unreadable' }]);
+    expect((await desk.sync()).problems).toEqual([{ device: 'bbbb0001', reason: 'full' }]);
     expect(desk.view.reads.get('bbbb0001.json')).toBe(1);
   });
 
@@ -398,6 +425,95 @@ describe('M2 (second audit): files that would fill a device', () => {
     // The next cycle finds nothing new, but still says so rather than "synced".
     await expect(phone.sync()).rejects.toMatchObject({ kind: 'toolarge' });
     expect(phone.saved.own.pending).toBeNull();
+  });
+
+  // The regression review: a budget that honest devices fill with each other's edits stops them.
+  it('still takes a peer’s everyday edits once a flood has filled this device to what it takes in at once', async () => {
+    const { cloud, clock, devices, tick } = world('phone', 'laptop');
+    const [phone, laptop] = devices as [Device, Device];
+    for (let i = 0; i < 20; i++) phone.ws.addTask(`shared ${i}`);
+    await settle(devices, 2);
+    // Within every limit, and within what a device takes in at once: MAX_TAKEN less what's held, less 3.
+    const held = phone.ws.tasks.size + phone.ws.sheets.size + phone.ws.spaces.size;
+    putFile(cloud, 'evil0004.json', craft('evil0004', clock.now, { deleted: { tasks: deletions(MAX_TAKEN - held - 4, encode(clock.now - 5000, 0, 'evil0004')), sheets: {} } }));
+    tick();
+    await settle(devices, 1);
+    expect(phone.ws.tasks.size + phone.ws.sheets.size + phone.ws.spaces.size).toBe(MAX_TAKEN - 3);
+    cloud.files.delete('evil0004.json');
+    for (let round = 0; round < 2; round++) {
+      tick();
+      for (const d of devices) {
+        d.ws.addTask(`${d.label} ${round}a`);
+        d.ws.complete(d.ws.addTask(`${d.label} ${round}b`)!.id);
+      }
+      await settle(devices, 2);
+    }
+    for (const d of devices) {
+      expect(d.log.flatMap((r) => r.problems)).toEqual([]);
+      expect(takes(cloud, d, clock.now)).toBe(true);
+    }
+    expect(visible(laptop.ws).open.filter((t) => !t.startsWith('shared')).sort()).toEqual(['from evil0004', 'laptop 0a', 'laptop 1a', 'phone 0a', 'phone 1a']);
+    expect(visible(laptop.ws).done).toEqual(['laptop 0b', 'laptop 1b', 'phone 0b', 'phone 1b']);
+    expect(records(laptop.ws)).toEqual(records(phone.ws));
+  }, 60_000);
+
+  it('still holds a file adding many at once to what a device takes in at once, and every file to the most one carries', async () => {
+    const { cloud, clock, devices } = world('desk');
+    const [desk] = devices as [Device];
+    const at = encode(clock.now - 5000, 0, 'q');
+    putFile(cloud, 'aaaa0001.json', craft('aaaa0001', clock.now, { deleted: { tasks: deletions(MAX_TAKEN - MAX_TRICKLE - 10, at, 'a'), sheets: {} } }));
+    expect((await desk.sync()).problems).toEqual([]);
+    // More than a few at once past MAX_TAKEN: held.
+    putFile(cloud, 'bbbb0001.json', craft('bbbb0001', clock.now, { deleted: { tasks: deletions(MAX_TRICKLE + 20, at, 'b'), sheets: {} } }));
+    expect((await desk.sync()).problems).toEqual([{ device: 'bbbb0001', reason: 'full' }]);
+    // A few at a time go in, up to the most a file may carry, and no further.
+    const room = MAX_RECORDS - desk.ws.tasks.size - desk.ws.sheets.size - desk.ws.spaces.size;
+    for (let i = 0; i * MAX_TRICKLE < room + MAX_TRICKLE; i++) {
+      putFile(cloud, `cccc${String(i).padStart(4, '0')}.json`, craft(`cccc${String(i).padStart(4, '0')}`, clock.now, { deleted: { tasks: deletions(MAX_TRICKLE - 1, at, `c${i}x`), sheets: {} } }));
+    }
+    const r = await desk.sync();
+    expect(r.problems.length).toBeGreaterThan(0);
+    expect(r.problems.every((p) => p.reason === 'full')).toBe(true);
+    expect(desk.ws.tasks.size + desk.ws.sheets.size + desk.ws.spaces.size).toBeLessThanOrEqual(MAX_RECORDS);
+    expect(takes(cloud, desk, clock.now)).toBe(true);
+  }, 60_000);
+
+  it('counts only the spaces that show: deleted ones are records like any other', async () => {
+    const { cloud, clock, devices, tick } = world('phone', 'laptop');
+    const [phone, laptop] = devices as [Device, Device];
+    phone.ws.addTask('before');
+    await settle(devices, 2);
+    // Within every limit (31 KB): 995 deleted spaces. Every device takes them in.
+    putFile(cloud, 'evil0005.json', craft('evil0005', clock.now, { deleted: { tasks: {}, sheets: {}, spaces: deletions(995, encode(clock.now - 5000, 0, 'evil0005'), 's') } }));
+    tick();
+    await settle(devices, 1);
+    cloud.files.delete('evil0005.json');
+    tick();
+    for (let i = 0; i < 6; i++) phone.ws.addSpace(`space ${i}`);
+    phone.ws.addTask('after');
+    await settle(devices);
+    expect(laptop.log.flatMap((r) => r.problems)).toEqual([]);
+    expect(visible(laptop.ws).open.sort()).toEqual(['after', 'before', 'from evil0005']);
+    expect([...laptop.ws.spaces.values()].filter((s) => !s.deleted)).toHaveLength(6);
+  });
+
+  it('still sets aside a file that would show more spaces than any device does, new ones or deleted ones brought back', async () => {
+    const { cloud, clock, devices, tick } = world('desk');
+    const [desk] = devices as [Device];
+    const at = encode(clock.now - 5000, 0, 'evil0006');
+    const live = (deleted: string) => Array.from({ length: MAX_SPACES + 1 }, (_, i) => ({ id: `s${i}`, name: `junk ${i}`, order: 'V', deleted: false, clk: { name: at, order: at, deleted } }));
+    putFile(cloud, 'evil0006.json', craft('evil0006', clock.now, { spaces: live(ZERO) }));
+    expect((await desk.sync()).problems).toEqual([{ device: 'evil0006', reason: 'full' }]);
+    // Deleted, they're taken in...
+    tick();
+    putFile(cloud, 'evil0006.json', craft('evil0006', clock.now, { deleted: { tasks: {}, sheets: {}, spaces: deletions(MAX_SPACES + 1, at, 's') } }));
+    expect((await desk.sync()).problems).toEqual([]);
+    expect(desk.ws.spaces.size).toBe(MAX_SPACES + 1);
+    // ...but not brought back all at once.
+    tick();
+    putFile(cloud, 'evil0007.json', craft('evil0007', clock.now, { spaces: live(encode(clock.now - 1000, 0, 'evil0007')) }));
+    expect((await desk.sync()).problems).toEqual([{ device: 'evil0007', reason: 'full' }]);
+    expect([...desk.ws.spaces.values()].filter((s) => !s.deleted)).toHaveLength(0);
   });
 });
 

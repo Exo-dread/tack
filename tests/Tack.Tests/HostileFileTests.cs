@@ -26,7 +26,7 @@ internal static class HostileFileTests
         yield return ("hostile files, M1: such text in this PC's own tack.json doesn't stop Tack opening", HalfCharactersAtStartup);
         yield return ("hostile files, M2: ids like \"constructor\" sync like any other", BuiltInNames);
         yield return ("hostile files, M3: one file vouching for another can't hide that device's changes", Vouching);
-        yield return ("hostile files, M4: limits on records and text; more devices seen are ignored", Limits);
+        yield return ("hostile files, M4: limits on records and text; more devices seen are marked", Limits);
         yield return ("hostile files, M4: only real dates, sane clocks and order keys", Fields);
         yield return ("hostile files, M4: won't write an own file every device would refuse", TooLargeToWrite);
         yield return ("hostile files, L1: never reads a file the listing shows to be too big", NeverReadsTooBig);
@@ -39,6 +39,11 @@ internal static class HostileFileTests
         yield return ("second audit, M2: files are taken in while there is room, together", RecordsBudgetTogether);
         yield return ("second audit, M2: an own file every device would refuse is never written, and said every cycle", TooLargeEveryCycle);
         yield return ("second audit, M2: never reads more of a file than a device file may hold", BoundedRead);
+        yield return ("regression review: a file passing on too many claims still counts those about devices in the folder", SeenOverClaims);
+        yield return ("regression review: a peer's everyday edits still arrive after a flood filled this PC", FloodTrickle);
+        yield return ("regression review: a bulk file is held to what this PC takes in at once, every file to the most one carries", BulkHeld);
+        yield return ("regression review: only spaces that show count against the spaces budget", SpacesLiveOnly);
+        yield return ("regression review: a file showing too many spaces, new or brought back, is still set aside", SpacesShownHeld);
         yield return ("second audit, L1: imports no more than a device can pass on", ImportLimits);
         yield return ("second audit, L1: imports skip text longer than any device reads", ImportLongText);
         yield return ("second audit, L2: imported dates are kept only as every device reads them", ImportDates);
@@ -162,10 +167,12 @@ internal static class HostileFileTests
         DeviceFile.Parse(Encoding.UTF8.GetBytes(atLimit), "mmmm0001", Now); // fine at the limit
 
         // More "seen" claims than any device writes (a file passing on a crafted one's, before that
-        // was trimmed): the claims are ignored, the records still read.
+        // was trimmed): the file is still read, marked so the engine counts only the claims that matter.
         string seen = "\"seen\":{" + string.Join(",", Enumerable.Range(0, DeviceFile.MaxSeen + 1).Select(i => $"\"dev{i:D5}\":\"{Stamp.Encode(Now, 0, "x")}\"")) + "}";
         var relayed = DeviceFile.Parse(Encoding.UTF8.GetBytes(Craft("mmmm0001", Now, text: "x", extra: seen)), "mmmm0001", Now);
-        Check.Equal(0, relayed.Seen.Count, "too many devices seen: the claims are ignored");
+        Check.True(relayed.SeenOver, "too many devices seen: marked");
+        Check.Equal(DeviceFile.MaxSeen + 1, relayed.Seen.Count, "with its claims, for the engine to sort out");
+        Check.True(!DeviceFile.Parse(Encoding.UTF8.GetBytes(Craft("mmmm0001", Now, text: "x")), "mmmm0001", Now).SeenOver, "a usual file isn't marked");
         Check.Equal("x", string.Join(",", relayed.Tasks.Select(t => t.Text)), "and the records still read");
 
         string longText = Craft("mmmm0001", Now, text: new string('x', DeviceFile.MaxTaskText + 1));
@@ -310,7 +317,7 @@ internal static class HostileFileTests
         folder.Put("evil0002.json", evil);
         var (ws, meta) = Device("desk0001");
         var result = Cycle(ws, folder, meta);
-        Check.True(result.Problems.Contains(("evil0002", DeviceFileProblem.Unreadable)), "set aside");
+        Check.True(result.Problems.Contains(("evil0002", DeviceFileProblem.Full)), "set aside");
         Check.True(ws.RecordCount < 10, "and not taken in");
         DeviceFile.Parse(folder.Files["desk0001.json"].Bytes, "desk0001", Now); // every device takes this PC's file
         Check.Equal("before", string.Join(",", ws.Open.Select(t => t.Text)), "the rest still syncs");
@@ -325,10 +332,10 @@ internal static class HostileFileTests
         var (ws, meta) = Device("desk0001");
         var result = Cycle(ws, folder, meta);
         Check.Equal("aaaa0001", string.Join(",", result.Merged), "the first fits");
-        Check.True(result.Problems.Contains(("bbbb0001", DeviceFileProblem.Unreadable)), "the second would take this PC past what it takes in");
+        Check.True(result.Problems.Contains(("bbbb0001", DeviceFileProblem.Full)), "the second would take this PC past what it takes in");
         DeviceFile.Parse(folder.Files["desk0001.json"].Bytes, "desk0001", Now);
         var again = Cycle(ws, folder, meta);
-        Check.True(again.Problems.Contains(("bbbb0001", DeviceFileProblem.Unreadable)), "still set aside");
+        Check.True(again.Problems.Contains(("bbbb0001", DeviceFileProblem.Full)), "still set aside");
         Check.Equal(1, folder.Reads.GetValueOrDefault("bbbb0001.json"), "and not read again until it changes");
     }
 
@@ -445,6 +452,145 @@ internal static class HostileFileTests
         var kept = ws.ToData().Tasks.Single();
         Check.Equal("2026-10-20T09:00:00.1234567+01:00", kept.Created, "dates already as every device reads them are kept as written");
         Check.Equal<string?>("2026-10-21T10:00:00+01:00", kept.Completed, "completed too");
+    }
+
+    // ---------------------------------------------------------------- regression review (24 October 2026)
+    // What the second audit's limits cost honest devices (as synchostile.test.ts).
+
+    /// <summary>Ignoring every claim of such a file made a device passing them on look as if it had seen nothing.</summary>
+    private static void SeenOverClaims()
+    {
+        var folder = new Folder();
+        var (phone, phoneMeta) = Device("phon0001");
+        var (desk, deskMeta) = Device("desk0001");
+        var note = phone.AddSheet(text: "Plan: v1");
+        Cycle(phone, folder, phoneMeta);
+        Cycle(desk, folder, deskMeta);
+        phone.SheetById(note.Id)!.Text = "Plan: v2 (phone)";
+        Cycle(phone, folder, phoneMeta);
+        Cycle(desk, folder, deskMeta);
+        desk.SheetById(note.Id)!.Text = "Plan: v3 (desk, after seeing v2)";
+        Cycle(desk, folder, deskMeta);
+        // The desk passes on a crafted file's thousand claims, as versions before TrimSeen do.
+        string claims = string.Concat(Enumerable.Range(0, DeviceFile.MaxSeen).Select(i => $"\"zz{i:D6}\":\"{Stamp.Encode(Now - 5000, 0, "q")}\","));
+        string text = Encoding.UTF8.GetString(folder.Files["desk0001.json"].Bytes);
+        folder.Put("desk0001.json", text.Replace("\"seen\":{", "\"seen\":{" + claims, StringComparison.Ordinal).Replace(",}", "}", StringComparison.Ordinal));
+        Cycle(phone, folder, phoneMeta);
+        Check.Equal("Plan: v3 (desk, after seeing v2)", string.Join(" | ", phone.Sheets.Select(s => s.Text).Where(t => t.StartsWith("Plan", StringComparison.Ordinal))),
+            "a note edited in turn is kept once");
+        Check.Equal("desk0001", string.Join(",", DeviceFile.Parse(folder.Files["phon0001.json"].Bytes, "phon0001", Now).Seen.Keys), "and the made-up claims go no further");
+    }
+
+    /// <summary>A budget that honest devices fill with each other's edits stops them.</summary>
+    private static void FloodTrickle()
+    {
+        var folder = new Folder();
+        var (desk, deskMeta) = Device("desk0001");
+        var (pc, pcMeta) = Device("pcpc0001");
+        for (int i = 0; i < 20; i++) desk.AddTask($"shared {i}");
+        var devices = new[] { (Name: "desk", Ws: desk, Meta: deskMeta), (Name: "pc", Ws: pc, Meta: pcMeta) };
+        var problems = new List<(string, DeviceFileProblem)>();
+        void Settle()
+        {
+            for (int i = 0; i < 2; i++)
+                foreach (var d in devices) problems.AddRange(Cycle(d.Ws, folder, d.Meta).Problems);
+        }
+        Settle();
+        // Within every limit, and within what a device takes in at once: MaxTaken less what's held, less 3.
+        folder.Put("evil0004.json", Deletions("evil0004", DeviceFile.MaxTaken - desk.RecordCount - 4));
+        foreach (var d in devices) problems.AddRange(Cycle(d.Ws, folder, d.Meta).Problems);
+        Check.Equal(DeviceFile.MaxTaken - 3, desk.RecordCount, "the flood is taken in");
+        folder.Files.Remove("evil0004.json");
+        for (int round = 0; round < 2; round++)
+        {
+            foreach (var d in devices)
+            {
+                d.Ws.AddTask($"{d.Name} {round}a");
+                d.Ws.Complete(d.Ws.AddTask($"{d.Name} {round}b"));
+            }
+            Settle();
+        }
+        Check.Equal(0, problems.Count, "no file is set aside");
+        Check.Equal("desk 0a,desk 1a,from evil0004,pc 0a,pc 1a",
+            string.Join(",", pc.Open.Select(t => t.Text).Where(t => !t.StartsWith("shared", StringComparison.Ordinal)).Order(StringComparer.Ordinal)), "every new task arrives");
+        Check.Equal("desk 0b,desk 1b,pc 0b,pc 1b", string.Join(",", pc.Done.Select(t => t.Text).Order(StringComparer.Ordinal)), "and every completion");
+        Check.Equal(desk.RecordCount, pc.RecordCount, "both hold the same");
+        foreach (var d in devices) DeviceFile.Parse(folder.Files[$"{d.Ws.Clock.Node}.json"].Bytes, d.Ws.Clock.Node, Now); // every device takes both files
+    }
+
+    private static void BulkHeld()
+    {
+        var folder = new Folder();
+        var (ws, meta) = Device("desk0001");
+        folder.Put("aaaa0001.json", Deletions("aaaa0001", DeviceFile.MaxTaken - DeviceFile.MaxTrickle - 10, "a"));
+        Check.Equal(0, Cycle(ws, folder, meta).Problems.Count, "taken in");
+        // More than a few at once past MaxTaken: held.
+        folder.Put("bbbb0001.json", Deletions("bbbb0001", DeviceFile.MaxTrickle + 20, "b"));
+        Check.True(Cycle(ws, folder, meta).Problems.SequenceEqual([("bbbb0001", DeviceFileProblem.Full)]), "a bulk file past what this PC takes in at once is set aside");
+        // A few at a time go in, up to the most a file may carry, and no further.
+        int room = DeviceFile.MaxRecords - ws.RecordCount;
+        for (int i = 0; i * DeviceFile.MaxTrickle < room + DeviceFile.MaxTrickle; i++)
+            folder.Put($"cccc{i:D4}.json", Deletions($"cccc{i:D4}", DeviceFile.MaxTrickle - 1, $"c{i}x"));
+        var result = Cycle(ws, folder, meta);
+        Check.True(result.Problems.Count > 0 && result.Problems.All(p => p.Problem == DeviceFileProblem.Full), "the rest are set aside as too much to take in");
+        Check.True(ws.RecordCount <= DeviceFile.MaxRecords, "never more than a file may carry");
+        DeviceFile.Parse(folder.Files["desk0001.json"].Bytes, "desk0001", Now); // every device takes this PC's file
+    }
+
+    /// <summary>A crafted file: one task, <paramref name="deleted"/> deleted spaces, and <paramref name="live"/> ones (JSON).</summary>
+    private static string Spaces(string device, int deleted = 0, string? live = null)
+    {
+        string at = Stamp.Encode(Now - 5000, 0, device);
+        string craft = Craft(device, Now, text: $"from {device}", extra: live == null ? null : $"\"seen\":{{}},\"spaces\":{live}");
+        string map = "{" + string.Join(",", Enumerable.Range(0, deleted).Select(i => $"\"s{i}\":\"{at}\"")) + "}";
+        return craft.Replace("\"sheets\":{}}}", $"\"sheets\":{{}},\"spaces\":{map}}}}}", StringComparison.Ordinal);
+    }
+
+    /// <summary><paramref name="n"/> live spaces as JSON, their deletion clock <paramref name="deleted"/> (later than a deletion: brought back).</summary>
+    private static string LiveSpaces(int n, string deleted)
+    {
+        string at = Stamp.Encode(Now - 5000, 0, "evil0006");
+        return "[" + string.Join(",", Enumerable.Range(0, n).Select(i =>
+            $"{{\"id\":\"s{i}\",\"name\":\"junk {i}\",\"order\":\"V\",\"deleted\":false,\"clk\":{{\"name\":\"{at}\",\"order\":\"{at}\",\"deleted\":\"{deleted}\"}}}}")) + "]";
+    }
+
+    private static void SpacesLiveOnly()
+    {
+        var folder = new Folder();
+        var (phone, phoneMeta) = Device("phon0001");
+        var (pc, pcMeta) = Device("pcpc0001");
+        phone.AddTask("before");
+        Cycle(phone, folder, phoneMeta);
+        Cycle(pc, folder, pcMeta);
+        // Within every limit (31 KB): 995 deleted spaces. Every device takes them in.
+        folder.Put("evil0005.json", Spaces("evil0005", deleted: 995));
+        Cycle(phone, folder, phoneMeta);
+        Cycle(pc, folder, pcMeta);
+        Check.Equal(995, pc.ToData().Spaces.Count, "taken in");
+        folder.Files.Remove("evil0005.json");
+        for (int i = 0; i < 6; i++) phone.AddSpace($"space {i}");
+        phone.AddTask("after");
+        Cycle(phone, folder, phoneMeta);
+        var result = Cycle(pc, folder, pcMeta);
+        Check.Equal(0, result.Problems.Count, "the phone's file isn't set aside");
+        Check.Equal("after,before,from evil0005", string.Join(",", pc.Open.Select(t => t.Text).Order(StringComparer.Ordinal)), "its changes arrive");
+        Check.Equal(6, pc.ToData().Spaces.Count(s => !s.Deleted), "and its spaces");
+    }
+
+    private static void SpacesShownHeld()
+    {
+        var folder = new Folder();
+        var (ws, meta) = Device("desk0001");
+        folder.Put("evil0006.json", Spaces("evil0006", live: LiveSpaces(DeviceFile.MaxSpaces + 1, Stamp.Zero)));
+        Check.True(Cycle(ws, folder, meta).Problems.SequenceEqual([("evil0006", DeviceFileProblem.Full)]), "too many new spaces: set aside");
+        // Deleted, they're taken in...
+        folder.Put("evil0006.json", Spaces("evil0006", deleted: DeviceFile.MaxSpaces + 1));
+        Check.Equal(0, Cycle(ws, folder, meta).Problems.Count, "deleted ones are records like any other");
+        Check.Equal(DeviceFile.MaxSpaces + 1, ws.ToData().Spaces.Count, "taken in");
+        // ...but not brought back all at once.
+        folder.Put("evil0007.json", Spaces("evil0007", live: LiveSpaces(DeviceFile.MaxSpaces + 1, Stamp.Encode(Now - 1000, 0, "evil0007"))));
+        Check.True(Cycle(ws, folder, meta).Problems.SequenceEqual([("evil0007", DeviceFileProblem.Full)]), "too many brought back: set aside");
+        Check.Equal(0, ws.ToData().Spaces.Count(s => !s.Deleted), "none shows");
     }
 
     // ---------------------------------------------------------------- helpers

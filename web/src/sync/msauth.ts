@@ -69,8 +69,9 @@ export interface AuthRecord {
   needsSignIn: boolean;
   /**
    * Hidden-frame renewals that timed out (or failed on the way) in a row, and when the last one
-   * did (ms). Each waits longer before the next; a few count as refused, so a visit renews instead.
-   * Missing (in records earlier versions saved): none.
+   * did (ms). Each waits longer before the next; after a few a visit renews instead, and frames are
+   * tried again once one has been made (only those since the last visit count). Not a refusal:
+   * frameWorks stays as it was. Missing (in records earlier versions saved): none.
    */
   frameTimeouts?: number;
   frameTimedOut?: number;

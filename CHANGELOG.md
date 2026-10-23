@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+Sync is sturdier again: one damaged or hostile file can't stop it, even after it's gone. From a
+second security review of Tack and Tack Focus.
+
+- **A bad file can't stop sync any more.** A damaged or hostile file in the sync folder can no
+  longer stop sync between your other devices, even after it's gone. Each device now takes no more
+  from the folder than its own sync file can carry: a file that would go past that is set aside and
+  shown in Settings, and the rest keeps syncing. Tack never reads more than 20 MB of a file. What
+  Tack writes stays readable by earlier versions of Tack and Tack Focus. See docs/SYNC.md.
+- **Turn on sync takes only OneDrive\Apps\Tack Focus by itself.** A Tack sync folder anywhere else
+  (under a translated "Apps" folder, say) is pointed out instead, and Choose folder… picks it if
+  it's yours.
+- **Imports, pasting and typing keep to what sync can carry.** Importing a file with more tasks and
+  notes than Tack can keep in sync says so instead of importing it, and a task over 100,000
+  characters or a note over 1,000,000 is skipped, as sync skips it. Pasting a list, or Make task from
+  a note, takes up to 10,000 lines at a time.
+- An imported task that was finished stays finished on every device, even when its file gave the
+  date without a time.
+- If this PC holds more than sync can carry, Settings keeps saying so until it fits again, instead
+  of going back to "In step with the sync folder".
+- Downloads are built only from versions already merged into main.
+
 ## 1.6.0 (2026-10-23)
 
 An optional radial launcher around the orb, for the apps and folders you open all day. It's off

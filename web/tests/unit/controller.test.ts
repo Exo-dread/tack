@@ -304,14 +304,14 @@ describe('waiting as long as Microsoft asks', () => {
   });
 
   /** A page on screen, signed in (the refresh token good for `refreshFor`), sync on, Graph answering through `http`. */
-  async function running(http: typeof fetch, refreshFor = 20 * HOUR) {
+  async function running(http: typeof fetch, refreshFor = 20 * HOUR, auth: Partial<AuthRecord> = {}) {
     const page = stubPage();
     vi.stubGlobal('navigator', { onLine: true, userAgent: 'test' });
     vi.stubGlobal('fetch', http); // the controller's OneDrive folder uses the page's fetch
     const backend = new MemoryBackend();
     await backend.putMeta('sync', { enabled: true, meta: null });
     const tokens = { accessToken: 'a', accessExpires: Date.now() + 10 * HOUR, refreshToken: 'r', refreshExpires: Date.now() + refreshFor };
-    await backend.putMeta('auth', { ...emptyAuth(), account, tokens });
+    await backend.putMeta('auth', { ...emptyAuth(), account, tokens, ...auth });
     const ws = new Workspace(new Hlc('dev12345'));
     const store = { flushAll: async () => {}, flush: async () => {}, status: 'saved', allSaved: true } as unknown as Store;
     const sync = await SyncController.create(ws, store, backend, config, http);
@@ -392,9 +392,61 @@ describe('waiting as long as Microsoft asks', () => {
     }
     expect(frames).toBe(3); // at once, after 15 minutes, after 30 more
     const auth = (await backend.getMeta<AuthRecord>('auth'))!;
-    expect(auth.frameRefused).toBeGreaterThan(0);
+    expect([auth.frameTimeouts, auth.frameRefused]).toEqual([3, 0]); // timed out, not refused
     // ...so a renewal visit is due at the next quiet moment, well before the sign-in runs out.
     expect(sync.renewalDueAtStart()).toBe(true);
+  });
+
+  // The regression review: counted as refused, one slow evening switched frames off for good.
+  it('a few frames timing out don’t make this a browser that refuses them: after the visit, frames again (L5)', async () => {
+    const g = graph();
+    const { backend, sync } = await running(g.http, 3 * HOUR, { frameWorks: true });
+    let frames = 0;
+    const msal = (sync as unknown as { msal: { renewInFrame: () => Promise<never>; completeRedirect: () => Promise<unknown> } }).msal;
+    vi.spyOn(msal, 'renewInFrame').mockImplementation(() => {
+      frames++;
+      return new Promise((_, reject) => setTimeout(() => reject(new AuthError('failed', 'Silent renewal timed out')), 10_000));
+    });
+    sync.start();
+    await vi.advanceTimersByTimeAsync(HOUR);
+    expect(frames).toBe(3);
+    expect(sync.renewalDueAtStart()).toBe(true);
+    // The visit comes back renewed.
+    const fresh = { accessToken: 'b', accessExpires: Date.now() + HOUR, refreshToken: 'r2', refreshExpires: Date.now() + 24 * HOUR };
+    vi.spyOn(msal, 'completeRedirect').mockResolvedValue({ kind: 'renew', account, tokens: fresh });
+    expect(await sync.handleReturn()).toBe('renewed');
+    const auth = (await backend.getMeta<AuthRecord>('auth'))!;
+    expect([auth.frameWorks, auth.frameTimeouts, auth.frameRefused]).toEqual([true, 0, 0]);
+    // The next day the hidden frame renews again, with no trip to Microsoft's page.
+    vi.setSystemTime(Date.now() + 21 * HOUR);
+    expect(sync.renewalDueAtStart()).toBe(false);
+    const renewing = (sync as unknown as { renewInFrame(): Promise<void> }).renewInFrame();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await renewing;
+    expect(frames).toBe(4);
+  });
+
+  // The regression review: "Sync now" waited for Tack's own backoff (up to half an hour) too.
+  it('after a long storm with no Retry-After, Sync now waits only the 30 seconds Microsoft is owed (L4)', async () => {
+    let throttling = true;
+    const healthy = graph();
+    const failed: number[] = [];
+    const http: typeof fetch = async (input, init) => {
+      if (!throttling) return healthy.http(input, init);
+      failed.push(Date.now());
+      return new Response('{}', { status: 503 });
+    };
+    const { sync } = await running(http);
+    sync.start();
+    await vi.advanceTimersByTimeAsync(2 * HOUR); // the backoff grows to half an hour
+    expect(failed.at(-1)! - failed.at(-2)!).toBeGreaterThanOrEqual(29 * 60_000);
+    expect(Date.now() - failed.at(-1)!).toBeGreaterThan(60_000);
+    // Microsoft has recovered: Sync now goes at once, not when Tack's half hour is up.
+    throttling = false;
+    sync.syncNow();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(healthy.requests.length).toBeGreaterThan(0);
+    expect(sync.status.phase).toBe('synced');
   });
 
   it('a frame that works resets it all', async () => {

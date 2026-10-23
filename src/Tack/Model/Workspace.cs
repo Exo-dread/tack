@@ -361,22 +361,26 @@ public sealed class Workspace : Observable, IImportTarget
 
     /// <summary>
     /// How many records taking <paramref name="data"/> in would add (tasks, sheets and spaces this
-    /// workspace has no record of, deleted or not), and how many of those are spaces: what an import
-    /// or another device's file would add to this device's own sync file.
+    /// workspace has no record of, deleted or not): what an import or another device's file would add
+    /// to this device's own sync file. And how many spaces it would show that don't show now: new live
+    /// ones, and deleted ones it brings back (a deleted space is only a record, not a button).
     /// </summary>
     internal (int Records, int Spaces) WouldAdd(WorkspaceData data)
     {
-        int spaces = data.Spaces.Select(s => s.Id).Distinct().Count(id => !_spaces.ContainsKey(id));
         int records = data.Tasks.Select(t => t.Id).Distinct().Count(id => !_tasks.ContainsKey(id))
-            + data.Sheets.Select(s => s.Id).Distinct().Count(id => !_sheets.ContainsKey(id)) + spaces;
-        return (records, spaces);
+            + data.Sheets.Select(s => s.Id).Distinct().Count(id => !_sheets.ContainsKey(id))
+            + data.Spaces.Select(s => s.Id).Distinct().Count(id => !_spaces.ContainsKey(id));
+        int shown = data.Spaces.DistinctBy(s => s.Id).Count(s => _spaces.TryGetValue(s.Id, out var had)
+            ? had.Deleted && !Merge.Space(had, s).Value.Deleted
+            : !s.Deleted);
+        return (records, shown);
     }
 
     /// <summary>Every task, sheet and space held, deleted ones included (as a device file counts them).</summary>
     internal int RecordCount => _tasks.Count + _sheets.Count + _spaces.Count;
 
-    /// <summary>Every space held, deleted ones included.</summary>
-    internal int SpaceCount => _spaces.Count;
+    /// <summary>Spaces held that aren't deleted.</summary>
+    internal int LiveSpaceCount => _spaces.Values.Count(s => !s.Deleted);
 
     /// <summary>Adds a space after the last one.</summary>
     internal SpaceData AddSpace(string name)

@@ -452,7 +452,9 @@ export class Settings {
           const who = st.peers.find((y) => y.device === x.device)?.name || 'another device';
           return x.reason === 'newer'
             ? `${who} has a newer Tack. Update Tack here to keep syncing with it.`
-            : `The sync file from ${who} couldn\u2019t be read. It\u2019ll be written again the next time that device syncs.`;
+            : x.reason === 'full'
+              ? `${who} holds more than this device can take in, so its changes aren\u2019t arriving here.`
+              : `The sync file from ${who} couldn\u2019t be read. It\u2019ll be written again the next time that device syncs.`;
         });
         const issueText = issues.join(' ');
         if (problems.textContent !== issueText) problems.textContent = issueText;

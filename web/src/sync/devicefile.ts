@@ -1,6 +1,6 @@
 import { focusRecord, isObject, readFocus, readSheetRecord, readSpaceRecord, readTaskRecord, sheetRecord, spaceRecord, taskRecord } from '../model/file';
 import { isPlausibleStamp, ZERO, type Stamp } from '../model/hlc';
-import { MAX_NOTE_TEXT, MAX_RECORDS, MAX_SPACES, MAX_TAKEN, MAX_TASK_TEXT } from '../model/limits';
+import { MAX_NOTE_TEXT, MAX_RECORDS, MAX_SPACES, MAX_TAKEN, MAX_TASK_TEXT, MAX_TRICKLE } from '../model/limits';
 import { mergeSheet, mergeSpace, mergeTask } from '../model/merge';
 import { MAX_SPACE_NAME } from '../model/spaces';
 import { wellFormedValues } from '../model/text';
@@ -35,11 +35,11 @@ export const MAX_FILE_BYTES = 20 * 1024 * 1024;
  * refused whole (and set aside), and an over-long record is skipped, so a damaged or crafted file
  * can't swell every device's own file for good. Tack for Windows uses the same numbers. (A space
  * name is the one thing cut rather than skipped: every device keeps names to MAX_SPACE_NAME
- * wherever they come from, so no device can hold a name its peers would refuse.) More `seen`
- * entries than MAX_SEEN are ignored rather than refused (see trimSeen).
+ * wherever they come from, so no device can hold a name its peers would refuse.) A file with
+ * more `seen` entries than MAX_SEEN isn't refused: it's marked `seenOver` (see trimSeen).
  */
 export const MAX_SEEN = 1_000;
-export { MAX_NOTE_TEXT, MAX_RECORDS, MAX_SPACE_NAME, MAX_SPACES, MAX_TAKEN, MAX_TASK_TEXT };
+export { MAX_NOTE_TEXT, MAX_RECORDS, MAX_SPACE_NAME, MAX_SPACES, MAX_TAKEN, MAX_TASK_TEXT, MAX_TRICKLE };
 
 const DEVICE_ID = /^[0-9A-Za-z]{4,32}$/;
 const FILE_NAME = /^([0-9A-Za-z]{4,32})\.json$/;
@@ -58,6 +58,11 @@ export interface DeviceFile {
   tasks: Task[];
   sheets: Sheet[];
   spaces: Space[];
+  /**
+   * More `seen` claims than any device writes (passed on by a version before trimSeen, from a
+   * crafted file): only those about the reader and the devices in the folder count (engine.ts).
+   */
+  seenOver?: boolean;
 }
 
 export const isDeviceId = (id: unknown): id is string => typeof id === 'string' && DEVICE_ID.test(id);
@@ -124,9 +129,21 @@ export function serializeDeviceFile(file: Record<string, unknown>): string {
   return JSON.stringify(file, wellFormedValues);
 }
 
+/**
+ * Why a device file isn't used. 'full' is never thrown by the reader: the engine sets a file aside
+ * so when taking it in would leave this device holding more than it takes from elsewhere.
+ */
 export class DeviceFileError extends Error {
-  constructor(readonly reason: 'unreadable' | 'newer' | 'mismatch') {
-    super(reason === 'newer' ? 'Written by a newer version of Tack' : reason === 'mismatch' ? 'Device id does not match the file name' : 'Not a readable Tack device file');
+  constructor(readonly reason: 'unreadable' | 'newer' | 'mismatch' | 'full') {
+    super(
+      reason === 'newer'
+        ? 'Written by a newer version of Tack'
+        : reason === 'mismatch'
+          ? 'Device id does not match the file name'
+          : reason === 'full'
+            ? 'Holds more than this device takes in'
+            : 'Not a readable Tack device file',
+    );
   }
 }
 
@@ -158,10 +175,10 @@ export function parseDeviceFile(text: string, device: string, now = Date.now()):
   const count = (map: unknown) => (isObject(map) ? Object.keys(map).length : 0);
   const records = doc.tasks.length + doc.sheets.length + rawSpaces.length + count(deleted.tasks) + count(deleted.sheets) + count(deleted.spaces);
   if (records > MAX_RECORDS) throw new DeviceFileError('unreadable');
-  // More `seen` claims than any device writes: the claims are ignored, not the file. Versions
-  // before trimSeen passed a crafted file's claims on, and refusing their files would stop sync
-  // between them for good.
-  const seenOk = count(doc.seen) <= MAX_SEEN;
+  // More `seen` claims than any device writes: the file is still read, and only its claims about
+  // devices that matter count (engine.ts). Versions before trimSeen passed a crafted file's claims
+  // on, and refusing their files would stop sync between them for good.
+  const seenOver = count(doc.seen) > MAX_SEEN;
 
   // Duplicate ids (only a hand edit makes them) merge rather than one silently replacing the other.
   const tasks = new Map<string, Task>();
@@ -191,11 +208,12 @@ export function parseDeviceFile(text: string, device: string, now = Date.now()):
     name: typeof doc.name === 'string' ? doc.name.slice(0, 100) : '',
     app: typeof doc.app === 'string' ? doc.app.slice(0, 100) : '',
     written: doc.written,
-    seen: seenOk ? Object.fromEntries(entries(doc.seen, now).filter(([k]) => isDeviceId(k))) : {},
+    seen: Object.fromEntries(entries(doc.seen, now).filter(([k]) => isDeviceId(k))),
     focus: readFocus(doc.focus, now),
     tasks: [...tasks.values()],
     sheets: [...sheets.values()],
     spaces: [...spaces.values()],
+    ...(seenOver ? { seenOver } : {}),
   };
 }
 

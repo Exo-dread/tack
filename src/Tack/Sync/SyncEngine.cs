@@ -139,10 +139,17 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             if (OverBudget(file))
             {
                 string fileName = DeviceFile.FileName(file.Device);
-                meta.Files[fileName] = meta.Files[fileName] with { Problem = "unreadable" };
-                result.Problems.Add((file.Device, DeviceFileProblem.Unreadable));
+                meta.Files[fileName] = meta.Files[fileName] with { Problem = "full" };
+                result.Problems.Add((file.Device, DeviceFileProblem.Full));
+                Tack.Services.Log.Info($"Sync: set {fileName} aside: taking it in would leave this PC holding more than sync can carry.");
                 continue;
             }
+            // More claims than any device writes (a version before TrimSeen passing on a crafted
+            // file's): those about this PC and the devices in the folder still count, so a note that
+            // device edited after seeing another's isn't kept twice. The rest are made up.
+            var claims = file.SeenOver
+                ? file.Seen.Where(e => e.Key == me || present.Contains(DeviceFile.FileName(e.Key))).ToDictionary(e => e.Key, e => e.Value)
+                : file.Seen;
             // Every changed file is merged, even one that seems already had through another device:
             // merges are idempotent, and skipping on another file's word would let one bad file
             // hide a device's changes from everyone.
@@ -150,11 +157,11 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             var data = new WorkspaceData(file.Tasks, file.Sheets, file.Focus, file.Spaces);
             // A note changed on both sides is kept twice only if neither side had seen the other's text.
             news |= ws.MergeFrom(data, null, (local, remote) =>
-                !SeenBy(local.Clk.Text, file.Device, file.Seen) && !SeenBy(remote.Clk.Text, me, seenHere));
+                !SeenBy(local.Clk.Text, file.Device, claims) && !SeenBy(remote.Clk.Text, me, seenHere));
             meta.Seen[file.Device] = Later(meta.Seen.GetValueOrDefault(file.Device), file.Written);
             // Whatever that device had merged, this one now has too; no device can have seen past its
             // own clock, so a claim beyond the file's "written" is cut back to it.
-            foreach (var (d, w) in file.Seen)
+            foreach (var (d, w) in claims)
                 if (d != me) meta.Seen[d] = Later(meta.Seen.GetValueOrDefault(d), Stamp.IsLater(w, file.Written) ? file.Written : w);
             result.Merged.Add(file.Device);
         }
@@ -198,14 +205,19 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
 
     /// <summary>
     /// Would taking <paramref name="file"/> in leave this device holding more than it takes from
-    /// elsewhere: over <see cref="DeviceFile.MaxTaken"/> records (deleted ones included, as its own
-    /// file counts them), or <see cref="DeviceFile.MaxSpaces"/> spaces? Only a file that adds records
-    /// can; one that changes what's here never does (overBudget in engine.ts).
+    /// elsewhere? Records (deleted ones included, as its own file counts them): a few more, as a peer's
+    /// everyday edits bring, up to <see cref="DeviceFile.MaxRecords"/>; more at once
+    /// (<see cref="DeviceFile.MaxTrickle"/>), up to <see cref="DeviceFile.MaxTaken"/>. Live spaces: up
+    /// to <see cref="DeviceFile.MaxSpaces"/> (a deleted one is a record like any other). Only a file
+    /// that adds records or brings spaces back can be over; one that changes what's here never is
+    /// (overBudget in engine.ts).
     /// </summary>
     private bool OverBudget(DeviceFile file)
     {
-        var (added, spaces) = ws.WouldAdd(new WorkspaceData(file.Tasks, file.Sheets, file.Focus, file.Spaces));
-        return (added > 0 && ws.RecordCount + added > DeviceFile.MaxTaken) || (spaces > 0 && ws.SpaceCount + spaces > DeviceFile.MaxSpaces);
+        var (added, shown) = ws.WouldAdd(new WorkspaceData(file.Tasks, file.Sheets, file.Focus, file.Spaces));
+        int total = ws.RecordCount + added;
+        if (added > 0 && (total > DeviceFile.MaxRecords || (added > DeviceFile.MaxTrickle && total > DeviceFile.MaxTaken))) return true;
+        return shown > 0 && ws.LiveSpaceCount + shown > DeviceFile.MaxSpaces;
     }
 
     /// <summary>A file the listing already shows to be too big to be Tack's.</summary>
@@ -323,7 +335,7 @@ internal sealed class SyncMeta
     public static SyncMeta Empty(string folder) => new() { Folder = folder };
 }
 
-/// <param name="Problem">This version couldn't be used ("unreadable", "newer", "mismatch"); it isn't fetched again until it changes.</param>
+/// <param name="Problem">This version couldn't be used ("unreadable", "newer", "mismatch", "full"); it isn't fetched again until it changes.</param>
 /// <param name="Reader">The <see cref="SyncEngine.Reader"/> that read it (none: a version from before spaces, so it's read once more).</param>
 internal sealed record FileSummary(string Tag, string Device, string Name, string App, string Written,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Problem = null,

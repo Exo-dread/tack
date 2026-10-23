@@ -244,3 +244,7 @@ at a few MB of working set and zero CPU.
 - **Sync** with Tack Focus is opt-in and serverless: through a folder in your own OneDrive that the
   OneDrive app keeps in step, never a Tack server, and no network code in Tack. See [SYNC.md](SYNC.md).
   Google Drive and end-to-end encryption are for later.
+- **Limits far beyond real use**, the same as Tack Focus's: 100,000 characters in a task, 1,000,000 in a
+  note, 10,000 lines in one paste or Ctrl+Enter, and 180,000 tasks, sheets and spaces (deleted ones
+  included) taken in from imports or other devices, so no device holds anything its peers would refuse.
+  See [SYNC.md](SYNC.md#damaged-and-hostile-files).

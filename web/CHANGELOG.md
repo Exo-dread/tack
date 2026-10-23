@@ -1,5 +1,29 @@
 # Tack Focus changelog
 
+## Unreleased
+
+- **A bad file can't stop sync any more.** A damaged or hostile file in the sync folder can no
+  longer stop sync between your other devices, even after it's gone. Each device now takes no more
+  from the folder than its own sync file can carry: a file that would go past that is set aside and
+  shown in Settings, and the rest keeps syncing. Downloads stop at 20 MB, whatever OneDrive's
+  listing said, and a folder full of files Tack didn't put there pauses sync with a message instead
+  of costing hundreds of requests on every sync. What Tack Focus writes stays readable by earlier
+  versions of Tack Focus and Tack. Found in a second security review; see docs/SYNC.md.
+- **Gentler on Microsoft.** When Microsoft asks Tack Focus to slow down, it waits as long as asked:
+  typing, switching apps and *Sync now* no longer bring the next sync forward. A busy sign-in service
+  or download is waited out, not taken for a spent sign-in or an expired link.
+- **Staying signed in where the background renewal keeps timing out.** It's tried less often (after
+  15 minutes, then 30), and after three in a row Tack Focus renews with its quick visit to Microsoft
+  as it opens instead, so the sign-in no longer quietly runs out after a day.
+- **Imports, pasting and typing keep to what sync can carry.** Importing a file with more tasks and
+  notes than Tack can keep in sync says so instead of importing it, and a task over 100,000
+  characters or a note over 1,000,000 is skipped, as sync skips it; the boxes stop there too.
+  Pasting a list, or *Make task* from a note, takes up to 10,000 lines at a time.
+- An imported task that was finished stays finished on every device, even when its file gave the
+  date without a time.
+- If this device holds more than sync can carry, Settings keeps saying so until it fits again,
+  instead of going back to "Up to date".
+
 ## 0.4.2 (22 October 2026)
 
 - **No more blank screen while the OneDrive sign-in renews.** Once a day, where the browser can't
