@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -30,10 +32,12 @@ internal sealed class RadialWindow : Window
     private readonly Border _label = new() { CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 3, 8, 4), IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     private readonly TextBlock _labelText = new() { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 240 };
     private Border? _selector;
+    private TextBlock? _caption;
     private NodeRef? _selectorFor;
     private readonly List<Border> _tiles = new();
     private Hit _shownHighlight = Hit.Nothing;
     private int? _shownGroup;
+    private string? _announced;
 
     public RadialWindow(LauncherModule owner, LauncherSession session, bool animate)
     {
@@ -69,6 +73,8 @@ internal sealed class RadialWindow : Window
         _label.BorderThickness = new Thickness(1);
         _label.Child = _labelText;
         Panel.SetZIndex(_label, 30);
+        // A message (why a shortcut can't open, "Opening…") is read out as it appears.
+        AutomationProperties.SetLiveSetting(_labelText, AutomationLiveSetting.Assertive);
 
         Build();
         _canvas.Children.Add(_label);
@@ -130,7 +136,10 @@ internal sealed class RadialWindow : Window
         var entry = _scene.Entry(node)!;
         string? problem = _scene.ProblemOf(node);
         double d = LauncherMetrics.ItemDiameter;
-        var g = new Grid { Width = d, Height = d, RenderTransformOrigin = new Point(0.5, 0.5), Tag = node };
+        var g = new ShortcutVisual(() => _owner.OnInvoke(this, node))
+        {
+            Width = d, Height = d, RenderTransformOrigin = new Point(0.5, 0.5), Tag = node, Focusable = true, FocusVisualStyle = null,
+        };
 
         var body = new Ellipse { StrokeThickness = 1 };
         body.SetResourceReference(Shape.FillProperty, "FlyoutBrush");
@@ -177,7 +186,7 @@ internal sealed class RadialWindow : Window
 
     private string Describe(Shortcut e) => e.KindValue switch
     {
-        ShortcutKind.Group => $"{e.Children?.Count ?? 0} shortcuts",
+        ShortcutKind.Group => LauncherConfig.CountOf(e.Children?.Count ?? 0),
         ShortcutKind.Url => e.Target,
         _ => _scene.MultipleDisplays && e.CanTargetDisplay
             ? $"{e.Target}\nRight-click or keep dragging outward to choose a display."
@@ -207,6 +216,25 @@ internal sealed class RadialWindow : Window
         Activate();
         _canvas.Focus();
         Keyboard.Focus(_canvas);
+        FollowHighlight();
+    }
+
+    /// <summary>
+    /// With the keyboard on the launcher (click mode), the highlighted shortcut or display has the keyboard
+    /// focus as well, so Narrator and other screen readers say which one it is. Never takes focus by itself.
+    /// </summary>
+    private void FollowHighlight()
+    {
+        if (!IsKeyboardFocusWithin) return;
+        var h = _session.Highlight;
+        FrameworkElement? target = h.Kind switch
+        {
+            HitKind.Item when _nodes.TryGetValue(h.Node, out var v) => v,
+            HitKind.Display when h.Display >= 0 && h.Display < _tiles.Count => _tiles[h.Display],
+            _ => null,
+        };
+        if (target != null) { if (!target.IsKeyboardFocused) target.Focus(); }
+        else if (Keyboard.FocusedElement is UIElement { IsVisible: false }) _canvas.Focus(); // its group folded away
     }
 
     /// <summary>Brings the visuals in line with the session: highlight, open group, picker, label.</summary>
@@ -223,6 +251,7 @@ internal sealed class RadialWindow : Window
         {
             if (_selector != null) _canvas.Children.Remove(_selector);
             _selector = null;
+            _caption = null;
             _tiles.Clear();
             _selectorFor = _session.Selector;
             if (_selectorFor is { } n) BuildSelector(n);
@@ -236,6 +265,7 @@ internal sealed class RadialWindow : Window
             _shownHighlight = h;
         }
         ShowLabel();
+        FollowHighlight();
     }
 
     private void SetVisible(NodeRef node, bool visible, NodeRef? from = null)
@@ -276,43 +306,65 @@ internal sealed class RadialWindow : Window
     private void ShowLabel()
     {
         string? text = _session.Message;
-        bool warning = text != null;
+        bool message = text != null;
+        bool warning = message && _session.IsWarning;
         PxPoint anchor = _scene.Orb;
         var h = _session.Highlight;
-        if (text == null && h.Kind == HitKind.Item && _scene.Entry(h.Node) is { } e)
+
+        // The picker's own caption names its shortcut, and the display while one is highlighted, so no floating
+        // label goes over the picker or the shortcut beside it.
+        if (_caption != null && _session.Selector is { } open)
+        {
+            string what = _scene.Entry(open)?.Label ?? "";
+            _caption.Text = h.Kind == HitKind.Display && h.Display >= 0 && h.Display < _scene.Displays.Count
+                ? $"Open {what} on Display {MonitorMatch.Numbers(_scene.Displays)[h.Display]}{(_scene.Displays[h.Display].Primary ? " (main)" : "")}"
+                : $"Open {what} on";
+        }
+        if (!message && h.Kind == HitKind.Item && _session.Selector != h.Node && _scene.Entry(h.Node) is { } e)
         {
             text = e.Label;
             anchor = _scene.CenterOf(h.Node);
         }
-        else if (text == null && h.Kind == HitKind.Display && h.Display < _scene.Displays.Count && _session.Selector is { } sel)
-        {
-            int number = MonitorMatch.Numbers(_scene.Displays)[h.Display];
-            text = MonitorMatch.Describe(_scene.Displays[h.Display], number);
-            anchor = _scene.SelectorFor(sel).Center;
-        }
-        else if (warning && h.Kind == HitKind.Item) anchor = _scene.CenterOf(h.Node);
+        else if (message && h.Kind is HitKind.Item or HitKind.EmptySlot) anchor = _scene.CenterOf(h.Node);
 
         if (string.IsNullOrEmpty(text))
         {
             _label.Visibility = Visibility.Collapsed;
+            _announced = null;
             return;
         }
         _labelText.Text = text;
+        // A message is read in full (wrapped); a shortcut's name stays on one line.
+        _labelText.TextWrapping = message ? TextWrapping.Wrap : TextWrapping.NoWrap;
         _labelText.SetResourceReference(TextBlock.ForegroundProperty, warning ? "DangerBrush" : "TextPrimaryBrush");
         _label.Visibility = Visibility.Visible;
+        // Measured now, for this text: without the invalidation, Measure keeps the size of the previous text
+        // until the next layout pass, and the label would be placed for a label of another width.
+        _label.InvalidateMeasure();
         _label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var size = _label.DesiredSize;
 
-        // Below the shortcut if there's room in the window, otherwise above it; always inside the window.
+        // On the far side of the shortcut from the orb (outward), or wherever near it covers least of the orb,
+        // the shortcuts and the picker on show; under the orb when it's about the launcher as a whole.
         var a = Dip(anchor);
-        double half = LauncherMetrics.ItemDiameter / 2 + 4;
-        double x = a.X - size.Width / 2;
-        double y = a.Y + half;
-        if (y + size.Height > Height) y = a.Y - half - size.Height;
-        if (_selector != null && h.Kind == HitKind.Display) y = Canvas.GetTop(_selector) - size.Height - 4;
-        Canvas.SetLeft(_label, Math.Clamp(x, 0, Math.Max(0, Width - size.Width)));
-        Canvas.SetTop(_label, Math.Clamp(y, 0, Math.Max(0, Height - size.Height)));
-        AutomationProperties.SetName(_label, text);
+        var o = Dip(_scene.Orb);
+        double orbR = LauncherMetrics.OrbDiameter / 2;
+        var keepClear = new List<PxRect> { new(o.X - orbR, o.Y - orbR, 2 * orbR, 2 * orbR) };
+        foreach (var v in _nodes.Values)
+            if (v.Visibility == Visibility.Visible) keepClear.Add(new PxRect(Canvas.GetLeft(v), Canvas.GetTop(v), v.Width, v.Height));
+        if (_selector != null) keepClear.Add(new PxRect(Canvas.GetLeft(_selector), Canvas.GetTop(_selector), _selector.Width, _selector.Height));
+        double gap = anchor == _scene.Orb ? orbR + 6 : LauncherMetrics.ItemDiameter / 2 + 4;
+        var box = RadialLayout.LabelBox(new PxPoint(a.X, a.Y), new PxPoint(o.X, o.Y), size.Width, size.Height, gap, new PxRect(0, 0, Width, Height), keepClear);
+        Canvas.SetLeft(_label, box.X);
+        Canvas.SetTop(_label, box.Y);
+
+        if (message && text != _announced)
+        {
+            _announced = text;
+            if (AutomationPeer.ListenerExists(AutomationEvents.LiveRegionChanged))
+                UIElementAutomationPeer.CreatePeerForElement(_labelText)?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+        }
+        else if (!message) _announced = null;
     }
 
     // ================= Display picker =================
@@ -328,6 +380,7 @@ internal sealed class RadialWindow : Window
         var frame = new Canvas { Width = box.Width, Height = box.Height };
         var caption = new TextBlock { Text = $"Open {entry?.Label} on", FontSize = 11, MaxWidth = box.Width - 16, TextTrimming = TextTrimming.CharacterEllipsis };
         caption.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        _caption = caption;
         Canvas.SetLeft(caption, 10);
         Canvas.SetTop(caption, 4);
         frame.Children.Add(caption);
@@ -343,9 +396,11 @@ internal sealed class RadialWindow : Window
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
             };
             number.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
-            var tile = new Border
+            int display = i;
+            var tile = new TileVisual(() => _owner.OnInvokeDisplay(this, display))
             {
                 Width = t.Width, Height = t.Height, CornerRadius = new CornerRadius(3), Child = number,
+                Focusable = true, FocusVisualStyle = null,
                 Tag = preferred == i ? "preferred" : null,
                 ToolTip = MonitorMatch.Describe(_scene.Displays[i], numbers[i]) + (preferred == i ? "\nRemembered for this shortcut" : "") + (i == here ? "\nTack is on this display" : ""),
             };
@@ -416,6 +471,13 @@ internal sealed class RadialWindow : Window
     {
         base.OnPreviewKeyDown(e);
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key == Key.F4 && (e.Key == Key.System || (Keyboard.Modifiers & ModifierKeys.Alt) != 0))
+        {
+            // Alt+F4 closes the launcher the launcher's way (all of it, focus handed back), not just its window.
+            e.Handled = true;
+            _owner.OnCloseRequested(this);
+            return;
+        }
         bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
         (LauncherKey Key, int Digit)? mapped = key switch
         {
@@ -439,5 +501,42 @@ internal sealed class RadialWindow : Window
     {
         base.OnDeactivated(e);
         _owner.OnDeactivated(this);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        _owner.OnWindowClosed(this); // nothing to do when the launcher closed it itself
+    }
+
+    // ================= UI Automation =================
+
+    /// <summary>
+    /// A shortcut or a display tile as UI Automation (Narrator) sees it: a button with its name, what it opens
+    /// (help text) and Invoke. A plain Grid or Border has no automation peer, so it wouldn't be seen at all.
+    /// </summary>
+    private sealed class PartPeer(FrameworkElement owner, string className, Action invoke) : FrameworkElementAutomationPeer(owner), IInvokeProvider
+    {
+        protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Button;
+
+        protected override string GetClassNameCore() => className;
+
+        // Its icon, dots and number are part of it, not things of their own.
+        protected override List<AutomationPeer>? GetChildrenCore() => null;
+
+        public override object GetPattern(PatternInterface patternInterface) =>
+            patternInterface == PatternInterface.Invoke ? this : base.GetPattern(patternInterface);
+
+        public void Invoke() => invoke();
+    }
+
+    private sealed class ShortcutVisual(Action invoke) : Grid
+    {
+        protected override AutomationPeer OnCreateAutomationPeer() => new PartPeer(this, "LauncherShortcut", invoke);
+    }
+
+    private sealed class TileVisual(Action invoke) : Border
+    {
+        protected override AutomationPeer OnCreateAutomationPeer() => new PartPeer(this, "LauncherDisplay", invoke);
     }
 }

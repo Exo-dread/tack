@@ -172,6 +172,7 @@ internal sealed class LauncherConfig
             s.Launch = "normal";
             s.Monitor = null;
         }
+        if (s.Monitor != null) s.Monitor.Device ??= ""; // "device": null in a hand-edited file
         if (s.Monitor != null && (s.Monitor.Width <= 0 || s.Monitor.Height <= 0)) { s.Monitor = null; if (s.Launch == "preferred") s.Launch = "normal"; }
 
         if (string.IsNullOrWhiteSpace(s.Id) || s.Id.Length > 64 || !ids.Add(s.Id))
@@ -235,6 +236,9 @@ internal sealed class LauncherConfig
     private static string Truncate(string text, int max) => text.Length <= max ? text : text[..max];
 
     public static string NewId() => Guid.NewGuid().ToString("N")[..12];
+
+    /// <summary>"1 shortcut", "3 shortcuts".</summary>
+    public static string CountOf(int n) => n == 1 ? "1 shortcut" : $"{n} shortcuts";
 
     public LauncherConfig Clone() => new()
     {

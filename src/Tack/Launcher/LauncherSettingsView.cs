@@ -1,8 +1,10 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using Tack.Launcher.Core;
+using Tack.Services;
 using Tack.Windows;
 
 namespace Tack.Launcher;
@@ -27,6 +29,12 @@ internal sealed class LauncherSettingsView : UserControl
     private int _editChild = -1;
     private Shortcut? _childDraft;
     private bool _syncing;
+    private bool _touched; // the target was typed in (or Done pressed): only then is a problem with it shown
+
+    // The card is rebuilt after every change; the control you were on keeps the focus (as in the Spaces rows).
+    // Each control is known by what it's for: Kind ("slot", "child", "editor", "child-editor", "motion"), the
+    // shortcut it belongs to (Key), its position (Index) and Part ("edit", "up", "name", "type:url"...).
+    private readonly Dictionary<UIElement, (string Kind, object? Key, int Index, string Part)> _parts = new();
 
     public LauncherSettingsView(LauncherModule module, AppShell shell, PanelWindow panel)
     {
@@ -43,7 +51,8 @@ internal sealed class LauncherSettingsView : UserControl
         _toggle.Checked += (_, _) => { if (!_syncing) _module.SetEnabled(true); };
         _toggle.Unchecked += (_, _) => { if (!_syncing) _module.SetEnabled(false); };
         stack.Children.Add(_toggle);
-        stack.Children.Add(Hint("Shift+click the orb for your shortcuts, or Shift+drag to one and let go. Off, it uses nothing and the orb works as before."));
+        // (Word joiners keep "Shift+click" and "Shift+drag" on one line.)
+        stack.Children.Add(Hint("Shift\u2060+\u2060click the orb for your shortcuts, or Shift\u2060+\u2060drag to one and let go.", UnderSwitch));
         stack.Children.Add(_body);
         _root.Children.Add(card);
 
@@ -59,14 +68,64 @@ internal sealed class LauncherSettingsView : UserControl
 
     private void Rebuild()
     {
+        (string Kind, object? Key, int Index, string Part)? focused =
+            Keyboard.FocusedElement is UIElement f && _parts.TryGetValue(f, out var part) ? part : null;
         _syncing = true;
         _toggle.IsChecked = _module.Enabled;
         _syncing = false;
         _body.Children.Clear();
+        _parts.Clear();
         if (!_module.Enabled) return;
 
-        if (_draft != null) BuildEditor();
-        else BuildSlots();
+        try
+        {
+            if (_draft != null) BuildEditor();
+            else BuildSlots();
+        }
+        catch (Exception ex)
+        {
+            // A damaged shortcut (a hand-edited launcher.json) mustn't leave this card broken: drop the edit, show the list.
+            Log.Error("Launcher: Settings couldn't show a shortcut", ex);
+            _editSlot = _editChild = -1;
+            _draft = _childDraft = null;
+            _body.Children.Clear();
+            _parts.Clear();
+            try { BuildSlots(); }
+            catch (Exception again)
+            {
+                Log.Error("Launcher: Settings couldn't show the shortcuts", again);
+                _body.Children.Clear();
+                _parts.Clear();
+            }
+        }
+        if (focused is { } was) Refocus(was);
+    }
+
+    /// <summary>After a rebuild: the control that had the focus, or where its action led (a moved row, the next row, the editor).</summary>
+    private void Refocus((string Kind, object? Key, int Index, string Part) was)
+    {
+        UIElement? Find(Func<(string Kind, object? Key, int Index, string Part), bool> match) =>
+            _parts.Where(p => p.Key.IsEnabled && match(p.Value)).Select(p => p.Key).FirstOrDefault();
+        bool Same((string Kind, object? Key, int Index, string Part) p) => p.Kind == was.Kind && Equals(p.Key, was.Key);
+        string sibling = was.Part switch { "up" => "down", "down" => "up", _ => "" };
+        string list = was.Kind is "editor" or "slot" ? "slot" : "child";
+
+        var target =
+            Find(p => Same(p) && p.Part == was.Part) ??                                          // the same control, wherever its row went
+            Find(p => Same(p) && p.Part == sibling) ??                                           // a move button at the end: the other one
+            (was.Part is "edit" or "add" or "add-child" ? Find(p => p.Part == "name") : null) ??  // an editor opened: its name
+            (was.Kind is "editor" or "child-editor" or "slot" or "child"                         // back from an editor, or a row removed:
+                ? Find(p => p.Kind == list && p.Index == was.Index && p.Part is "edit" or "add") ??  // that position's row
+                  Find(p => p.Kind == list && p.Index == was.Index - 1 && p.Part == "edit") ??
+                  Find(p => p.Part == "add-child")
+                : null);
+        target?.Focus();
+    }
+
+    private T Part<T>(T element, string kind, object? key, int index, string part) where T : UIElement
+    {
+        _parts[element] = (kind, key, index, part);
+        return element;
     }
 
     private void BuildSlots()
@@ -80,22 +139,23 @@ internal sealed class LauncherSettingsView : UserControl
             if (s == null)
             {
                 _body.Children.Add(Row($"{slot + 1}", "Empty", null, null,
-                    IconButton("", $"Add a shortcut at position {slot + 1}", () => StartEdit(slot, NewShortcut()))));
+                    Part(IconButton("", $"Add a shortcut at position {slot + 1}", () => StartEdit(slot, NewShortcut())), "slot", null, slot, "add")));
                 continue;
             }
             _body.Children.Add(Row($"{slot + 1}", s.Label, Summary(s), ShortcutRulesProblem(s),
-                IconButton("", $"Edit {s.Label}", () => StartEdit(slot, s.Clone())),
-                IconButton("", $"Move {s.Label} up", () => Swap(slot, slot - 1), enabled: slot > 0),
-                IconButton("", $"Move {s.Label} down", () => Swap(slot, slot + 1), enabled: slot < config.Slots.Count - 1),
-                IconButton("", $"Remove {s.Label}", () => Remove(slot))));
+                Part(IconButton("", $"Edit {s.Label}", () => StartEdit(slot, s.Clone())), "slot", s.Id, slot, "edit"),
+                Part(IconButton("", $"Move {s.Label} up", () => Swap(slot, slot - 1), enabled: slot > 0), "slot", s.Id, slot, "up"),
+                Part(IconButton("", $"Move {s.Label} down", () => Swap(slot, slot + 1), enabled: slot < config.Slots.Count - 1), "slot", s.Id, slot, "down"),
+                Part(IconButton("", $"Remove {s.Label}", () => Remove(slot)), "slot", s.Id, slot, "remove")));
         }
+        _body.Children.Add(Hint("Positions 1–6 run clockwise from the top (top to bottom at a screen edge) and never move on their own.", UnderList));
         _body.Children.Add(Divider());
         var motion = new CheckBox { Content = "Reduce motion", Margin = new Thickness(0, 9, 0, 8), IsChecked = _module.Config.ReduceMotion };
         motion.SetResourceReference(StyleProperty, "ToggleSwitch");
         motion.Checked += (_, _) => _module.Update(c => c.ReduceMotion = true);
         motion.Unchecked += (_, _) => _module.Update(c => c.ReduceMotion = false);
-        _body.Children.Add(motion);
-        _body.Children.Add(Hint("Positions 1–6 run clockwise from the top (top to bottom at a screen edge) and never move on their own. Windows' own animation setting is always respected."));
+        _body.Children.Add(Part(motion, "motion", null, 0, "toggle"));
+        _body.Children.Add(Hint("Windows' own animation setting is always respected.", UnderSwitch));
     }
 
     private static Shortcut NewShortcut() => new() { Kind = "app", Launch = "normal" };
@@ -110,7 +170,7 @@ internal sealed class LauncherSettingsView : UserControl
         };
         return s.KindValue switch
         {
-            ShortcutKind.Group => $"Group · {s.Children?.Count ?? 0} shortcuts",
+            ShortcutKind.Group => $"Group · {LauncherConfig.CountOf(s.Children?.Count ?? 0)}",
             ShortcutKind.Url => $"Website · {s.Target}",
             ShortcutKind.Folder => $"Folder · {s.Target}{where}",
             _ => $"App · {s.Target}{where}",
@@ -141,6 +201,7 @@ internal sealed class LauncherSettingsView : UserControl
         _draft = draft;
         _editChild = -1;
         _childDraft = null;
+        _touched = false;
         Rebuild();
     }
 
@@ -161,56 +222,65 @@ internal sealed class LauncherSettingsView : UserControl
     {
         var s = Editing;
         bool child = _childDraft != null;
+        string kind = child ? "child-editor" : "editor";
+        int at = child ? _editChild : _editSlot;
         _body.Children.Add(Divider());
         _body.Children.Add(Heading(child ? $"In {(_draft!.Label.Length > 0 ? _draft.Label : "the group")}" : $"Position {_editSlot + 1}"));
 
         // Name
         var name = Field(s.Label, "Name", text => s.Label = text);
+        Part(name.Child, kind, null, at, "name");
         _body.Children.Add(Labelled("Name", name));
 
         // Type
         var types = new List<(string, string, string)> { ("app", "App", "A program or a shortcut to one"), ("folder", "Folder", "Opens in File Explorer"), ("url", "Website", "Opens in your browser") };
         if (!child) types.Add(("group", "Group", "Up to eight shortcuts behind one position"));
-        _body.Children.Add(Labelled("Type", Segments(types, s.Kind, kind =>
+        _body.Children.Add(Labelled("Type", Segments(types, s.Kind, k =>
         {
-            s.Kind = kind;
-            if (kind == "group") s.Children ??= new List<Shortcut>();
-            if (kind is not ("app" or "folder")) { s.Launch = "normal"; s.Monitor = null; }
+            s.Kind = k;
+            if (k == "group") s.Children ??= new List<Shortcut>();
+            if (k is not ("app" or "folder")) { s.Launch = "normal"; s.Monitor = null; }
+            _touched = false; // a new kind of target: nothing's wrong with it until something's typed
             Rebuild();
-        })));
+        }, (rb, k) => Part(rb, kind, null, at, "type:" + k))));
 
         var problem = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 2, 0, 6), Visibility = Visibility.Collapsed };
         problem.SetResourceReference(TextBlock.ForegroundProperty, "DangerBrush");
         AutomationProperties.SetLiveSetting(problem, AutomationLiveSetting.Polite);
         void Validate()
         {
+            // A new shortcut isn't wrong before anything's been typed: say what's missing once it has (or on Done).
             string? p = s.IsGroup ? null : ShortcutRules.Problem(Normalized(s), RealFileProbe.Instance);
-            problem.Text = p ?? "";
-            problem.Visibility = p == null ? Visibility.Collapsed : Visibility.Visible;
+            bool show = p != null && (_touched || s.Target.Trim().Length > 0);
+            problem.Text = show ? p! : "";
+            problem.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         }
 
         if (!s.IsGroup)
         {
             string what = s.KindValue switch { ShortcutKind.Url => "Address", ShortcutKind.Folder => "Folder", _ => "Program" };
-            var target = Field(s.Target, what, text => { s.Target = text; Validate(); });
+            var target = Field(s.Target, what, text => { s.Target = text; _touched = true; Validate(); });
+            Part(target.Child, kind, null, at, "target");
             var row = new Grid();
             row.ColumnDefinitions.Add(new ColumnDefinition());
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.Children.Add(target);
             if (s.KindValue != ShortcutKind.Url)
             {
-                var browse = TextButton("Browse…", () => Browse(s));
+                var browse = Part(TextButton("Browse…", () => Browse(s)), kind, null, at, "browse");
                 Grid.SetColumn(browse, 1);
                 browse.Margin = new Thickness(4, 0, -8, 0);
                 row.Children.Add(browse);
             }
             _body.Children.Add(Labelled(what, row));
-            if (s.KindValue == ShortcutKind.Url) _body.Children.Add(Hint("Like https://github.com. Only web addresses (https:// or http://)."));
+            if (s.KindValue == ShortcutKind.Url) _body.Children.Add(Hint("Like https://github.com. Only web addresses (https:// or http://).", UnderField));
 
             if (s.KindValue == ShortcutKind.App)
             {
-                _body.Children.Add(Labelled("Arguments (optional)", Field(s.Arguments ?? "", "Arguments", text => { s.Arguments = text; Validate(); })));
-                _body.Children.Add(Hint("Passed to the program as they are, e.g. a folder for VS Code to open."));
+                var args = Field(s.Arguments ?? "", "Arguments", text => { s.Arguments = text; Validate(); });
+                Part(args.Child, kind, null, at, "arguments");
+                _body.Children.Add(Labelled("Arguments (optional)", args));
+                _body.Children.Add(Hint("Passed to the program as they are, e.g. a folder for VS Code to open.", UnderField));
             }
             _body.Children.Add(problem);
             Validate();
@@ -223,12 +293,12 @@ internal sealed class LauncherSettingsView : UserControl
         }
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 6, -8, 8) };
-        buttons.Children.Add(TextButton("Cancel", () =>
+        buttons.Children.Add(Part(TextButton("Cancel", () =>
         {
             if (child) { _childDraft = null; _editChild = -1; Rebuild(); }
             else EndEdit();
-        }));
-        buttons.Children.Add(TextButton("Done", () => Commit(problem)));
+        }), kind, null, at, "cancel"));
+        buttons.Children.Add(Part(TextButton("Done", () => Commit(problem)), kind, null, at, "done"));
         _body.Children.Add(buttons);
     }
 
@@ -240,19 +310,19 @@ internal sealed class LauncherSettingsView : UserControl
             int at = i;
             var k = kids[i];
             _body.Children.Add(Row("", k.Label, Summary(k), ShortcutRulesProblem(k),
-                IconButton("", $"Edit {k.Label}", () => { _editChild = at; _childDraft = k.Clone(); Rebuild(); }),
-                IconButton("", $"Move {k.Label} up", () => { (kids[at - 1], kids[at]) = (kids[at], kids[at - 1]); Rebuild(); }, enabled: at > 0),
-                IconButton("", $"Move {k.Label} down", () => { (kids[at + 1], kids[at]) = (kids[at], kids[at + 1]); Rebuild(); }, enabled: at < kids.Count - 1),
-                IconButton("", $"Remove {k.Label}", () => { kids.RemoveAt(at); Rebuild(); })));
+                Part(IconButton("", $"Edit {k.Label}", () => { _editChild = at; _childDraft = k.Clone(); _touched = false; Rebuild(); }), "child", k, at, "edit"),
+                Part(IconButton("", $"Move {k.Label} up", () => { (kids[at - 1], kids[at]) = (kids[at], kids[at - 1]); Rebuild(); }, enabled: at > 0), "child", k, at, "up"),
+                Part(IconButton("", $"Move {k.Label} down", () => { (kids[at + 1], kids[at]) = (kids[at], kids[at + 1]); Rebuild(); }, enabled: at < kids.Count - 1), "child", k, at, "down"),
+                Part(IconButton("", $"Remove {k.Label}", () => { kids.RemoveAt(at); Rebuild(); }), "child", k, at, "remove")));
         }
         if (kids.Count < LauncherConfig.MaxChildren)
         {
-            var add = TextButton("Add to group", () => { _editChild = kids.Count; _childDraft = NewShortcut(); Rebuild(); });
+            var add = Part(TextButton("Add to group", () => { _editChild = kids.Count; _childDraft = NewShortcut(); _touched = false; Rebuild(); }), "child", null, kids.Count, "add-child");
             add.HorizontalAlignment = HorizontalAlignment.Left;
             add.Margin = new Thickness(-8, 2, 0, 0);
             _body.Children.Add(add);
         }
-        else _body.Children.Add(Hint($"A group holds up to {LauncherConfig.MaxChildren} shortcuts."));
+        else _body.Children.Add(Hint($"A group holds up to {LauncherConfig.MaxChildren} shortcuts.", UnderField));
     }
 
     /// <summary>Normally / Ask each time / one of the connected displays (remembered for this shortcut).</summary>
@@ -266,8 +336,10 @@ internal sealed class LauncherSettingsView : UserControl
             ("ask", "Ask", "Show the display picker every time"),
         };
         var order = Enumerable.Range(0, displays.Count).OrderBy(i => numbers[i]).ToList();
+        // The main display says so (Tack numbers displays left to right, which needn't match Windows' own numbers).
         foreach (int i in order)
-            options.Add(($"display:{i}", numbers[i].ToString(System.Globalization.CultureInfo.InvariantCulture), MonitorMatch.Describe(displays[i], numbers[i])));
+            options.Add(($"display:{i}", numbers[i].ToString(System.Globalization.CultureInfo.InvariantCulture) + (displays[i].Primary ? " (main)" : ""),
+                MonitorMatch.Describe(displays[i], numbers[i])));
 
         string current = s.LaunchValue switch
         {
@@ -289,8 +361,10 @@ internal sealed class LauncherSettingsView : UserControl
                 s.Monitor = MonitorRef.From(displays[i]);
             }
         }));
-        if (displays.Count < 2) panel.Children.Add(Hint("Connect another display to choose where this opens."));
-        else panel.Children.Add(Hint("Either way, Shift+drag past a shortcut (or right-click it) to pick a display just this once. Some apps put themselves back where they were; then Tack leaves them."));
+        // A little more room under the choices than under a text field (whose frame sets it apart).
+        var underChoices = new Thickness(0, 4, 0, 10);
+        if (displays.Count < 2) panel.Children.Add(Hint("Connect another display to choose where this opens.", underChoices));
+        else panel.Children.Add(Hint("Either way, Shift+drag past a shortcut (or right-click it) to pick a display just this once. Some apps put themselves back where they were; then Tack leaves them.", underChoices));
         return panel;
     }
 
@@ -328,6 +402,7 @@ internal sealed class LauncherSettingsView : UserControl
 
     private void Commit(TextBlock problemText)
     {
+        _touched = true;
         var s = Normalized(Editing);
         if (!s.IsGroup)
         {
@@ -383,10 +458,17 @@ internal sealed class LauncherSettingsView : UserControl
         return d;
     }
 
-    private static TextBlock Hint(string text)
+    // Where a hint sits: under a switch, exactly like every other hint in Settings (the "Hint" style's own
+    // margin, which also keeps it clear of the switch); under a text field; under the list of positions.
+    private static readonly Thickness? UnderSwitch = null;
+    private static readonly Thickness UnderField = new(0, -2, 0, 10);
+    private static readonly Thickness UnderList = new(0, 0, 0, 10);
+
+    private static TextBlock Hint(string text, Thickness? margin)
     {
-        var t = new TextBlock { Text = text, Margin = new Thickness(0, -2, 0, 10) };
+        var t = new TextBlock { Text = text };
         t.SetResourceReference(StyleProperty, "Hint");
+        if (margin is { } m) t.Margin = m;
         return t;
     }
 
@@ -420,7 +502,9 @@ internal sealed class LauncherSettingsView : UserControl
         return frame;
     }
 
-    private static Border Segments(IReadOnlyList<(string Key, string Text, string Tip)> options, string selected, Action<string> chosen)
+    /// <param name="each">Called with each option's button and key (to keep the focus on it across a rebuild).</param>
+    private static Border Segments(IReadOnlyList<(string Key, string Text, string Tip)> options, string selected, Action<string> chosen,
+        Action<RadioButton, string>? each = null)
     {
         var group = "launcher-" + Guid.NewGuid().ToString("N");
         var wrap = new WrapPanel();
@@ -430,6 +514,7 @@ internal sealed class LauncherSettingsView : UserControl
             rb.SetResourceReference(StyleProperty, "Segment");
             AutomationProperties.SetName(rb, $"{text}: {tip}");
             rb.Checked += (_, _) => chosen(key);
+            each?.Invoke(rb, key);
             wrap.Children.Add(rb);
         }
         var frame = new Border { CornerRadius = new CornerRadius(7), Padding = new Thickness(2), BorderThickness = new Thickness(1), HorizontalAlignment = HorizontalAlignment.Left, Child = wrap };

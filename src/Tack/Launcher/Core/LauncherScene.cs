@@ -120,7 +120,11 @@ internal sealed class LauncherScene
     public PxRect SelectorFor(NodeRef n)
     {
         if (!_selectors.TryGetValue(n, out var box))
-            _selectors[n] = box = RadialLayout.SelectorBox(Orb, CenterOf(n), Work, Scale, Aspect);
+        {
+            // What's on show with it: the primary shortcuts and, for a group's shortcut, the rest of that group.
+            var others = AllNodes().Where(o => o != n && (!o.IsChild || o.Slot == n.Slot) && Entry(o) != null).Select(CenterOf).ToList();
+            _selectors[n] = box = RadialLayout.SelectorBox(Orb, CenterOf(n), Work, Scale, Aspect, others);
+        }
         return box;
     }
 
@@ -156,7 +160,7 @@ internal static class MonitorMatch
         bool SameBounds(Display d) =>
             Math.Abs(d.Bounds.X - m.X) < 1 && Math.Abs(d.Bounds.Y - m.Y) < 1 &&
             Math.Abs(d.Bounds.Width - m.Width) < 1 && Math.Abs(d.Bounds.Height - m.Height) < 1;
-        bool SameDevice(Display d) => m.Device.Length > 0 && string.Equals(d.Device, m.Device, StringComparison.OrdinalIgnoreCase);
+        bool SameDevice(Display d) => !string.IsNullOrEmpty(m.Device) && string.Equals(d.Device, m.Device, StringComparison.OrdinalIgnoreCase);
 
         for (int i = 0; i < displays.Count; i++) if (SameDevice(displays[i]) && SameBounds(displays[i])) return i;
         for (int i = 0; i < displays.Count; i++) if (SameDevice(displays[i])) return i;

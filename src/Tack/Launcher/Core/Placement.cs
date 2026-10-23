@@ -39,7 +39,8 @@ internal static class Placement
     /// <summary>
     /// Where a (normal, not maximised) window goes on another display: the same relative position in the work
     /// area (a window on the left stays on the left), resized by the displays' scale ratio so it looks the same
-    /// size, and never larger than the target's work area.
+    /// size, and never larger than the target's work area. This is where it should end up; what to ask Windows
+    /// for depends on the app (<see cref="Request"/>).
     /// </summary>
     public static PxRect MoveTo(PxRect window, Display from, Display to)
     {
@@ -67,6 +68,28 @@ internal static class Placement
         double h = Math.Min(Math.Max(restored.Height * ratio, MinMainHeight), to.Work.Height);
         return new PxRect(Math.Round(to.Work.X + (to.Work.Width - w) / 2), Math.Round(to.Work.Y + (to.Work.Height - h) / 2), Math.Round(w), Math.Round(h));
     }
+
+    /// <summary>
+    /// What to ask Windows for so a window ends up at <paramref name="intended"/> (from <see cref="MoveTo"/> or
+    /// <see cref="RestoredOn"/>). An app that's per-monitor DPI aware (most current ones: Explorer, Notepad,
+    /// browsers, Office, WPF and Electron apps) resizes itself by the scale ratio when it arrives on a display
+    /// with another scale (WM_DPICHANGED, keeping its top-left corner), so it's given its size before that
+    /// rescale; scaling it here as well would scale it twice. Other windows are given the intended size.
+    /// </summary>
+    public static PxRect Request(PxRect intended, Display from, Display to, bool appRescales)
+    {
+        double ratio = from.Scale > 0 ? to.Scale / from.Scale : 1;
+        if (!appRescales || Math.Abs(ratio - 1) < 0.001) return intended;
+        return new PxRect(intended.X, intended.Y, Math.Round(intended.Width / ratio), Math.Round(intended.Height / ratio));
+    }
+
+    /// <summary>
+    /// True when a window that's on the right display didn't end up the size Tack meant (an app that rescaled
+    /// itself differently, or not at all): worth one correction. A few pixels either way don't count.
+    /// </summary>
+    public static bool SizeIsOff(PxRect actual, PxRect intended) =>
+        Math.Abs(actual.Width - intended.Width) > Math.Max(4, intended.Width * 0.03) ||
+        Math.Abs(actual.Height - intended.Height) > Math.Max(4, intended.Height * 0.03);
 
     /// <summary>
     /// Retry delays (ms after the window was first moved) for checking that the app didn't move itself back

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Windows.Threading;
 using Tack.Launcher.Core;
 using Tack.Services;
@@ -59,37 +60,50 @@ internal static class KnownFolders
 /// </summary>
 internal static class ShortcutLauncher
 {
-    /// <returns>Null when it opened (or the user declined Windows' admin prompt); otherwise a message to show.</returns>
-    public static string? Start(LaunchPlan plan, Display? target, IReadOnlyList<Display> displays, IntPtr userWindow)
+    /// <summary>
+    /// Starts it on a short-lived background thread: opening something on a server that can't be reached keeps
+    /// Windows busy for 20 s or more, and Tack (orb, panel, launcher) mustn't freeze meanwhile.
+    /// <paramref name="done"/> runs back on the calling (UI) thread with the started process's id, when there is
+    /// one, and null when it opened (or the user declined Windows' admin prompt), otherwise a message to show.
+    /// </summary>
+    public static void Start(LaunchPlan plan, Action<int?, string?> done)
     {
-        bool place = target != null && plan.CanPlace;
-        // Windows on screen before the launch, so the app's *new* window can be told apart from ones it already had.
-        var before = place ? WindowPlacer.VisibleTopLevelWindows() : null;
-        int? pid = null;
+        var dispatcher = Dispatcher.CurrentDispatcher;
+        // Tack just received the click, so it may bring windows forward; pass that on so the app (or the
+        // already-running instance it hands over to) can come to the front instead of flashing in the taskbar.
+        AllowSetForegroundWindow(ASFW_ANY);
+        var thread = new Thread(() =>
+        {
+            var (pid, error) = Run(plan);
+            try { dispatcher.BeginInvoke(() => done(pid, error)); }
+            catch (Exception ex) { Log.Error("Launcher: couldn't report a launch", ex); }
+        })
+        { IsBackground = true, Name = "Tack launcher start" };
+        thread.SetApartmentState(ApartmentState.STA); // ShellExecute may use COM (shell extensions)
+        thread.Start();
+    }
+
+    private static (int? Pid, string? Error) Run(LaunchPlan plan)
+    {
         try
         {
             var psi = new ProcessStartInfo(plan.FileName) { UseShellExecute = true };
             if (!string.IsNullOrEmpty(plan.Arguments)) psi.Arguments = plan.Arguments;
             if (plan.WorkingDirectory != null) psi.WorkingDirectory = plan.WorkingDirectory;
-
-            // Tack just received the click, so it may bring windows forward; pass that on so the app (or the
-            // already-running instance it hands over to) can come to the front instead of flashing in the taskbar.
-            AllowSetForegroundWindow(ASFW_ANY);
             using var process = Process.Start(psi);
+            int? pid = null;
             try { pid = process?.Id; } catch (InvalidOperationException) { /* no process handle (e.g. handed to a running app) */ }
+            return (pid, null);
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == ERROR_CANCELLED)
         {
-            return null; // "Do you want to allow this app…?" answered No: nothing to report.
+            return (null, null); // "Do you want to allow this app…?" answered No: nothing to report.
         }
         catch (Exception ex)
         {
             Log.Error($"Launcher: couldn't open {plan.FileName}", ex);
-            return ex is Win32Exception { NativeErrorCode: 2 or 3 } ? "Windows can't find this any more." : "Windows couldn't open this shortcut.";
+            return (null, ex is Win32Exception { NativeErrorCode: 2 or 3 } ? "Windows can't find this any more." : "Windows couldn't open this shortcut.");
         }
-
-        if (place) WindowPlacer.Begin(pid, plan.ExpectedImage, target!, displays, before!, userWindow);
-        return null;
     }
 }
 
@@ -118,7 +132,8 @@ internal sealed class WindowPlacer
     private IntPtr _showHook, _foregroundHook;
     private IntPtr _window, _existing;
     private int _verifyIndex, _corrections;
-    private bool _extended, _done;
+    private bool _extended, _done, _resized;
+    private PxRect? _intended; // where a restored (not maximised) window should end up, size included
 
     private WindowPlacer(int? pid, string? image, Display target, IReadOnlyList<Display> displays, HashSet<IntPtr> before, IntPtr ignore)
     {
@@ -310,12 +325,30 @@ internal sealed class WindowPlacer
         _verify.Stop();
         _verifyIndex++;
         if (!IsWindow(_window)) { Finish(null); return; }
-        if (!Placement.IsOn(RectOf(_window), _target))
+        var rect = RectOf(_window);
+        if (!Placement.IsOn(rect, _target))
         {
             // The app put itself back (a saved position). Try again, twice at most.
             if (++_corrections > 2 || !Move()) { Finish("the app keeps its own position"); return; }
         }
+        else if (_intended is { } want && !_resized && !IsWindowZoomed(_window) && !IsIconic(_window) && Placement.SizeIsOff(rect, want))
+        {
+            // On the right display but not the size meant (the app rescaled itself differently on arrival, or
+            // not at all): give it that size once, where it is now, kept inside the work area.
+            _resized = true;
+            var work = _target.Work;
+            double x = Math.Clamp(rect.X, work.X, Math.Max(work.X, work.Right - want.Width));
+            double y = Math.Clamp(rect.Y, work.Y, Math.Max(work.Y, work.Bottom - want.Height));
+            SetWindowPos(_window, IntPtr.Zero, (int)x, (int)y, (int)want.Width, (int)want.Height, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
         ScheduleVerify();
+    }
+
+    /// <summary>Per-monitor DPI aware (v1 or v2): the app resizes itself when it arrives on a display with another scale.</summary>
+    private static bool RescalesItself(IntPtr hwnd)
+    {
+        try { return GetAwarenessFromDpiAwarenessContext(GetWindowDpiAwarenessContext(hwnd)) == DPI_AWARENESS_PER_MONITOR_AWARE; }
+        catch (EntryPointNotFoundException) { return false; } // Windows 10 before 1607
     }
 
     /// <returns>False when Windows refused (usually an app running as administrator); placement then stops.</returns>
@@ -329,6 +362,7 @@ internal sealed class WindowPlacer
 
         bool ok;
         bool maximized = IsWindowZoomed(_window), minimized = IsIconic(_window);
+        bool rescales = RescalesItself(_window);
         if (maximized || minimized)
         {
             // Give it a restored rectangle on the target, then maximise it there if it was maximised.
@@ -338,18 +372,22 @@ internal sealed class WindowPlacer
             {
                 var (dx, dy) = WorkspaceOffset();
                 var normal = new PxRect(wp.rcNormalPosition.Left + dx, wp.rcNormalPosition.Top + dy, wp.rcNormalPosition.Width, wp.rcNormalPosition.Height);
-                var t = Placement.RestoredOn(normal, from, _target);
+                var intended = Placement.RestoredOn(normal, from, _target);
+                var t = Placement.Request(intended, from, _target, rescales);
                 wp.rcNormalPosition = new RECT((int)(t.X - dx), (int)(t.Y - dy), (int)(t.Right - dx), (int)(t.Bottom - dy));
                 bool reMaximize = maximized || (minimized && (wp.flags & WPF_RESTORETOMAXIMIZED) != 0);
                 wp.showCmd = SW_SHOWNORMAL;
                 ok = SetWindowPlacement(_window, ref wp);
                 if (ok && reMaximize) ShowWindow(_window, SW_SHOWMAXIMIZED);
+                _intended = reMaximize ? null : intended;
             }
         }
         else
         {
-            var t = Placement.MoveTo(rect, from, _target);
+            var intended = Placement.MoveTo(rect, from, _target);
+            var t = Placement.Request(intended, from, _target, rescales);
             ok = SetWindowPos(_window, IntPtr.Zero, (int)t.X, (int)t.Y, (int)t.Width, (int)t.Height, SWP_NOZORDER | SWP_NOACTIVATE);
+            _intended = intended;
         }
 
         if (!ok)

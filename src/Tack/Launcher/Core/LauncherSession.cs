@@ -50,6 +50,10 @@ internal sealed class LauncherSession
     private readonly LauncherScene _scene;
     private PxPoint _press;
     private long _hotSince;
+    // The highlight came from the pointer resting on a shortcut: only then does its picker appear by itself
+    // (see Tick). A highlight moved with the keyboard never opens it; M and Shift+Enter do that.
+    private bool _dwellArmed;
+    private PxPoint? _pointer;
     private Hit _down = Hit.Nothing;
 
     public LauncherSession(LauncherScene scene) => _scene = scene;
@@ -69,6 +73,9 @@ internal sealed class LauncherSession
     /// <summary>A short note shown in the launcher (e.g. why a shortcut can't open).</summary>
     public string? Message { get; private set; }
 
+    /// <summary>The <see cref="Message"/> is a problem (shown as one), not just information.</summary>
+    public bool IsWarning { get; private set; }
+
     public bool IsOpen => Mode != SessionMode.Closed;
 
     // ================= Gesture from the orb =================
@@ -79,6 +86,7 @@ internal sealed class LauncherSession
         Mode = SessionMode.Armed;
         _press = press;
         _hotSince = now;
+        _dwellArmed = false;
         Highlight = Hit.Nothing;
         return SessionResult.Changed;
     }
@@ -96,6 +104,10 @@ internal sealed class LauncherSession
             case SessionMode.Gesture:
                 return GestureHover(p, now) ? SessionResult.Changed : SessionResult.Nothing;
             case SessionMode.Click:
+                // A "move" to where the pointer already was (WPF reports one when the window's content changes
+                // under a resting pointer) says nothing new, and mustn't undo a highlight chosen with the keyboard.
+                if (_pointer == p) return SessionResult.Nothing;
+                _pointer = p;
                 return Hover(HitTest(p, generous: false), p, now) ? SessionResult.Changed : SessionResult.Nothing;
             default:
                 return SessionResult.Nothing;
@@ -110,6 +122,7 @@ internal sealed class LauncherSession
             case SessionMode.Armed:
                 // A click (no real movement): stay open for clicks and keys.
                 Mode = SessionMode.Click;
+                _pointer = p;
                 return new SessionResult(Outcome.Changed, TakeFocus: true);
 
             case SessionMode.Gesture:
@@ -121,6 +134,7 @@ internal sealed class LauncherSession
                         return Launch(sel, e, hit.Display, viaGesture: true);
                     case HitKind.Item:
                         Highlight = hit;
+                        _pointer = p;
                         if (_scene.Entry(hit.Node) is { IsGroup: true })
                         {
                             // Releasing on a group just leaves it open: choosing is safe, launching isn't implied.
@@ -169,10 +183,11 @@ internal sealed class LauncherSession
             Selector = null;
             Highlight = new Hit(_scene.Entry(pending) == null ? HitKind.EmptySlot : HitKind.Item, pending);
             _hotSince = now;
+            _dwellArmed = true;
             if (_scene.Entry(pending) is { IsGroup: true }) OpenGroup = pending.Slot;
             return SessionResult.Changed;
         }
-        if (Mode is not (SessionMode.Gesture or SessionMode.Click)) return SessionResult.Nothing;
+        if (Mode is not (SessionMode.Gesture or SessionMode.Click) || !_dwellArmed) return SessionResult.Nothing;
         if (Highlight.Kind != HitKind.Item || Selector == Highlight.Node || !_scene.CanPickDisplay(Highlight.Node)) return SessionResult.Nothing;
         long dwell = Mode == SessionMode.Gesture ? GestureDwellMs : ClickDwellMs;
         if (now - _hotSince < dwell) return SessionResult.Nothing;
@@ -205,7 +220,9 @@ internal sealed class LauncherSession
                 Highlight = hit;
                 return Activate(hit.Node, viaGesture: false);
             case HitKind.EmptySlot:
+                Highlight = hit;
                 Message = "Add a shortcut here in Settings → Launcher.";
+                IsWarning = false;
                 return SessionResult.Changed;
             case HitKind.Center:
                 return Close(restoreFocus: true);
@@ -228,6 +245,23 @@ internal sealed class LauncherSession
         return SessionResult.Changed;
     }
 
+    /// <summary>A shortcut chosen directly, not by pointing (UI Automation's Invoke, e.g. from Narrator): like clicking it.</summary>
+    public SessionResult Choose(NodeRef node)
+    {
+        if (Mode != SessionMode.Click || _scene.Entry(node) == null) return SessionResult.Nothing;
+        _dwellArmed = false;
+        Message = null;
+        Highlight = new Hit(HitKind.Item, node);
+        return Activate(node, viaGesture: false);
+    }
+
+    /// <summary>A display chosen directly in the open picker (UI Automation's Invoke): like clicking its tile.</summary>
+    public SessionResult ChooseDisplay(int display)
+    {
+        if (Mode != SessionMode.Click || Selector is not { } sel || _scene.Entry(sel) is not { } e) return SessionResult.Nothing;
+        return Launch(sel, e, display, viaGesture: false);
+    }
+
     // ================= Keyboard =================
 
     public SessionResult Key(LauncherKey key, int digit = 0)
@@ -236,6 +270,8 @@ internal sealed class LauncherSession
         if (Mode is SessionMode.Armed or SessionMode.Gesture)
             return key == LauncherKey.Escape ? Close(restoreFocus: false) : SessionResult.Nothing;
 
+        // The keyboard is in charge now: a pointer resting somewhere doesn't open a picker behind its back.
+        _dwellArmed = false;
         Message = null;
         switch (key)
         {
@@ -361,11 +397,21 @@ internal sealed class LauncherSession
     }
 
     /// <summary>Something went wrong (bad target, launch failed): stay open and say so. Nothing else happens.</summary>
-    public SessionResult ShowMessage(string message, bool takeFocus)
+    public SessionResult ShowMessage(string message, bool takeFocus) => Say(message, warning: true, takeFocus);
+
+    /// <summary>
+    /// Something is taking a while (a program on a slow or unreachable server): stay open and say so, so it can
+    /// be waited for or dismissed (Esc, a click elsewhere) while Tack carries on.
+    /// </summary>
+    public SessionResult ShowNote(string note) => Say(note, warning: false, takeFocus: true);
+
+    private SessionResult Say(string text, bool warning, bool takeFocus)
     {
         bool wasGesture = Mode is SessionMode.Gesture or SessionMode.Armed or SessionMode.Closed;
         Mode = SessionMode.Click;
-        Message = message;
+        Message = text;
+        IsWarning = warning;
+        _dwellArmed = false;
         return new SessionResult(Outcome.Changed, TakeFocus: takeFocus || wasGesture);
     }
 
@@ -386,7 +432,11 @@ internal sealed class LauncherSession
 
         if (hit.Kind == HitKind.Item)
         {
-            if (Highlight != hit) _hotSince = now;
+            if (Highlight != hit)
+            {
+                _hotSince = now;
+                _dwellArmed = true;
+            }
             var e = _scene.Entry(hit.Node);
             if (!hit.Node.IsChild)
             {

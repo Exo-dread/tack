@@ -23,10 +23,10 @@ internal static class LauncherIcons
     /// <summary>A Segoe Fluent / MDL2 glyph for shortcuts without a shell icon.</summary>
     public static string Glyph(Shortcut s) => s.KindValue switch
     {
-        ShortcutKind.Group => "",  // AllApps
+        ShortcutKind.Group => "",  // ViewAll: four tiles, several things behind one
         ShortcutKind.Url => "",    // Globe
         ShortcutKind.Folder => "", // Folder
-        _ => "",                   // OpenWith (a generic app)
+        _ => "",                   // An app window (a generic app): unlike a group's tiles
     };
 
     public static ImageSource? For(Shortcut s)
@@ -44,8 +44,8 @@ internal static class LauncherIcons
     {
         string t = s.Target.Trim().Trim('"');
         if (t.Contains('%')) t = Environment.ExpandEnvironmentVariables(t);
-        // Never touch network paths for an icon: an unreachable server would stall the launcher.
-        if (t.StartsWith(@"\\", StringComparison.Ordinal) || t.Length == 0) return null;
+        // Never touch network paths (or mapped network drives) for an icon: an unreachable server would stall the launcher.
+        if (t.Length == 0 || RealFileProbe.IsNetwork(t)) return null;
         if (WinPath.IsFullyQualified(t)) return File.Exists(t) || Directory.Exists(t) ? t : null;
         if (s.KindValue == ShortcutKind.App && t.IndexOfAny(['\\', '/', ':']) < 0)
         {

@@ -7,8 +7,9 @@
   to one and let go. Keep dragging past an app or folder to pick the display it opens on, from a small map
   of your real display arrangement (best effort: some apps put themselves back, and apps running as
   administrator can't be moved). Shortcuts can also always ask, or remember a display. Works at screen
-  edges and corners, on any monitor and scaling, with the keyboard, and with reduced motion. Kept in its
-  own launcher.json; tack.json and sync are unchanged. Off, Tack is exactly as before. See docs/LAUNCHER.md.
+  edges and corners, on any monitor and scaling, with the keyboard and Narrator, and with reduced motion.
+  Kept in its own launcher.json; tack.json and sync are unchanged. Off, Tack is exactly as before. See
+  docs/LAUNCHER.md.
 
 ## 1.5.0 (2026-10-22)
 

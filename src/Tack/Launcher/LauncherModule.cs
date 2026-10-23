@@ -103,7 +103,8 @@ internal sealed class LauncherModule : IOrbLauncher, IDisposable
         var folders = new List<Shortcut>();
         void AddFolder(string label, string? path)
         {
-            if (!string.IsNullOrEmpty(path) && Directory.Exists(path))
+            // (A folder redirected to a network share isn't checked: that could stall turning the launcher on.)
+            if (!string.IsNullOrEmpty(path) && RealFileProbe.Instance.DirectoryExists(path))
                 folders.Add(new Shortcut { Label = label, Kind = "folder", Target = path });
         }
         AddFolder("Downloads", KnownFolders.Downloads());
@@ -139,6 +140,24 @@ internal sealed class LauncherModule : IOrbLauncher, IDisposable
     public void OnPointerUp(RadialWindow w) => FromWindow(w, s => s.PointerUp(Cursor()));
     public void OnSecondaryClick(RadialWindow w) => FromWindow(w, s => s.SecondaryClick(Cursor()));
     public void OnKey(RadialWindow w, LauncherKey key, int digit) => FromWindow(w, s => s.Key(key, digit));
+
+    /// <summary>UI Automation's Invoke on a shortcut or a display tile (Narrator, other assistive tools).</summary>
+    public void OnInvoke(RadialWindow w, NodeRef node) => FromWindow(w, s => s.Choose(node));
+    public void OnInvokeDisplay(RadialWindow w, int display) => FromWindow(w, s => s.ChooseDisplay(display));
+
+    /// <summary>Alt+F4 on the launcher: close it all (not a step back like Esc), giving focus back.</summary>
+    public void OnCloseRequested(RadialWindow w) => FromWindow(w, s => s.Close(restoreFocus: true));
+
+    /// <summary>
+    /// The window closed without the launcher closing it (Windows asked it to): let go of it as
+    /// <see cref="Close"/> would, so no timer runs on and the orb's peek works again.
+    /// </summary>
+    public void OnWindowClosed(RadialWindow w) => Guard(() =>
+    {
+        if (w != _window) return; // closed by the launcher itself, which already let go
+        Teardown();
+        Closed?.Invoke();
+    });
 
     /// <summary>Clicked another app (or another monitor): the launcher folds away, leaving focus where the click went.</summary>
     public void OnDeactivated(RadialWindow w) => FromWindow(w, s => s.Mode == SessionMode.Click ? s.Close(restoreFocus: false) : SessionResult.Nothing);
@@ -228,11 +247,59 @@ internal sealed class LauncherModule : IOrbLauncher, IDisposable
     {
         var scene = _session!.Scene;
         var plan = ShortcutRules.Plan(request.Entry, RealFileProbe.Instance, out string? problem);
-        string? error = problem;
-        if (plan != null)
+        if (plan == null)
         {
-            Display? target = request.Display is int d ? scene.Displays[d] : null;
-            error = ShortcutLauncher.Start(plan, target, scene.Displays, _previousForeground);
+            // Stay open and say why; nothing else happens.
+            Apply(_session.ShowMessage(problem ?? "Windows couldn't open this shortcut.", takeFocus: true));
+            return;
+        }
+
+        Display? target = request.Display is int d ? scene.Displays[d] : null;
+        var displays = scene.Displays;
+        IntPtr userWindow = _previousForeground;
+        // Windows on screen before the launch, so the app's *new* window can be told apart from ones it already had.
+        var before = target != null && plan.CanPlace ? WindowPlacer.VisibleTopLevelWindows() : null;
+        var window = _window;
+        int id = ++_launches;
+        ShortcutLauncher.Start(plan, (pid, error) => Guard(() =>
+        {
+            if (error == null && before != null && Enabled) WindowPlacer.Begin(pid, plan.ExpectedImage, target!, displays, before, userWindow);
+            Started(id, window, request.Entry, error);
+        }));
+
+        // Usually that's a moment, and the launcher then closes (or says what went wrong). A program on a slow or
+        // unreachable server can take Windows much longer: say so after a short wait, and let it be dismissed.
+        _slowStart?.Stop();
+        _slowStart = new DispatcherTimer(DispatcherPriority.Normal) { Interval = TimeSpan.FromMilliseconds(SlowStartMs) };
+        _slowStart.Tick += (_, _) => Guard(() =>
+        {
+            _slowStart?.Stop();
+            _slowStart = null;
+            if (id == _launches && window == _window && _session != null)
+                Apply(_session.ShowNote($"Opening {request.Entry.Label}…"));
+        });
+        _slowStart.Start();
+    }
+
+    /// <summary>Waiting this long for Windows to start a shortcut shows "Opening…".</summary>
+    private const int SlowStartMs = 400;
+
+    private int _launches;
+    private DispatcherTimer? _slowStart;
+
+    /// <summary>Windows has started the shortcut (or failed to). Closes the launcher, or says why, if it's still waiting for this one.</summary>
+    private void Started(int id, RadialWindow? window, Shortcut entry, string? error)
+    {
+        if (id == _launches)
+        {
+            _slowStart?.Stop();
+            _slowStart = null;
+        }
+        if (id != _launches || window == null || window != _window || _session == null)
+        {
+            // The launcher was closed (or used again) while Windows was busy: nothing to show it on.
+            if (error != null) Log.Info($"Launcher: {entry.Label}: {error}");
+            return;
         }
         if (error != null)
         {
@@ -269,6 +336,8 @@ internal sealed class LauncherModule : IOrbLauncher, IDisposable
     {
         _tick?.Stop();
         _tick = null;
+        _slowStart?.Stop();
+        _slowStart = null;
         _window = null;
         _session = null;
         _previousForeground = IntPtr.Zero;

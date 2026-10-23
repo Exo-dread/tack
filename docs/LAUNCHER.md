@@ -13,7 +13,8 @@ behaves as before, nothing extra is loaded beyond reading a settings file if one
 | **Open (gesture)** | **Shift+press** the orb and, without letting go, drag toward a shortcut (it highlights) and release. Release over nothing, over an empty position or back on the orb, and nothing happens. |
 | **Groups** | Drag onto a group and its shortcuts fan out beyond it; carry on to one and release. Releasing on the group itself just leaves it open. |
 | **Choose a display** | Keep dragging *past* an app or folder (or rest on it a moment) and a small map of your displays appears; drag onto one and release. With clicks: right-click a shortcut, or rest on it. Shortcuts can also always ask, or remember a display (Settings). |
-| **Keyboard** (after Shift+click) | Arrows/Tab move, **Enter** opens, **M** or **Shift+Enter** shows the displays, **1–6** open a position, **Esc** steps back and closes. |
+| **Keyboard** (after Shift+click) | Arrows/Tab move, **Enter** opens, **M** or **Shift+Enter** shows the displays, **1–6** open a position, **Esc** steps back and closes, **Alt+F4** closes. The display map never opens by itself while you use the keys (only when the pointer rests on a shortcut). |
+| **Narrator** | Each shortcut and display is a button with its name and what it opens; the keyboard focus follows the highlight, and messages ("can't be found", "Opening…") are read out. |
 
 Shift+click and Shift+drag are told apart by movement only: a press that never moves more than 7 DIPs
 is a click, however long you hold it. Ordinary (no Shift) clicks and drags of the orb are untouched.
@@ -55,7 +56,9 @@ edge or corner, an evenly spaced inward-facing arc in the widest open direction,
 far as needed to keep shortcuts apart (up to 190 DIPs), numbered from the top end (or the left end on a
 top/bottom edge). The orb stays the centre and never moves. A group's shortcuts fan out beyond it within
 about 100°, nudged inward near edges. The display picker sits just beyond the shortcut, kept on screen and
-clear of the orb. Negative coordinates and odd arrangements are just numbers to it.
+clear of the orb and of the other shortcuts on show. A shortcut's name goes on its far side from the orb, or
+beside, below or above it, wherever it covers least; with the picker open, the picker's caption names the
+shortcut and display instead. Negative coordinates and odd arrangements are just numbers to it.
 
 ### Launching
 
@@ -70,14 +73,20 @@ Three distinct shortcut types, validated separately (`ShortcutRules`):
 All three go through `ShellExecute` (`Process.Start` with `UseShellExecute`): the program, folder or
 address is the thing opened and arguments are passed as their own field. Nothing is ever joined into a
 command line or run through `cmd`. Paths with quotes, pipes, wildcards or line breaks are refused.
-`%VARIABLES%` are expanded. Declining Windows' admin prompt is not an error. A missing or malformed target
-shows a red dot on the shortcut and a short reason when chosen; nothing launches.
+`%VARIABLES%` are expanded and `/` is read as `\`. Declining Windows' admin prompt is not an error. A missing
+or malformed target shows a red dot on the shortcut and a short reason when chosen; nothing launches.
+
+`ShellExecute` runs on a short-lived background thread: opening something on a server that can't be reached
+keeps Windows busy for 20 s or more, and Tack's orb, panel and launcher must not freeze meanwhile. Most
+shortcuts start within a moment, and the launcher then closes (or says why it couldn't open). After 0.4 s it
+says "Opening …" and can be dismissed (Esc, a click elsewhere); a failure that arrives after that is logged.
 
 ### Display targeting (best effort)
 
 - **Displays**: `EnumDisplayMonitors` + `GetMonitorInfo` (bounds, work area, device name) +
   `GetDpiForMonitor`, read each time the launcher opens. The picker draws the real arrangement; numbers go
-  left to right, top to bottom (not Windows' internal numbering). The orb's display is marked with a dot.
+  left to right, top to bottom (not Windows' internal numbering), and the main display says "(main)". The
+  orb's display is marked with a dot.
 - **Finding the window**: before launching, a one-off list of visible top-level windows. After launching,
   two out-of-context WinEvent hooks (`EVENT_OBJECT_SHOW`, `EVENT_SYSTEM_FOREGROUND`) for at most 15 s,
   extended once to 60 s if the app shows a splash screen first. A window counts if it belongs to the started
@@ -87,10 +96,14 @@ shows a red dot on the shortcut and a short reason when chosen; nothing launches
   program comes forward, Tack waits 1.2 s for a new window (VS Code opens one per folder) and otherwise
   moves the one that came forward. While the started process is still running, it's a new instance and
   existing windows are left alone. The window you were in before opening the launcher is never moved.
-- **Moving it**: normal windows keep their relative position in the work area and are resized by the
+- **Moving it**: normal windows keep their relative position in the work area and end up resized by the
   displays' scale ratio (so they look the same size), clamped to the target's work area (`SetWindowPos`,
-  no activation). Maximised/minimised windows get a restored rectangle on the target via
-  `SetWindowPlacement` (workspace coordinates converted), then are maximised again there.
+  no activation). Who does the resizing depends on the app (`GetWindowDpiAwarenessContext`): a
+  per-monitor-aware app (Explorer, Notepad, browsers, Office, WPF, Electron) rescales itself when it arrives
+  (`WM_DPICHANGED`), so it's moved at its current size; any other window is given the scaled size. If the
+  size still comes out more than 3% off, it's corrected once. Maximised/minimised windows get a restored
+  rectangle on the target via `SetWindowPlacement` (workspace coordinates converted, same size rule), then
+  are maximised again there.
 - **Apps that move themselves back** (restoring a saved position): checked at 0.35, 0.9 and 2 s; at most two
   corrections, then Tack lets go.
 - **Elevated apps**: Windows doesn't let a normal process move an administrator's window (UIPI). Tack logs
@@ -126,7 +139,8 @@ shows a red dot on the shortcut and a short reason when chosen; nothing launches
   fixes that. `.bat`/`.cmd` aren't moved.
 - A single-instance app already in front while the launcher is used by gesture may not report a window
   change; it then stays where it is.
-- Network paths (`\\server\share`) aren't checked for existence (an unreachable server would stall the
-  launcher); Windows reports a missing one when it's opened. Mapped drives are checked like local ones.
+- Network paths (`\\server\share`, `//server/share`) and mapped network drives aren't checked for existence
+  (an unreachable server would stall the launcher or Settings); Windows reports a missing one when it's
+  opened.
 - The launcher stays on the orb's monitor; it doesn't spill onto a neighbouring display.
 - Icons are the shell's 32 px icons, drawn at 22 DIPs: slightly soft above 150% scaling.

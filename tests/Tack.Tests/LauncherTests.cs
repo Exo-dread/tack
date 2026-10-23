@@ -34,6 +34,10 @@ internal static class LauncherTests
         yield return ("launcher: click mode: click, click outside, press-and-slide-off, right-click for displays", ClickMode);
         yield return ("launcher: a missing target says why and launches nothing", MissingTarget);
         yield return ("launcher: keyboard: arrows, Enter, Esc, M for displays, digits", Keyboard);
+        yield return ("launcher: keyboard with two displays: no picker opens by itself, the next key goes to the next shortcut, Esc closes", KeyboardWithTwoDisplays);
+        yield return ("launcher: a damaged remembered display (device null) loads and opens without an error", DamagedMonitorRef);
+        yield return ("launcher: network paths, with either slash, are recognised and never checked on disk", NetworkPaths);
+        yield return ("launcher: a per-monitor-aware app is moved at its own size and rescales once, to the intended size", PerMonitorAwareMove);
         yield return ("launcher: in a corner, dragging toward a shortcut still picks it", CornerGesture);
         yield return ("launcher: every group shortcut is reachable in one drag, wherever the orb is", GroupGestureEverywhere);
         yield return ("launcher: main-window detection skips splash screens, tool windows and owned dialogs", MainWindowRules);
@@ -408,6 +412,10 @@ internal static class LauncherTests
                 Check.True(Main.Work.Contains(box), $"{what}: picker on screen");
                 Check.True(box.OverlapArea(PxRect.Around(orb, s.Scene.OrbRadius, s.Scene.OrbRadius)) < 1, $"{what}: picker doesn't cover the orb");
                 Check.True(s.Scene.Extent.Contains(box), $"{what}: inside the launcher window");
+                // Nor the shortcuts on show with it: the ring, and the rest of its own group.
+                double r = s.Scene.ItemRadius;
+                foreach (var other in s.Scene.AllNodes().Where(o => o != node && (!o.IsChild || o.Slot == node.Slot) && s.Scene.Entry(o) != null))
+                    Check.True(box.OverlapArea(PxRect.Around(s.Scene.CenterOf(other), r, r)) < 1, $"{what}: picker doesn't cover {other}");
                 var tiles = s.Scene.TilesFor(node);
                 Check.Equal(2, tiles.Count, $"{what}: a tile per display");
                 foreach (var t in tiles) Check.True(box.Contains(t), $"{what}: tiles inside the picker");
@@ -721,6 +729,160 @@ internal static class LauncherTests
         Check.Equal(SessionResult.Nothing, e.Key(LauncherKey.Digit, 5), "an empty position's digit does nothing");
         var esc = e.Key(LauncherKey.Escape);
         Check.True(esc.Outcome == Outcome.Close && esc.RestoreFocus, "Esc closes and restores focus");
+    }
+
+    /// <summary>
+    /// The real timings: the launcher ticks every 40 ms while it's open, and people take a second or so to
+    /// press the first key. A highlight moved with the keys must not open the display picker by itself.
+    /// </summary>
+    private static void KeyboardWithTwoDisplays()
+    {
+        var ds = new[] { Main, Left };
+        long t = 0;
+        LauncherSession Open()
+        {
+            var s = Session(displays: ds);
+            t = 0;
+            s.Begin(s.Scene.Orb, t);
+            s.Release(s.Scene.Orb, t += 80);
+            return s;
+        }
+        void Wait(LauncherSession s, long ms)
+        {
+            for (long end = t + ms; t < end;) s.Tick(t += 40);
+        }
+
+        var a = Open();
+        Wait(a, 1000);
+        a.Key(LauncherKey.Next); // the group
+        Wait(a, 300);
+        a.Key(LauncherKey.Next); // Code: an app, which could open on either display
+        Check.Equal(new Hit(HitKind.Item, new NodeRef(1)), a.Highlight, "the app is highlighted");
+        Wait(a, LauncherSession.ClickDwellMs * 4);
+        Check.True(a.Selector == null, "no display picker opens by itself after a key");
+        a.Key(LauncherKey.Next);
+        Check.Equal(new Hit(HitKind.Item, new NodeRef(2)), a.Highlight, "the next key goes to the next shortcut, not into a picker");
+        a.Key(LauncherKey.Previous);
+        Wait(a, 1000);
+        var r = a.Key(LauncherKey.Activate);
+        Check.True(r.Outcome == Outcome.Launch && r.Launch!.Node == new NodeRef(1) && r.Launch.Display == null, "Enter opens the highlighted shortcut, normally");
+
+        var b = Open();
+        b.Key(LauncherKey.Next);
+        b.Key(LauncherKey.Next);
+        Wait(b, 2000);
+        var esc = b.Key(LauncherKey.Escape);
+        Check.True(esc.Outcome == Outcome.Close && esc.RestoreFocus && b.Mode == SessionMode.Closed, "Esc closes, however long the keys rested on an app");
+
+        // M still asks for the picker; Esc steps back out of it, and it doesn't come back by itself.
+        var c = Open();
+        c.Key(LauncherKey.Next);
+        c.Key(LauncherKey.Next);
+        c.Key(LauncherKey.PickDisplay);
+        Check.Equal(new NodeRef(1), c.Selector ?? new NodeRef(-1), "M shows the picker");
+        c.Key(LauncherKey.Escape);
+        Wait(c, 2000);
+        Check.True(c.Selector == null && c.Highlight == new Hit(HitKind.Item, new NodeRef(1)), "Esc closes the picker, and it stays closed");
+        Check.Equal(Outcome.Close, c.Key(LauncherKey.Escape).Outcome, "the next Esc closes the launcher");
+
+        // A "move" to where the pointer already is (WPF reports one when the content under a resting pointer
+        // changes) says nothing new: the keyboard's highlight stays, and no picker is armed by it.
+        var d = Open();
+        d.Key(LauncherKey.Next);
+        d.Key(LauncherKey.Next);
+        Check.Equal(SessionResult.Nothing, d.Move(d.Scene.Orb, t += 40), "the pointer didn't move: nothing changes");
+        Check.Equal(new Hit(HitKind.Item, new NodeRef(1)), d.Highlight, "the keyboard's highlight stays");
+
+        // Resting the pointer on a shortcut still offers its picker (see ClickMode), keyboard or not.
+        var e = Open();
+        e.Key(LauncherKey.Next);
+        e.Move(At(e, 1), t += 40);
+        Wait(e, LauncherSession.ClickDwellMs + 80);
+        Check.Equal(new NodeRef(1), e.Selector ?? new NodeRef(-1), "the pointer resting on an app offers the picker");
+    }
+
+    private static void DamagedMonitorRef()
+    {
+        var parsed = LauncherConfigFile.Parse(Encoding.UTF8.GetBytes("""
+            { "enabled": true, "slots": [
+              { "kind": "app", "label": "Code", "target": "C:\\Apps\\Code\\Code.exe", "launch": "preferred",
+                "monitor": { "device": null, "x": -1920, "y": 200, "width": 1920, "height": 1080 } } ] }
+            """))!;
+        var m = parsed.Slots[0]!.Monitor!;
+        Check.Equal("", m.Device, "a missing device name is read as none");
+        Check.Equal(1, MonitorMatch.Find(m, [Main, Left]) ?? -1, "the display is still found by its bounds");
+        Check.True(MonitorMatch.Find(new MonitorRef { Device = null!, Width = 5, Height = 5 }, [Main, Left]) == null, "matching never trips over a null name");
+
+        var s = Session(parsed, displays: [Main, Left]);
+        s.Begin(s.Scene.Orb, 0);
+        s.Release(s.Scene.Orb, 80);
+        var r = s.Key(LauncherKey.Digit, 1);
+        Check.True(r.Outcome == Outcome.Launch && r.Launch!.Display == 1, "it opens, on the remembered display");
+    }
+
+    private static void NetworkPaths()
+    {
+        Check.True(WinPath.IsUnc(@"\\server\share") && WinPath.IsUnc("//server/share") && WinPath.IsUnc(@"\\?\C:\x"), "two slashes of either kind");
+        Check.True(!WinPath.IsUnc(@"C:\Projects") && !WinPath.IsUnc(@"\Projects") && !WinPath.IsUnc("notepad.exe"), "anything else isn't");
+        Check.True(RealFileProbe.IsNetwork("//192.0.2.1/share/app.exe") && RealFileProbe.IsNetwork(@"\\192.0.2.1\share"), "network paths, either slash");
+        Check.True(!RealFileProbe.IsNetwork(Environment.SystemDirectory), "a local drive is checked as usual");
+
+        // Never asked of the disk (an unreachable server would keep Windows busy for 20 s or more).
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        Check.True(RealFileProbe.Instance.FileExists(@"\\192.0.2.1\share\Tool.exe") && RealFileProbe.Instance.DirectoryExists("//192.0.2.1/share/Projects"),
+            "assumed to exist; Windows says so if not, when it's opened");
+        Check.True(clock.ElapsedMilliseconds < 1000, $"and answered at once ({clock.ElapsedMilliseconds} ms)");
+
+        // Written with forward slashes, a path is cleaned to the Windows form before anything looks at it.
+        var probe = new FakeProbe(@"\\server\share\Tools\app.exe", @"\\server\projects\R06\");
+        var app = ShortcutRules.Plan(App("x", "//server/share/Tools/app.exe"), probe, out var problem);
+        Check.True(problem == null && app != null, "a forward-slash network program is fine");
+        Check.Equal(@"\\server\share\Tools\app.exe", app!.FileName, "and opened as \\\\server\\share\\…");
+        var folder = ShortcutRules.Plan(Folder("p", "//server/projects/R06"), probe, out problem);
+        Check.True(problem == null && folder != null && folder.FileName == @"\\server\projects\R06", "a forward-slash network folder too");
+        Check.Equal(@"C:\Apps\Code\Code.exe", ShortcutRules.Plan(App("x", "C:/Apps/Code/Code.exe"), Probe, out _)?.FileName, "and a local path written with forward slashes");
+    }
+
+    private static void PerMonitorAwareMove()
+    {
+        // This PC: the main display at 125% (left 0), a 100% display to its left.
+        var main = Mon(0, 0, 2560, 1440, 1.25, primary: true, device: @"\\.\DISPLAY1");
+        var left = Mon(-1920, 240, 1920, 1080, 1.0, device: @"\\.\DISPLAY2");
+        var notepad = new PxRect(34, 299, 1938, 819);
+
+        var intended = Placement.MoveTo(notepad, main, left);
+        Check.True(Math.Abs(intended.Width - 1938 * 0.8) < 1 && Math.Abs(intended.Height - 819 * 0.8) < 1, "it should look the same size there (1550 x 655 at 100%)");
+        var asked = Placement.Request(intended, main, left, appRescales: true);
+        Check.True(asked.X == intended.X && asked.Y == intended.Y, "asked for the intended place");
+        Check.True(Math.Abs(asked.Width - 1938) < 1 && Math.Abs(asked.Height - 819) < 1, "at its current size: the app rescales itself when it arrives");
+        // Windows then sends WM_DPICHANGED (x0.8, keeping the top-left corner); the app takes that size.
+        var arrived = new PxRect(asked.X, asked.Y, Math.Round(asked.Width * 0.8), Math.Round(asked.Height * 0.8));
+        Check.True(!Placement.SizeIsOff(arrived, intended) && left.Work.Contains(arrived), "it ends where meant, at the size meant");
+        // Asking for the scaled size as well scaled it twice: 1240 x 524, 36% less area. That's noticed (and corrected once).
+        var twice = new PxRect(intended.X, intended.Y, Math.Round(intended.Width * 0.8), Math.Round(intended.Height * 0.8));
+        Check.True(Placement.SizeIsOff(twice, intended), "a window scaled twice is noticed");
+        Check.True(!Placement.SizeIsOff(new PxRect(0, 0, intended.Width + 3, intended.Height - 2), intended), "a few pixels either way aren't");
+
+        // Back again (100% -> 125%): grows by 1.25 once, not 1.56.
+        var back = Placement.MoveTo(arrived, left, main);
+        var askedBack = Placement.Request(back, left, main, appRescales: true);
+        var arrivedBack = new PxRect(askedBack.X, askedBack.Y, Math.Round(askedBack.Width * 1.25), Math.Round(askedBack.Height * 1.25));
+        Check.True(!Placement.SizeIsOff(arrivedBack, back) && Math.Abs(arrivedBack.Width - 1938) <= 2, "back on the main display at its old size");
+
+        // Too big for the target: clamped there, so asked for the clamped size before the rescale.
+        var huge = Placement.MoveTo(new PxRect(0, 0, 2560, 1392), main, left);
+        var askedHuge = Placement.Request(huge, main, left, appRescales: true);
+        Check.True(!Placement.SizeIsOff(new PxRect(askedHuge.X, askedHuge.Y, askedHuge.Width * 0.8, askedHuge.Height * 0.8), huge) && left.Work.Contains(huge),
+            "a window too big for the target still fits after it rescales");
+
+        // Windows scales the others itself (DPI unaware, system aware): they're asked for the final size, as before.
+        Check.Equal(intended, Placement.Request(intended, main, left, appRescales: false), "an app Windows scales: the final size");
+        var same = Mon(2560, 0, 1920, 1080, 1.25);
+        var sameScale = Placement.MoveTo(notepad, main, same);
+        Check.Equal(sameScale, Placement.Request(sameScale, main, same, appRescales: true), "same scale: nothing to undo");
+        var restored = Placement.RestoredOn(new PxRect(100, 100, 1600, 900), main, left);
+        var askedRestored = Placement.Request(restored, main, left, appRescales: true);
+        Check.True(Math.Abs(askedRestored.Width - 1600) < 1 && askedRestored.X == restored.X, "a maximised window's restored size gets the same treatment");
     }
 
     private static void CornerGesture()

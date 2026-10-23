@@ -56,9 +56,10 @@ internal static class RadialLayout
     }
 
     /// <summary>
-    /// The display picker's box: just beyond the shortcut, in its direction, kept inside the work area.
+    /// The display picker's box: just beyond the shortcut, in its direction, kept inside the work area, and
+    /// clear of the orb, the shortcut and (as far as it can be) the other shortcuts on show (<paramref name="others"/>).
     /// </summary>
-    public static PxRect SelectorBox(PxPoint orb, PxPoint item, PxRect work, double scale, double aspect)
+    public static PxRect SelectorBox(PxPoint orb, PxPoint item, PxRect work, double scale, double aspect, IReadOnlyList<PxPoint>? others = null)
     {
         double w = LauncherMetrics.SelectorWidth * scale, h = LauncherMetrics.SelectorHeight * scale;
         // Wide arrangements get a wider, flatter box (up to 1.5x), tall ones a narrower one.
@@ -84,8 +85,45 @@ internal static class RadialLayout
             var c = orb.Offset(a, baseDistance + half);
             var box = PxRect.Around(c, w / 2, h / 2).ClampInside(area);
             double score = box.OverlapArea(keepClear) * 10 + Math.Abs(turn) + box.Center.DistanceTo(c) * 0.5;
+            // Covering another shortcut hides it: that costs as much as covering the orb.
+            foreach (var other in others ?? Array.Empty<PxPoint>()) score += box.OverlapArea(PxRect.Around(other, itemR, itemR)) * 10;
             if (score < bestScore) { bestScore = score; best = box; }
             if (score < 1) break;
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Where a label (a shortcut's name, or a message) goes: on the far side of its shortcut from the orb, or,
+    /// where that would cover something (on an arc at a screen edge the shortcuts sit close), beside, below or
+    /// above it, whichever covers least of <paramref name="keepClear"/> (the orb, the shortcuts and picker on
+    /// show). Always inside <paramref name="window"/>. Any one unit will do (the launcher uses its DIPs).
+    /// </summary>
+    /// <param name="gap">From the anchor's centre to the label's nearest edge.</param>
+    public static PxRect LabelBox(PxPoint anchor, PxPoint orb, double width, double height, double gap, PxRect window, IReadOnlyList<PxRect> keepClear)
+    {
+        double dx = anchor.X - orb.X, dy = anchor.Y - orb.Y, length = Math.Sqrt(dx * dx + dy * dy);
+        if (length < 1) { dx = 0; dy = 1; } // about the launcher as a whole: under the orb first
+        else { dx /= length; dy /= length; }
+        double side = dx >= 0 ? 1 : -1;
+        double reach = gap + Math.Abs(dx) * width / 2 + Math.Abs(dy) * height / 2;
+        var centres = new[]
+        {
+            new PxPoint(anchor.X + dx * reach, anchor.Y + dy * reach),     // outward, in line with the orb
+            new PxPoint(anchor.X + side * (gap + width / 2), anchor.Y),     // beside it, away from the orb
+            new PxPoint(anchor.X, anchor.Y + gap + height / 2),             // below
+            new PxPoint(anchor.X, anchor.Y - gap - height / 2),             // above
+            new PxPoint(anchor.X - side * (gap + width / 2), anchor.Y),     // beside it, on the orb's side
+        };
+        PxRect best = default;
+        double bestScore = double.MaxValue;
+        for (int i = 0; i < centres.Length; i++)
+        {
+            var box = PxRect.Around(centres[i], width / 2, height / 2).ClampInside(window);
+            // Covering something costs most; then being pushed off its place by the window's edge; then the order above.
+            double score = i * 2 + box.Center.DistanceTo(centres[i]) * 0.5;
+            foreach (var k in keepClear) score += box.OverlapArea(k) * 10;
+            if (score < bestScore) { bestScore = score; best = box; }
         }
         return best;
     }

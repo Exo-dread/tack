@@ -14,12 +14,20 @@ internal sealed class RealFileProbe : IFileProbe
 {
     public static readonly RealFileProbe Instance = new();
 
-    // Network paths (\\server\share) aren't checked: an unreachable server would stall the launcher for
-    // seconds. If one is missing, Windows says so when it's opened.
+    // Network paths (\\server\share, and mapped network drives) aren't checked: an unreachable server would
+    // stall the launcher, or Settings, for 20 s or more. If one is missing, Windows says so when it's opened.
     public bool FileExists(string path) => IsNetwork(path) || File.Exists(path);
     public bool DirectoryExists(string path) => IsNetwork(path) || Directory.Exists(path);
-    private static bool IsNetwork(string path) => path.StartsWith(@"\\", StringComparison.Ordinal);
     public string ExpandEnvironment(string path) => Environment.ExpandEnvironmentVariables(path);
+
+    /// <summary>On another computer: a UNC path (with either kind of slash), or a drive letter mapped to a network share.</summary>
+    public static bool IsNetwork(string path)
+    {
+        if (WinPath.IsUnc(path)) return true;
+        if (path.Length < 2 || !char.IsAsciiLetter(path[0]) || path[1] != ':') return false;
+        try { return new DriveInfo(path[..1]).DriveType == DriveType.Network; } // GetDriveType: no server is asked
+        catch { return false; }
+    }
 }
 
 /// <summary>
@@ -129,7 +137,10 @@ internal static class ShortcutRules
         return port.Length is > 0 and <= 5 && port.All(char.IsAsciiDigit) && colon > 0;
     }
 
-    /// <summary>Trims, removes one pair of surrounding quotes (paths pasted from Explorer's "Copy as path") and expands %VARIABLES%.</summary>
+    /// <summary>
+    /// Trims, removes one pair of surrounding quotes (paths pasted from Explorer's "Copy as path"), expands
+    /// %VARIABLES% and writes slashes the Windows way (so //server/share is seen as the network path it is).
+    /// </summary>
     private static string? CleanPath(string? target, IFileProbe probe, out string? problem, string what)
     {
         problem = null;
@@ -142,6 +153,7 @@ internal static class ShortcutRules
             return null;
         }
         if (t.Contains('%')) t = probe.ExpandEnvironment(t);
+        t = t.Replace('/', '\\');
         if (t.Length > LauncherConfig.MaxTarget) { problem = "This path is too long."; return null; }
         return t;
     }
@@ -165,6 +177,9 @@ internal static class WinPath
         if (path.Length >= 3 && char.IsAsciiLetter(path[0]) && path[1] == ':' && IsSeparator(path[2])) return true;
         return path.Length >= 5 && IsSeparator(path[0]) && IsSeparator(path[1]) && !IsSeparator(path[2]);
     }
+
+    /// <summary>Starts with two slashes of either kind: \\server\share, //server/share, \\?\… (never checked on disk).</summary>
+    public static bool IsUnc(string path) => path.Length >= 2 && IsSeparator(path[0]) && IsSeparator(path[1]);
 
     public static string FileName(string path)
     {
