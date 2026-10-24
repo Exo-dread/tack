@@ -10,6 +10,10 @@ same notes, same `tack.json`.
 - **Capture in seconds.** The task box sits at the bottom, under your thumb. Type, press return,
   close the app: the task is already saved (even a half-typed one survives). Paste a list to add
   many. Ctrl+Enter (or ⌘+Enter) adds a task straight into focus.
+- **Share to Tack (Android).** Once Tack Focus is installed, it's in Android's share sheet: share a
+  page, a link or some text from any app and it becomes a task in the space on show (the page's
+  title with its link; several lines of text, a task per line, as a paste), with *Undo*. Nothing
+  about it is sent anywhere. iPhone doesn't let web apps receive shares.
 - **One thing in focus.** Swipe a task right (or tap it, then *Focus*) to make it *Now*: it glides
   into the card at the top. The orb's ring fills as today's tasks get done, and the page's light
   warms a little with it.
@@ -90,6 +94,7 @@ web/
 │   │   ├── file.ts         tack.json import/export (desktop-compatible)
 │   │   ├── limits.ts       How much a device holds and passes on (the same numbers as Tack for Windows)
 │   │   ├── welcome.ts      The first-run tasks, and leaving them behind when joining sync
+│   │   ├── share.ts        What another app shared (Android's share sheet) as tasks
 │   │   └── text.ts, time.ts, ids.ts, types.ts
 │   ├── sync/               Optional sync through your OneDrive (docs/SYNC.md)
 │   │   ├── engine.ts       One sync cycle: read others' device files, merge, write ours
@@ -111,6 +116,7 @@ web/
 │   │   ├── sheet.ts        Small bottom sheets (the switcher, Move to…) and the ⋯ menu
 │   │   ├── motion.ts       Springs (CSS linear()), FLIP, reduced motion
 │   │   ├── viewport.ts     Keeps the app inside the visible area above the keyboard
+│   │   ├── share.ts        Takes a share off the address bar before anything else, keeps it until added
 │   │   ├── renewing.ts     What shows while the OneDrive sign-in renews at Microsoft
 │   │   ├── sw.ts           Registers the service worker; applies updates at a safe moment
 │   │   └── orb.ts, toast.ts, haptics.ts, theme.ts, icons.ts, install.ts, dom.ts

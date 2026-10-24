@@ -96,6 +96,11 @@ export class Toasts {
     this.announce(undo ? `${message}. Undo available.` : message);
   }
 
+  /** Is this undo still on offer (its toast on show)? */
+  offers(undo: () => void): boolean {
+    return this.current?.undo === undo;
+  }
+
   /** Ctrl/Cmd+Z: runs the current toast's undo, if there is one. */
   undo(): boolean {
     const u = this.current?.undo;
