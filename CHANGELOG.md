@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Notes: a sheet switch that comes in the middle of an edit (from a keystroke, say) waits for the
+  edit to end before clearing Undo, instead of being able to crash Tack. As before, the switch isn't
+  an undo step, and what's typed on blank paper stays undoable.
+
 ## 1.6.1 (2026-10-24)
 
 Sync stands up better to damaged and hostile files. From a second security review of Tack and
