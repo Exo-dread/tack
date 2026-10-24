@@ -44,6 +44,7 @@ internal static class SnippetTests
         yield return ("toast undo: Undo runs once and nothing lapses; another toast, the toast going or quitting makes it lapse once", UndoSlotLapses);
         yield return ("notes on screen: no snippets, the paper exactly as before; a paste shows a thumbnail strip above the text", StripOnScreen);
         yield return ("notes on screen: x discards at once with Undo, Undo puts it back, and the file goes once Undo lapses", DiscardWithUndo);
+        yield return ("notes on screen: the snippet strip is one tab stop; Delete discards (with Undo) and the focus stays in the strip; a click leaves the focus in the text", SnippetKeys);
         yield return ("notes on screen: deleting a sheet takes its snippets; Undo brings both back; the last sheet is cleared of them", DeleteSheetTakesSnippets);
         yield return ("notes on screen: the menu's Paste with an image adds a snippet; on blank paper it makes the sheet", PasteCommandAndBlankPaper);
         yield return ("notes on screen: an image pasted on Tasks lands in Notes with a toast and Undo", FromTasks);
@@ -447,6 +448,51 @@ internal static class SnippetTests
             ws.ActiveSheet = ws.Sheets[0];
             Ui.Pump();
             Check.Equal(Visibility.Visible, scroller.Visibility, "back: the strip");
+            Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+        });
+    }
+
+    private static void SnippetKeys()
+    {
+        Ui.Run(errors =>
+        {
+            using var dir = new Temp();
+            var ws = new Workspace(new Settings(), new Hlc("desk0001"), WorkspaceData.Empty);
+            var store = new SnippetStore(dir.Path);
+            var host = new Host();
+            var notes = Notes(ws, store, host);
+            var scroller = (FrameworkElement)notes.FindName("SnippetScroller");
+            var strip = (Panel)notes.FindName("SnippetStrip");
+            var editor = (TextBox)notes.FindName("Editor");
+            using var window = Ui.Host(notes);
+            for (int i = 0; i < 3; i++) notes.Paste(Clip(("PNG", Stream(Png(Picture(120 + i, 90))))));
+            Ui.Pump();
+            Button[] Thumbs() => Ui.Descendants<Button>(scroller).Where(b => AutomationProperties.GetName(b).StartsWith("Snippet ", StringComparison.Ordinal)).ToArray();
+            Check.Equal(3, Thumbs().Length, "three thumbnails");
+            Check.True(Thumbs().All(t => t.Focusable), "each can take the focus");
+            Check.Equal(KeyboardNavigationMode.Once, KeyboardNavigation.GetTabNavigation(strip), "the strip is one tab stop");
+            Check.Equal(KeyboardNavigationMode.Contained, KeyboardNavigation.GetDirectionalNavigation(strip), "arrow keys move between thumbnails");
+
+            // A click views it and leaves the focus in the text.
+            editor.Focus();
+            var first = Thumbs()[0];
+            first.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent });
+            Check.True(!first.Focusable, "while it's clicked, it doesn't take the focus");
+            Ui.Pump();
+            Check.True(first.Focusable && editor.IsKeyboardFocused, "and the text keeps it");
+
+            // From the keyboard: Delete discards the one with the focus, with Undo; the focus moves to the next.
+            var middle = Thumbs()[1];
+            var gone = (Snippet)middle.Tag;
+            Check.True(middle.Focus(), "a thumbnail takes the focus");
+            middle.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(middle), 0, Key.Delete) { RoutedEvent = Keyboard.KeyDownEvent });
+            Ui.Pump();
+            Check.True(store.Count == 2 && !store.Of(ws.ActiveSheet.Id).Contains(gone), "Delete discards it");
+            Check.Equal("Snippet discarded", host.Toasts.LastOrDefault(), "with Undo");
+            Check.True(Thumbs()[1].IsKeyboardFocused, "the focus moves to the next one along");
+            host.Undo();
+            Ui.Pump();
+            Check.Equal(3, store.Count, "Undo puts it back");
             Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
         });
     }

@@ -472,7 +472,7 @@ internal static class DropScreenTests
                         window.Fill(title, caption, undo, muted);
                         var bubble = (Border)window.FindName("Bubble");
                         var button = (Button)window.FindName("UndoButton");
-                        window.Content = null;
+                        ((Panel)window.FindName("Root")).Children.Remove(bubble);
                         var scene = new Grid { Background = new SolidColorBrush(light ? Color.FromRgb(0xE8, 0xE8, 0xEA) : Color.FromRgb(0x30, 0x31, 0x36)), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Children = { bubble } };
                         using (Ui.Host(scene))
                         {

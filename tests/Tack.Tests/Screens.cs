@@ -12,8 +12,8 @@ namespace Tack.Tests;
 /// <summary>
 /// Not a test: pictures of the panel as the screen shows it (DWM's acrylic included), over a striped window of
 /// its own so nothing else on the screen is in them: each theme, with and without frosted glass, at Settings →
-/// Look → Panel background's default, middle and most see-through; the panel and the orb faded when idle; and
-/// the Look settings. A copy of Tack in this process (see <see cref="TestCopy"/>).
+/// Look → Panel background's default, middle and most see-through; the panel and the orb faded when idle (and the
+/// fade over glass at moments as it runs); and the Look settings. A copy of Tack in this process (see <see cref="TestCopy"/>).
 ///
 ///   dotnet run --project tests/Tack.Tests -c Release -- --screens [folder]
 ///

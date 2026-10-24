@@ -81,6 +81,7 @@ public partial class SearchView : UserControl
     private SearchResults _results = SearchResults.None;
     private List<SearchRow> _rows = [];
     private int _lead = 16; // characters a row shows before its match (see Cut), for the panel's width
+    private double _width; // the width it was worked out for
 
     public SearchView()
     {
@@ -232,8 +233,9 @@ public partial class SearchView : UserControl
 
     private void Draw(int select)
     {
-        // About as many characters before a match as leave it in sight, with its space beside it.
+        // About as many characters before a match as leave it in sight (less beside a caption: see Lead).
         double width = ActualWidth > 0 ? ActualWidth : (Parent as FrameworkElement)?.ActualWidth ?? 0;
+        _width = width;
         _lead = width > 0 ? Math.Clamp((int)((width - 140) / 7), 12, 60) : 16;
         var rows = new List<SearchRow>();
         AddGroup(rows, SearchKind.Task, "TASKS", _results.Tasks);
@@ -274,22 +276,35 @@ public partial class SearchView : UserControl
             case SearchKind.Task:
             {
                 bool now = hit.Item == _ws.Now;
-                return new SearchRow(SearchRowKind.Task, group, Cut(text, start, end, _lead), null, Joined(now ? "Now" : "", space), In(now ? $"In focus: {Spoken(text)}" : Spoken(text)), hit);
+                string meta = Joined(now ? "Now" : "", space);
+                return new SearchRow(SearchRowKind.Task, group, Cut(text, start, end, Lead(meta)), null, meta, In(now ? $"In focus: {Spoken(text)}" : Spoken(text)), hit);
             }
             case SearchKind.Done:
             {
-                return new SearchRow(SearchRowKind.Done, group, Cut(text, start, end, _lead), null, space, In($"Done: {Spoken(text)}"), hit);
+                return new SearchRow(SearchRowKind.Done, group, Cut(text, start, end, Lead(space)), null, space, In($"Done: {Spoken(text)}"), hit);
             }
             default:
             {
                 var (titleStart, titleEnd) = TitleLine(text);
-                var match = Cut(text, start, end, _lead);
+                var match = Cut(text, start, end, Lead(space));
                 if (start >= titleStart && start < Math.Max(titleEnd, titleStart + 1))
                     return new SearchRow(SearchRowKind.Note, group, match, null, space, In($"Note: {match}"), hit);
                 string title = Title(text, titleStart, titleEnd);
                 return new SearchRow(SearchRowKind.Note, group, Excerpt.Plain(title), match, space, In($"Note {title}: {match}"), hit);
             }
         }
+    }
+
+    /// <summary>
+    /// Characters a row shows before its match when a caption ("Now · Work", a space) sits beside its line: the
+    /// caption's width (about 6.5 DIP a character, up to its 96) comes off the room first, so the match stays in
+    /// sight even at the panel's narrowest.
+    /// </summary>
+    private int Lead(string meta)
+    {
+        if (meta.Length == 0 || _width <= 0) return _lead;
+        double caption = Math.Min(96, meta.Length * 6.5 + 8);
+        return Math.Clamp((int)((_width - 140 - caption) / 7), 6, _lead);
     }
 
     /// <summary>A task's text as screen readers hear it: all of it, unless it's very long.</summary>

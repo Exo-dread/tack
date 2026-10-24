@@ -40,11 +40,12 @@
             <MenuItem Header="Delete sheet" Click="DeleteSheet_Click" />
         </ContextMenu>
 
-        <!-- A snippet's thumbnail: the image (set as its background) in a rounded frame. Click to view it. -->
+        <!-- A snippet's thumbnail: the image (set as its background) in a rounded frame. Click (or Enter) to view
+             it, Delete discards it, Shift+F10 its menu. The strip is one tab stop, ← → between thumbnails. -->
         <Style x:Key="SnippetThumb" TargetType="Button">
             <Setter Property="Height" Value="52" />
-            <Setter Property="Focusable" Value="False" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -160,10 +161,12 @@
                 </Grid.RowDefinitions>
 
                 <!-- Snippets: images pasted onto this sheet, kept on this PC only. Not there until the sheet has one. -->
-                <ScrollViewer x:Name="SnippetScroller" Margin="12,10,12,0" Visibility="Collapsed" Focusable="False"
+                <!-- Lined up with the text below it (the box's padding and its own inset). -->
+                <ScrollViewer x:Name="SnippetScroller" Margin="16,10,16,0" Visibility="Collapsed" Focusable="False"
                               HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
                               PreviewMouseWheel="SnippetScroller_PreviewMouseWheel">
-                    <StackPanel x:Name="SnippetStrip" Orientation="Horizontal" AutomationProperties.Name="Snippets" />
+                    <StackPanel x:Name="SnippetStrip" Orientation="Horizontal" AutomationProperties.Name="Snippets"
+                                KeyboardNavigation.TabNavigation="Once" KeyboardNavigation.DirectionalNavigation="Contained" />
                 </ScrollViewer>
 
                 <!-- A space with no sheets shows blank paper: the first keystroke makes its sheet. -->

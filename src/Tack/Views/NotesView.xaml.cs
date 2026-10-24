@@ -502,8 +502,26 @@ public partial class NotesView : UserControl
             thumb.SetResourceReference(BackgroundProperty, "SubtleFillBrush"); // its file is damaged or gone
         }
         AutomationProperties.SetName(thumb, count == 1 ? $"Snippet, pasted {time}" : $"Snippet {index + 1} of {count}, pasted {time}");
-        AutomationProperties.SetHelpText(thumb, "Opens it full size");
+        AutomationProperties.SetHelpText(thumb, "Enter opens it full size, Delete discards it");
         thumb.Click += (_, _) => View(snippet);
+        // A click views it and leaves the focus where it was (the text, usually), as before the strip took keys.
+        thumb.PreviewMouseLeftButtonDown += (_, _) =>
+        {
+            if (thumb.IsKeyboardFocused) return;
+            thumb.Focusable = false;
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, () => thumb.Focusable = true);
+        };
+        thumb.KeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Delete || Keyboard.Modifiers != ModifierKeys.None) return;
+            e.Handled = true;
+            int at = SnippetStrip.Children.IndexOf((UIElement)thumb.Parent);
+            Discard(snippet);
+            // The focus stays in the strip, on the next one along (or the one before), else goes to the text.
+            if (SnippetStrip.Children.Count > 0)
+                (SnippetStrip.Children[Math.Min(at, SnippetStrip.Children.Count - 1)] as Grid)?.Children.OfType<Button>().FirstOrDefault()?.Focus();
+            else Editor.Focus();
+        };
 
         // Hidden until the pointer is over the thumbnail, but always there for screen readers.
         var discard = new Button

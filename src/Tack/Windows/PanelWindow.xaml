@@ -81,9 +81,10 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- Search's box in the header (Ctrl+F): a magnifier, the placeholder from Tag, room on the right for the count. -->
+        <!-- Search's box in the header (Ctrl+F): a magnifier, the placeholder from Tag, room on the right for the
+             count once there is one (CountChanged), so the placeholder has the room until then. -->
         <Style x:Key="SearchBox" TargetType="TextBox" BasedOn="{StaticResource GhostTextBox}">
-            <Setter Property="Padding" Value="30,0,44,0" />
+            <Setter Property="Padding" Value="30,0,12,0" />
             <Setter Property="TextWrapping" Value="NoWrap" />
             <Setter Property="MaxLength" Value="1000" />
             <Setter Property="Template">

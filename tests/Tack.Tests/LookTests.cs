@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -31,6 +32,7 @@ internal static class LookTests
         yield return ("fade when idle on screen: the panel goes half see-through, then whole again with its own background", PanelFades);
         yield return ("peek on screen: the picture that stands in for the bubble while it moves is the very same pixels", PeekPicture);
         yield return ("toast on screen: a picture slides in for it, the very same pixels, and the live toast (Undo and all) takes over", ToastPicture);
+        yield return ("drop bubble on screen: a picture stands in for it as it comes and goes, the very same pixels, of what it says now", BubblePicture);
     }
 
     // ---------------------------------------------------------------- settings
@@ -195,8 +197,10 @@ internal static class LookTests
             bool glass = WindowEffects.SupportsSystemBackdrop;
             double def = panel.DefaultBackground(glass);
             double min = glass ? Settings.MinGlassBackground : Settings.MinSolidBackground;
-            Check.True(Math.Abs(slider.Value - (1 - def)) < 0.001, $"the slider starts at the default ({slider.Value} for {def})");
-            Check.Equal(Math.Round(1 - min, 2), Math.Round(slider.Maximum, 2), "and goes as far as the minimum");
+            Check.True(Math.Abs(slider.Value - (1 - def) * 100) < 0.001, $"the slider starts at the default ({slider.Value} for {def})");
+            Check.Equal(Math.Round((1 - min) * 100), slider.Maximum, "and goes as far as the minimum");
+            Check.True(slider.Value == Math.Round(slider.Value) && slider.SmallChange == 5, "in whole percent (a screen reader says 45, not 0.45), five at a step");
+            Check.Equal("Default", AutomationProperties.GetItemStatus(slider), "and says it's at the default");
             Check.Equal(Visibility.Hidden, settings.BackgroundReset.Visibility, "no Default button at the default");
 
             // The tick sits under the thumb's centre at the default.
@@ -214,9 +218,10 @@ internal static class LookTests
             }
             var chrome = panel.Chrome;
             var textBefore = Ui.Descendants<TextBlock>(chrome).Select(t => t.Opacity).ToList();
-            slider.Value = 0.6; // dragged: 40% solid, at once
+            slider.Value = 60.3; // dragged: 40% solid, at once (snapped to a whole percent)
             Ui.Pump();
             Check.Equal(0.4, shell.Settings.PanelBackgroundGlass, "kept as it moves");
+            Check.Equal("40% solid", AutomationProperties.GetItemStatus(slider), "said as how solid it is");
             var brush = (SolidColorBrush)panel.Surface.Background;
             Check.True(!IsPaletteBrush(panel.Surface), "the panel's background follows the slider live");
             Check.Equal((byte)Math.Round(0.4 * 255), brush.Color.A, "40% solid");
@@ -226,12 +231,12 @@ internal static class LookTests
             Check.Sequence(textBefore, Ui.Descendants<TextBlock>(chrome).Select(t => t.Opacity).ToList(), "nor any text");
             Check.Equal(Visibility.Visible, settings.BackgroundReset.Visibility, "Default shows");
 
-            slider.Value = 1 - def + 0.01; // let go next to the tick: that's the default
+            slider.Value = (1 - def) * 100 + 1; // let go next to the tick: that's the default
             Ui.Pump();
             Check.Equal(null, shell.Settings.PanelBackgroundGlass, "next to the default is the default");
             Check.True(IsPaletteBrush(panel.Surface), "and the palette's own brush again");
 
-            slider.Value = 0.75;
+            slider.Value = 75;
             Ui.Pump();
             Check.Equal(Settings.MinGlassBackground, shell.Settings.PanelBackgroundGlass, "all the way: the glass minimum");
             settings.BackgroundReset.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
@@ -243,14 +248,14 @@ internal static class LookTests
             shell.Settings.Glass = false;
             Ui.Pump();
             Check.Equal(0.0, slider.Value, "without glass it starts solid");
-            Check.Equal(Math.Round(1 - Settings.MinSolidBackground, 2), Math.Round(slider.Maximum, 2), "and stays readable");
-            slider.Value = 0.1;
+            Check.Equal(Math.Round((1 - Settings.MinSolidBackground) * 100), slider.Maximum, "and stays readable");
+            slider.Value = 10;
             Ui.Pump();
             Check.Equal(0.9, shell.Settings.PanelBackgroundSolid, "its own value");
             Check.Equal(0.3, shell.Settings.PanelBackgroundGlass, "the glass one kept");
             shell.Settings.Glass = true;
             Ui.Pump();
-            Check.True(Math.Abs(slider.Value - 0.7) < 0.001, $"back with glass, the glass value ({slider.Value})");
+            Check.True(Math.Abs(slider.Value - 70) < 0.001, $"back with glass, the glass value ({slider.Value})");
             Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
         });
     }
@@ -436,6 +441,45 @@ internal static class LookTests
             Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
         });
 
+    }
+
+    private static void BubblePicture()
+    {
+        Ui.Run(errors =>
+        {
+            var bubble = new DropBubble { Left = -32000, Top = -32000 };
+            bubble.Fill("Added 3 tasks", "In Work", undo: true, muted: false);
+            bubble.Show();
+            Ui.Pump();
+            var live = Pixels(bubble.Root);
+            bubble.StandIn.Take();
+            bubble.StandIn.Stand();
+            Ui.Pump();
+            Check.Equal(0.0, bubble.Bubble.Opacity, "the picture stands in (the bubble, shadow and all, isn't drawn)");
+            Check.Equal(Visibility.Visible, bubble.Picture.Visibility, "shown");
+            var picture = Pixels(bubble.Root);
+            Check.Equal(live.Length, picture.Length, "the same size");
+            int differ = 0;
+            for (int i = 0; i < live.Length; i++) if (Math.Abs(live[i] - picture[i]) > 1) differ++;
+            Check.True(differ == 0, $"the very same pixels ({differ} values differ)");
+            bubble.StandIn.Live(keep: true);
+            Check.Equal(1.0, bubble.Bubble.Opacity, "the live bubble takes over");
+
+            // It says something else, then goes: the picture it fades as is of what it says now.
+            bubble.Fill("Added a task", null, undo: false, muted: false);
+            Ui.Pump();
+            var now = Pixels(bubble.Root);
+            bubble.Dismiss();
+            Check.True(bubble.StandIn.IsStanding, "it fades as a picture");
+            Tack.Controls.Anim.Set(bubble, UIElement.OpacityProperty, 1); // hold the fade, to look
+            Ui.Pump();
+            var going = Pixels(bubble.Root);
+            differ = 0;
+            for (int i = 0; i < now.Length && i < going.Length; i++) if (Math.Abs(now[i] - going[i]) > 1) differ++;
+            Check.True(now.Length == going.Length && differ == 0, $"of what it says now ({differ} values differ)");
+            bubble.Close();
+            Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+        });
     }
 
     private static void ToastPicture()

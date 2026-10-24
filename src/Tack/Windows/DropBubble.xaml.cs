@@ -113,8 +113,20 @@ public partial class DropBubble : Window, IDropBubble
         _undo = null;
         SetClickable(false);
         if (!IsVisible) return;
-        Anim.Fade(this, 0, 90, () => { if (!_wanted) Hide(); });
+        StandIn.Take(); // what it says now
+        StandIn.Stand();
+        Anim.Fade(this, 0, 90, () =>
+        {
+            if (_wanted) return;
+            Hide();
+            StandIn.Live(keep: false);
+        });
     }
+
+    /// <summary>The bubble's picture, which stands in for it while it slides and fades (see <see cref="Controls.StandIn"/>).</summary>
+    internal Controls.StandIn StandIn => _standIn ??= new Controls.StandIn(Bubble, Root, Picture);
+
+    private Controls.StandIn? _standIn;
 
     private void Undo_Click(object sender, RoutedEventArgs e)
     {
@@ -166,7 +178,23 @@ public partial class DropBubble : Window, IDropBubble
         ScreenGeometry.Place(_hwnd, r.X, r.Y);
         WindowEffects.BringToTopmost(_hwnd);
 
-        Anim.Fade(this, 1, 120);
-        if (Opacity < 0.5) Anim.Slide(Bubble, toLeft ? 8 : -8, 0, 180);
+        if (Opacity < 0.5)
+        {
+            // Coming in: its picture slides and fades in, then the live bubble takes over (the picture kept for the fade out).
+            StandIn.Take();
+            StandIn.Stand();
+            Anim.Fade(this, 1, 120);
+            var (_, slide) = Anim.Transforms(Picture);
+            Anim.To(slide, System.Windows.Media.TranslateTransform.XProperty, 0, 180, from: toLeft ? 8 : -8, completed: () =>
+            {
+                if (_wanted && StandIn.IsStanding) StandIn.Live(keep: true);
+            });
+        }
+        else
+        {
+            // Already there (it now says something else, or was fading out): the live bubble, as it is now.
+            if (StandIn.IsStanding) StandIn.Live(keep: true);
+            Anim.Fade(this, 1, 120);
+        }
     }
 }

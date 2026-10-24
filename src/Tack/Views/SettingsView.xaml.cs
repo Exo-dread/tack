@@ -106,15 +106,17 @@ public partial class SettingsView : UserControl
         _showingBackground = true;
         try
         {
-            BackgroundSlider.Maximum = 1 - min;
-            BackgroundSlider.Value = 1 - (value ?? _panel.DefaultBackground(glass));
+            BackgroundSlider.Maximum = Math.Round((1 - min) * 100);
+            BackgroundSlider.Value = Math.Round((1 - (value ?? _panel.DefaultBackground(glass))) * 100);
         }
         finally
         {
             _showingBackground = false;
         }
         BackgroundReset.Visibility = value == null ? Visibility.Hidden : Visibility.Visible;
-        AutomationProperties.SetHelpText(BackgroundSlider, value == null ? "Default" : $"{Math.Round(value.Value * 100)}% solid");
+        string status = value == null ? "Default" : $"{Math.Round(value.Value * 100)}% solid";
+        AutomationProperties.SetHelpText(BackgroundSlider, status);
+        AutomationProperties.SetItemStatus(BackgroundSlider, status);
         PlaceBackgroundTick();
     }
 
@@ -123,7 +125,7 @@ public partial class SettingsView : UserControl
     {
         const double thumb = 18;
         double span = BackgroundSlider.Maximum - BackgroundSlider.Minimum;
-        double at = span > 0 ? (1 - _panel.DefaultBackground(BackgroundIsGlass)) / span : 0;
+        double at = span > 0 ? (1 - _panel.DefaultBackground(BackgroundIsGlass)) * 100 / span : 0;
         double x = thumb / 2 + Math.Clamp(at, 0, 1) * Math.Max(0, BackgroundSlider.ActualWidth - thumb);
         BackgroundTick.Margin = new Thickness(Math.Round(x - BackgroundTick.Width / 2), 0, 0, -3);
     }
@@ -133,7 +135,7 @@ public partial class SettingsView : UserControl
     {
         if (_showingBackground || _ws == null) return;
         bool glass = BackgroundIsGlass;
-        double opacity = Math.Round(1 - e.NewValue, 2);
+        double opacity = Math.Round(1 - e.NewValue / 100, 2);
         double? value = Math.Abs(opacity - _panel.DefaultBackground(glass)) < 0.015 ? null : opacity;
         if (glass) _ws.Settings.PanelBackgroundGlass = value;
         else _ws.Settings.PanelBackgroundSolid = value;

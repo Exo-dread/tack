@@ -160,6 +160,10 @@ internal static class LauncherRecentsScreenTests
             // A long name is cut short in its row, never wider than the card.
             var longRow = l.Card!.Child is Canvas frame ? frame.Children.OfType<Border>().ElementAt(5) : null;
             Check.True(longRow != null && longRow.ActualWidth <= l.Card.ActualWidth, "rows fit the card");
+
+            // Lit or not, a row's border is the same width, so its icon and name never move as the highlight passes.
+            var rowBorders = ((Canvas)l.Card.Child).Children.OfType<Border>().ToList();
+            Check.True(rowBorders.Select(b => b.BorderThickness).Distinct().Count() == 1, $"every row's border alike ({string.Join(", ", rowBorders.Select(b => b.BorderThickness.Left))})");
             Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
         });
     }

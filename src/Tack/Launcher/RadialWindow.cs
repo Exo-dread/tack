@@ -550,8 +550,10 @@ internal sealed class RadialWindow : Window
         var row = _rows[i];
         if (hot) row.SetResourceReference(Border.BackgroundProperty, "AccentSoftBrush");
         else row.Background = Brushes.Transparent; // still hit-testable, so the whole row is the target
-        row.SetResourceReference(Border.BorderBrushProperty, "AccentBrush");
-        row.BorderThickness = new Thickness(hot ? 1 : 0);
+        // The border is always there (clear when not lit), so lighting a row never moves its icon and name.
+        if (hot) row.SetResourceReference(Border.BorderBrushProperty, "AccentBrush");
+        else row.BorderBrush = Brushes.Transparent;
+        row.BorderThickness = new Thickness(1);
     }
 
     private void StyleTile(int i, bool hot)

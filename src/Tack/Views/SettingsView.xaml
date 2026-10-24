@@ -190,8 +190,10 @@
                                         ToolTip="Back to the theme's own background" AutomationProperties.Name="Panel background: back to the default" />
                             </Grid>
                             <Grid Margin="0,4,0,0">
-                                <Slider x:Name="BackgroundSlider" Style="{StaticResource SettingSlider}" Minimum="0" Maximum="0.75"
-                                        SmallChange="0.05" LargeChange="0.1" ValueChanged="BackgroundSlider_ValueChanged"
+                                <!-- In whole percent see-through, so a screen reader says "47", not "0.47". -->
+                                <Slider x:Name="BackgroundSlider" Style="{StaticResource SettingSlider}" Minimum="0" Maximum="75"
+                                        SmallChange="5" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True"
+                                        ValueChanged="BackgroundSlider_ValueChanged"
                                         AutomationProperties.Name="Panel background, solid to see-through" />
                                 <Border x:Name="BackgroundTick" Width="2" Height="6" CornerRadius="1" HorizontalAlignment="Left" VerticalAlignment="Bottom"
                                         Margin="0,0,0,-3" Background="{DynamicResource TextTertiaryBrush}" IsHitTestVisible="False" />

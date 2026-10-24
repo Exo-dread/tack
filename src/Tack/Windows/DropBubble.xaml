@@ -7,7 +7,10 @@
         ResizeMode="NoResize" ShowInTaskbar="False" ShowActivated="False" Topmost="True"
         UseLayoutRounding="True" Focusable="False">
     <!-- Beside the orb, like the peek: what a drop will do while something is dragged over it, then what it did,
-         with Undo. Margin leaves room for the shadow inside the layered window. -->
+         with Undo. Margin leaves room for the shadow inside the layered window. While it slides in or fades out, a
+         picture of it (shadow and all) stands in for it, as the peek's does: software rendering would otherwise
+         blur the shadow anew every frame. -->
+    <Grid x:Name="Root">
     <Border x:Name="Bubble" Margin="12" Padding="12,7,6,8" CornerRadius="10" MaxWidth="300" MinHeight="38"
             Background="{DynamicResource FlyoutBrush}" BorderBrush="{DynamicResource StrokeStrongBrush}" BorderThickness="1"
             RenderTransformOrigin="0.5,0.5">
@@ -28,4 +31,6 @@
             </StackPanel>
         </DockPanel>
     </Border>
+    <Image x:Name="Picture" Stretch="None" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed" IsHitTestVisible="False" />
+    </Grid>
 </Window>

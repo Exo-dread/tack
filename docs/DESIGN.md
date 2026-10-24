@@ -185,6 +185,8 @@ The rules keep it a scrap, not a gallery:
   Windows' own PNG, BMP, JPEG, GIF and TIFF decoders are used, image files are read only from this
   PC's own drives (never a network share or a cloud placeholder), and only the first thousand names
   of a copied file list are looked at.
+- **Keys too.** The strip is one tab stop before the text: ← → between thumbnails, Enter shows one full
+  size, Delete discards it (with Undo), Shift+F10 opens its menu. A click leaves the caret in the text.
 - **Full size means real pixels.** The viewer is a plain window on the panel's display: a snip that
   fits is shown one pixel to a pixel, so text in it is as sharp as it was; a bigger one is scaled to
   nine tenths of the display. Esc, a click on it, or clicking anywhere else closes it (an unpinned
@@ -254,8 +256,8 @@ white documents.
 - **Motion:** every animation is between 90 and 260 ms and eased. The panel grows out of the corner the
   orb was in; ticks draw themselves; rows glide when reordered (FLIP); the tab underline slides.
   Nothing loops, so nothing animates while you're not interacting. Things with a drop shadow (the peek,
-  the undo toast) slide and fade as a picture of themselves (`Controls/StandIn`): drawing in software,
-  WPF would blur the shadow again for every frame. See "Smooth enough, in software" below.
+  the undo toast, the bubble beside the orb) slide and fade as a picture of themselves (`Controls/StandIn`):
+  drawing in software, WPF would blur the shadow again for every frame. See "Smooth enough, in software" below.
 - **Hover-only chrome:** row actions appear in a small floating toolbar on hover, so they never take
   width from your text.
 
@@ -379,7 +381,8 @@ apart, how many of the display's refreshes show no new frame, and the CPU it tak
   Animations that redraw the whole panel (opening it, a tab, Settings) are bound by the pixels, about
   13 ms a frame for a 510 × 930 pixel panel whatever is in it, so 65–85 frames a second.
 - A drop shadow is blurred again for every frame in software: half the cost of the peek and the toast.
-  They now move as a picture: the peek from 75 to 145 new frames a second, both at about half the CPU.
+  They (and the bubble beside the orb) now move as a picture: the peek from 75 to 145 new frames a second,
+  both at about half the CPU.
 - Not worth it: the GPU renderer (`TACK_GPU=1`) doubles private memory (49 → 108 MB folded) and opens the
   panel no faster; `Timeline.DesiredFrameRate` set to the display's rate makes every animation *less* smooth
   (WPF then waits on a coarse timer between frames: small ones drop from 110–140 to about 90); waiting for

@@ -90,7 +90,11 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
         SearchPage.Opened += JumpTo;
         SearchPage.Counted += text => Announce(text, "Tack.Search");
         SearchPage.Chosen += text => Announce(text, "Tack.Search");
-        SearchPage.CountChanged += text => SearchCount.Text = text;
+        SearchPage.CountChanged += text =>
+        {
+            SearchCount.Text = text;
+            SearchBox.Padding = new Thickness(30, 0, string.IsNullOrEmpty(text) ? 12 : 44, 0);
+        };
 
         _undo.Settled += () => UndoSettled?.Invoke();
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
@@ -557,6 +561,7 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
         SearchPage.Visibility = Visibility.Collapsed;
         SearchBar.Visibility = Visibility.Collapsed;
         SearchCount.Text = "";
+        SearchBox.Padding = new Thickness(30, 0, 12, 0);
         Tabs.Visibility = Visibility.Visible;
         var page = CurrentPage;
         page.Visibility = Visibility.Visible;

@@ -30,6 +30,7 @@ internal static class SearchScreenTests
         yield return ("search on screen: the box sits over the tabs, inside the header, and opening it moves nothing else", BoxInHeader);
         yield return ("search on screen: results grouped Tasks, Done, Notes, each with its space while there are spaces, the match picked out", Grouped);
         yield return ("search on screen: arrows choose a row (staying at either end), Enter opens it; no space labels with only Main", Keys);
+        yield return ("search on screen: at the narrowest panel, a match stays in sight beside a \"Now · Work\" caption; the box's placeholder fits", NarrowInSight);
         yield return ("search on screen: before typing a hint, when nothing matches a hint that says so", Hints);
         yield return ("search on screen: results are a named list of named groups of named items, for screen readers", Automation);
         yield return ("search on screen: a group draws 50 rows and Show more the rest, quickly, over 10,000 tasks and 500 long notes", ShowMore);
@@ -168,6 +169,47 @@ internal static class SearchScreenTests
                 Check.True(r.Right <= list.ActualWidth + 0.5, $"'{text.Text}' inside the results ({r.Right:F1} of {list.ActualWidth:F1})");
             }
             Shots(ws, view, "clash");
+            Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+        });
+    }
+
+    private static void NarrowInSight()
+    {
+        Ui.Run(errors =>
+        {
+            var ws = new Workspace(new Settings(), new Hlc("search09"), WorkspaceData.Empty);
+            var work = ws.AddSpace("Work");
+            ws.AddTask("Review the coordination clashes", asNow: true, space: work.Id);
+            ws.AddTask("Plan", space: work.Id);
+            var view = new SpaceView(ws);
+            foreach (double width in new[] { Settings.MinWidth, Settings.DefaultWidth })
+            {
+                var search = new SearchView { Width = width, Height = 300 };
+                search.Initialize(ws, view);
+                using var window = Ui.Host(search);
+                Ui.Pump();
+                search.SetQuery("clash");
+                search.Flush();
+                Ui.Pump();
+                var row = search.Rows.Single();
+                Check.Equal("Now · Work", row.Meta, $"{width}: the task in focus, in Work");
+                var list = (ListBox)search.FindName("Results");
+                var line = Ui.Descendants<TextBlock>(list).First(t => t.Name == "Line" && t.IsVisible);
+                var dpi = VisualTreeHelper.GetDpi(line).PixelsPerDip;
+                var upToMatch = new FormattedText(row.Line.Before + row.Line.Match, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                    new Typeface(line.FontFamily, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal), line.FontSize, Brushes.Black, dpi);
+                Check.True(upToMatch.WidthIncludingTrailingWhitespace <= line.ActualWidth,
+                    $"{width}: the match is in sight ('{row.Line.Before}[{row.Line.Match}]' is {upToMatch.WidthIncludingTrailingWhitespace:F0} DIP, the line has {line.ActualWidth:F0})");
+            }
+
+            // The box: until there's a count, its placeholder has the room the count would take.
+            foreach (double width in new[] { Settings.MinWidth, Settings.DefaultWidth })
+            {
+                var header = Header(width);
+                using var window = Ui.Host(header);
+                var box = (TextBox)header.FindName("SearchBox");
+                Check.Equal(new Thickness(30, 0, 12, 0), box.Padding, $"{width}: no room kept for a count before there is one");
+            }
             Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
         });
     }
