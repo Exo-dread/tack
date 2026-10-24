@@ -47,7 +47,16 @@ public partial class SettingsView : UserControl
         {
             GlassToggle.IsEnabled = false;
             GlassHint.Text = "Frosted glass needs Windows 11 (version 22H2 or later).";
+            BackgroundSlider.IsEnabled = false;
+            BackgroundHint.Text = "A see-through background needs Windows 11 (version 22H2 or later).";
+            BackgroundHint.Visibility = Visibility.Visible;
         }
+        // With glass and without, the slider shows (and sets) a value of its own.
+        ws.Settings.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(Settings.Glass) or nameof(Settings.PanelBackgroundGlass) or nameof(Settings.PanelBackgroundSolid)) ShowBackground();
+        };
+        BackgroundSlider.SizeChanged += (_, _) => PlaceBackgroundTick();
 
         // Swatches show the shade the current theme really uses, so rebuild them when it changes.
         ThemeManager.Changed += () =>
@@ -74,6 +83,67 @@ public partial class SettingsView : UserControl
             choice.IsChecked = (string)choice.Tag == _ws.Settings.Theme;
         foreach (RadioButton swatch in Swatches.Children)
             swatch.IsChecked = string.Equals((string)swatch.Tag, _ws.Settings.Accent, StringComparison.OrdinalIgnoreCase);
+        ShowBackground();
+    }
+
+    // ---- Panel background: solid to see-through (only the background; text and controls stay as they are) ----
+
+    private bool _showingBackground;
+
+    /// <summary>Frosted glass is what the panel shows (and so what the slider is about).</summary>
+    private bool BackgroundIsGlass => _ws.Settings.Glass && WindowEffects.SupportsSystemBackdrop;
+
+    /// <summary>
+    /// The slider for the panel as it is: with glass, from a solid tint to the bare glass; without, from solid
+    /// to as see-through as stays readable. Left is solid. At the default it rests on the tick.
+    /// </summary>
+    private void ShowBackground()
+    {
+        var s = _ws.Settings;
+        bool glass = BackgroundIsGlass;
+        double min = glass ? Settings.MinGlassBackground : Settings.MinSolidBackground;
+        double? value = glass ? s.PanelBackgroundGlass : s.PanelBackgroundSolid;
+        _showingBackground = true;
+        try
+        {
+            BackgroundSlider.Maximum = 1 - min;
+            BackgroundSlider.Value = 1 - (value ?? _panel.DefaultBackground(glass));
+        }
+        finally
+        {
+            _showingBackground = false;
+        }
+        BackgroundReset.Visibility = value == null ? Visibility.Hidden : Visibility.Visible;
+        AutomationProperties.SetHelpText(BackgroundSlider, value == null ? "Default" : $"{Math.Round(value.Value * 100)}% solid");
+        PlaceBackgroundTick();
+    }
+
+    /// <summary>The tick under the slider where the default is (the thumb's centre, were it there).</summary>
+    private void PlaceBackgroundTick()
+    {
+        const double thumb = 18;
+        double span = BackgroundSlider.Maximum - BackgroundSlider.Minimum;
+        double at = span > 0 ? (1 - _panel.DefaultBackground(BackgroundIsGlass)) / span : 0;
+        double x = thumb / 2 + Math.Clamp(at, 0, 1) * Math.Max(0, BackgroundSlider.ActualWidth - thumb);
+        BackgroundTick.Margin = new Thickness(Math.Round(x - BackgroundTick.Width / 2), 0, 0, -3);
+    }
+
+    /// <summary>Live while you drag: the panel behind changes as the slider moves. Close to the default is the default.</summary>
+    private void BackgroundSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_showingBackground || _ws == null) return;
+        bool glass = BackgroundIsGlass;
+        double opacity = Math.Round(1 - e.NewValue, 2);
+        double? value = Math.Abs(opacity - _panel.DefaultBackground(glass)) < 0.015 ? null : opacity;
+        if (glass) _ws.Settings.PanelBackgroundGlass = value;
+        else _ws.Settings.PanelBackgroundSolid = value;
+    }
+
+    private void BackgroundReset_Click(object sender, RoutedEventArgs e)
+    {
+        if (BackgroundIsGlass) _ws.Settings.PanelBackgroundGlass = null;
+        else _ws.Settings.PanelBackgroundSolid = null;
+        BackgroundSlider.Focus();
     }
 
     private void Theme_Checked(object sender, RoutedEventArgs e)

@@ -39,7 +39,8 @@ internal static class ThemeManager
         var palettes = Application.Current.Resources.MergedDictionaries;
         palettes[0] = new ResourceDictionary
         {
-            Source = new Uri($"pack://application:,,,/Themes/{(light ? "Light" : "Dark")}.xaml", UriKind.Absolute),
+            // Named by assembly, so it also loads when Tack runs inside another process (tests/Tack.Tests).
+            Source = new Uri($"pack://application:,,,/Tack;component/Themes/{(light ? "Light" : "Dark")}.xaml", UriKind.Absolute),
         };
         IsLight = light;
         _applied = true;

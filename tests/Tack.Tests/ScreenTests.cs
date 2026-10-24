@@ -213,7 +213,7 @@ internal static class ScreenTests
         var peek = new PeekWindow();
         peek.Fill(view, "");
         var bubble = (Border)peek.FindName("Bubble");
-        peek.Content = null;
+        ((Panel)peek.FindName("Root")).Children.Remove(bubble);
         using (Ui.Host(new Grid { Children = { bubble }, HorizontalAlignment = HorizontalAlignment.Left }))
         {
             var texts = Ui.Descendants<TextBlock>(bubble).Where(t => t.IsVisible && t.Text.Length > 0).ToList();

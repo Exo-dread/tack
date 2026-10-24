@@ -6,26 +6,31 @@
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize" ShowInTaskbar="False" ShowActivated="False" Topmost="True"
         UseLayoutRounding="True" Focusable="False" IsHitTestVisible="False">
-    <!-- Margin leaves room for the shadow inside the layered window. -->
-    <Border x:Name="Bubble" Margin="12" Padding="12,8,14,9" CornerRadius="10" MaxWidth="300"
-            Background="{DynamicResource FlyoutBrush}" BorderBrush="{DynamicResource StrokeStrongBrush}" BorderThickness="1"
-            RenderTransformOrigin="0.5,0.5">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.45" Color="Black" />
-        </Border.Effect>
-        <StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <Ellipse x:Name="Dot" Width="6" Height="6" Fill="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                <TextBlock x:Name="Label" Style="{StaticResource Overline}" Text="NOW" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+    <!-- Margin leaves room for the shadow inside the layered window. While the bubble fades in or out, a picture
+         of it (shadow and all) stands in for it: software rendering would otherwise blur the shadow anew
+         every frame. -->
+    <Grid x:Name="Root">
+        <Border x:Name="Bubble" Margin="12" Padding="12,8,14,9" CornerRadius="10" MaxWidth="300"
+                Background="{DynamicResource FlyoutBrush}" BorderBrush="{DynamicResource StrokeStrongBrush}" BorderThickness="1"
+                RenderTransformOrigin="0.5,0.5">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.45" Color="Black" />
+            </Border.Effect>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse x:Name="Dot" Width="6" Height="6" Fill="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBlock x:Name="Label" Style="{StaticResource Overline}" Text="NOW" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <TextBlock x:Name="TaskText" Margin="0,3,0,0" FontFamily="{StaticResource UiFont}" FontSize="13.5" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" MaxHeight="58" TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="Summary" Margin="0,3,0,0" Style="{StaticResource Caption}" />
+                <!-- Once there are spaces: the space's name, which gives way (with an ellipsis) before its counts do. -->
+                <StackPanel x:Name="SpaceSummary" Orientation="Horizontal" Margin="0,3,0,0" Visibility="Collapsed">
+                    <TextBlock x:Name="SpaceName" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="SpaceCounts" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
             </StackPanel>
-            <TextBlock x:Name="TaskText" Margin="0,3,0,0" FontFamily="{StaticResource UiFont}" FontSize="13.5" FontWeight="SemiBold"
-                       Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" MaxHeight="58" TextTrimming="CharacterEllipsis" />
-            <TextBlock x:Name="Summary" Margin="0,3,0,0" Style="{StaticResource Caption}" />
-            <!-- Once there are spaces: the space's name, which gives way (with an ellipsis) before its counts do. -->
-            <StackPanel x:Name="SpaceSummary" Orientation="Horizontal" Margin="0,3,0,0" Visibility="Collapsed">
-                <TextBlock x:Name="SpaceName" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" />
-                <TextBlock x:Name="SpaceCounts" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" />
-            </StackPanel>
-        </StackPanel>
-    </Border>
+        </Border>
+        <Image x:Name="Picture" Stretch="None" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed" />
+    </Grid>
 </Window>

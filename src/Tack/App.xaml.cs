@@ -26,11 +26,7 @@ public partial class App : Application
             return;
         }
 
-        // Tack's UI is small and mostly still, so WPF's software renderer is just as smooth here
-        // while skipping the GPU driver stack, which roughly halves private memory. DWM still
-        // composites the acrylic on the GPU. Set TACK_GPU=1 to compare.
-        if (Environment.GetEnvironmentVariable("TACK_GPU") != "1")
-            System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+        ConfigureRendering();
 
         string folder = StateStore.ResolveFolder();
         _store = new StateStore(folder);
@@ -58,6 +54,16 @@ public partial class App : Application
 
         bool launchedAtLogin = e.Args.Contains("--startup", StringComparer.OrdinalIgnoreCase);
         _shell.Start(openPanel: firstRun && !launchedAtLogin);
+    }
+
+    /// <summary>How WPF draws Tack, before any window exists (also used by the frame-timing harness in tests/Tack.Tests).</summary>
+    internal static void ConfigureRendering()
+    {
+        // Tack's UI is small and mostly still, so WPF's software renderer is just as smooth here
+        // while skipping the GPU driver stack, which roughly halves private memory. DWM still
+        // composites the acrylic on the GPU. Set TACK_GPU=1 to compare.
+        if (Environment.GetEnvironmentVariable("TACK_GPU") != "1")
+            System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
     }
 
     protected override void OnExit(ExitEventArgs e)

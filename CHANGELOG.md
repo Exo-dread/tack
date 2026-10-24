@@ -20,6 +20,19 @@
   task), it now glides all the way instead of jumping most of the way and then settling. When you tick,
   delete or move a task, the panel shrinks with the row as it folds away and stops when the row is gone,
   with no strip of empty glass trailing behind.
+- **Panel background.** Settings → Look (formerly Appearance) has a slider from solid to see-through for
+  the panel's background. Only the background changes: text, icons and controls stay as they are. With
+  frosted glass it sets how much of the glass shows through the tint; without, how much of what's behind
+  the panel shows through, never so much that text gets hard to read. The tick marks the look Tack has
+  always had, and Default goes back to it.
+- **Fade when idle** (Settings → Look, off by default). The orb, and the panel while it's pinned, fade to
+  half after a few seconds without the pointer, so you can see more of what's behind them, and come back
+  the moment you point at them. Never while you're typing in the panel or a menu or the undo toast is
+  up. With Windows' animation effects off, they fade without the animation.
+- **Smoother peek and toast.** The peek you get when you hover the orb now slides in at the display's
+  own pace (on a 100 Hz display, from about 75 new frames a second to well over 100), and both it and
+  the undo toast take about half the work, so they stay smooth when the PC is busy: while they move, a
+  picture of them stands in, so their shadow isn't drawn again for every frame.
 
 ## 1.6.1 (2026-10-24)
 

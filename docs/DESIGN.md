@@ -125,6 +125,22 @@ changes (tab switch, Settings, a task added or finished) the panel glides to its
 the corner nearest the orb held perfectly still, and is nudged back on screen if it would spill over the
 edge. Sizes and that home position survive restarts.
 
+### Look: a background you can see through, and a Tack that fades back
+Two optional touches in Settings → Look, both leaving Tack exactly as it was until you use them:
+
+- **Panel background, solid to see-through.** One slider, and only the background moves: text, icons and
+  controls never fade, so they stay crisp and readable. With frosted glass it's the tint over the acrylic
+  (from a solid tint to the bare glass, whose blur keeps text readable); without glass, what's behind the
+  panel shows through unblurred, so it stops at 80%, where text keeps 4.5:1 contrast (secondary text 3:1)
+  over a white or a black window, in either theme. Each mode keeps its own value, the default is a tick on
+  the slider (close to it *is* the default), and the default writes nothing to tack.json.
+- **Fade when idle** (off by default). The orb, and the panel while it's pinned, fade to half once the
+  pointer has been away for three seconds, and come back the moment it returns or the panel gets the
+  focus. Never while the panel is in use, a menu or the undo toast is up, or you drag or resize. A faded
+  panel is truly see-through (half a solid panel: frosted glass can't be half there), so you can see the
+  model behind it. Nothing runs while idle: a one-shot timer starts when the pointer leaves, and the fade
+  is one short animation, none if Windows' animation effects are off.
+
 ### Light and dark
 Tack follows Windows' light/dark app mode by default (and switches live when Windows does), or can be set
 to either. Light mode is not an inverted dark mode: it uses deeper shades of each accent so white ticks
@@ -136,13 +152,19 @@ white documents.
 - **Glass:** the official Windows 11 system backdrop (Acrylic), with a light tint on top (dark or pale,
   per theme) for contrast over busy or bright windows. Turn it off for a solid, high-contrast surface. Windows normally
   drops acrylic to a flat colour when a window is inactive; a pinned panel is inactive most of the time,
-  so Tack keeps its frame drawn as active (see `WindowEffects.KeepFrameActive`).
+  so Tack keeps its frame drawn as active (see `WindowEffects.KeepFrameActive`). The tint (or the solid
+  surface) can be made more see-through in Settings → Look. Without glass, DWM fills a frame extended
+  under the panel with the theme's solid colour, so a see-through or faded panel is *clear* instead: no
+  frame, and blur-behind on an empty region, which since Windows 8 blurs nothing but has DWM honour the
+  window's own transparency (`WindowEffects.SetClear`).
 - **Shape:** native rounded corners and shadow from DWM, a 1 px system border, 7–10 px radii inside.
 - **Type:** Segoe UI Variable (falling back to Segoe UI), 13.5 px body, a semibold display weight for the
   focus task, small-caps style overlines for labels.
 - **Motion:** every animation is between 90 and 260 ms and eased. The panel grows out of the corner the
   orb was in; ticks draw themselves; rows glide when reordered (FLIP); the tab underline slides.
-  Nothing loops, so nothing animates while you're not interacting.
+  Nothing loops, so nothing animates while you're not interacting. Things with a drop shadow (the peek,
+  the undo toast) slide and fade as a picture of themselves (`Controls/StandIn`): drawing in software,
+  WPF would blur the shadow again for every frame. See "Smooth enough, in software" below.
 - **Hover-only chrome:** row actions appear in a small floating toolbar on hover, so they never take
   width from your text.
 
@@ -152,6 +174,7 @@ white documents.
 src/Tack
 ├── App.xaml(.cs)          Startup: single instance, data folder, first-run seeding, crash safety
 ├── AppShell.cs            The coordinator: orb ⇄ panel, placement, shortcut, full-screen, housekeeping
+├── IdleFade.cs            Fade when idle (off by default): one-shot timers, the orb and a pinned panel at half
 ├── Model/                 Workspace (all user state), SpaceView (what the space on show shows), Search, TaskItem, NoteSheet, Settings
 ├── Services/              StateStore (JSON persistence), FolderSync (sync through a folder), accent colour, startup, log, single instance
 ├── Sync/                  The data model shared with Tack Focus: clocks, sort keys, merges, device files, the sync engine
@@ -245,6 +268,28 @@ list sorted by key, so both apps produce the same records for the same edits.
   `%TEMP%\.net\Tack` once; shipping them beside the exe would break the one-file download.
 - **Workstation GC without the background thread**, English-only framework resources.
 - **Idle trim.** A few seconds after the panel folds, Tack runs a compacting GC and trims its working set.
+
+### Smooth enough, in software
+`dotnet run --project tests/Tack.Tests -c Release -- --frames` runs a copy of Tack in its own process on
+the real displays and times each animation frame by frame (open and fold, tabs, Settings, adding, ticking
+and deleting a task, the toast, the orb's hover and peek): how often a frame draws something new, how far
+apart, how many of the display's refreshes show no new frame, and the CPU it takes. What it found, on a
+100 Hz display at 150%:
+
+- WPF's software renderer isn't tied to the display: small animations run at 110–140 frames a second.
+  Animations that redraw the whole panel (opening it, a tab, Settings) are bound by the pixels, about
+  13 ms a frame for a 510 × 930 pixel panel whatever is in it, so 65–85 frames a second.
+- A drop shadow is blurred again for every frame in software: half the cost of the peek and the toast.
+  They now move as a picture: the peek from 75 to 145 new frames a second, both at about half the CPU.
+- Not worth it: the GPU renderer (`TACK_GPU=1`) doubles private memory (49 → 108 MB folded) and opens the
+  panel no faster; `Timeline.DesiredFrameRate` set to the display's rate makes every animation *less* smooth
+  (WPF then waits on a coarse timer between frames: small ones drop from 110–140 to about 90); waiting for
+  DWM each frame (`DwmFlush`) does too; `BitmapCache` and pictures of the whole panel cost as much as drawing it.
+- The panel's size glide (`WindowBoundsAnimator`) has to resize the window each frame, since DWM draws the
+  acrylic, shadow and corners for the window's own rectangle; it runs at the same pace as the rest.
+
+`-- --screens` takes pictures of the panel's looks as DWM shows them (over a striped window of its own),
+`-- --frames --exp …` tries the rejected options above.
 
 ## Why WPF?
 

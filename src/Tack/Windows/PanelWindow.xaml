@@ -215,20 +215,26 @@
                 <v:SettingsView x:Name="SettingsPage" Visibility="Collapsed" />
                 <v:SearchView x:Name="SearchPage" Visibility="Collapsed" />
 
-                <!-- Undo toast -->
-                <Border x:Name="Toast" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="12,0,12,14"
-                        Padding="14,6,6,6" CornerRadius="10" Visibility="Collapsed"
-                        Background="{DynamicResource FlyoutBrush}" BorderBrush="{DynamicResource StrokeStrongBrush}" BorderThickness="1">
-                    <Border.Effect>
-                        <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.4" Color="Black" />
-                    </Border.Effect>
-                    <!-- Undo first, so it keeps its room: a message too long for the panel ends in an ellipsis instead. -->
-                    <DockPanel>
-                        <Button x:Name="ToastUndo" DockPanel.Dock="Right" Style="{StaticResource TextButton}" Margin="10,0,0,0" Content="Undo" Click="ToastUndo_Click" />
-                        <TextBlock x:Name="ToastText" VerticalAlignment="Center" FontSize="12.5" Foreground="{DynamicResource TextPrimaryBrush}"
-                                   TextTrimming="CharacterEllipsis" />
-                    </DockPanel>
-                </Border>
+                <!-- Undo toast. While it slides and fades, a picture of it (shadow and all) stands in for it:
+                     software rendering would blur the shadow anew every frame. The host leaves room above the
+                     toast for its shadow, which the picture takes in. -->
+                <Grid x:Name="ToastHost" VerticalAlignment="Bottom">
+                    <Border x:Name="Toast" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="12,16,12,14"
+                            Padding="14,6,6,6" CornerRadius="10" Visibility="Collapsed"
+                            Background="{DynamicResource FlyoutBrush}" BorderBrush="{DynamicResource StrokeStrongBrush}" BorderThickness="1">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.4" Color="Black" />
+                        </Border.Effect>
+                        <!-- Undo first, so it keeps its room: a message too long for the panel ends in an ellipsis instead. -->
+                        <DockPanel>
+                            <Button x:Name="ToastUndo" DockPanel.Dock="Right" Style="{StaticResource TextButton}" Margin="10,0,0,0" Content="Undo" Click="ToastUndo_Click" />
+                            <TextBlock x:Name="ToastText" VerticalAlignment="Center" FontSize="12.5" Foreground="{DynamicResource TextPrimaryBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </DockPanel>
+                    </Border>
+                    <Image x:Name="ToastPicture" Stretch="None" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed"
+                           IsHitTestVisible="False" />
+                </Grid>
             </Grid>
         </Grid>
     </Grid>

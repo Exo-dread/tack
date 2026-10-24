@@ -208,6 +208,29 @@ internal static class NativeMethods
     [DllImport("dwmapi.dll")]
     public static extern int DwmGetColorizationColor(out uint color, [MarshalAs(UnmanagedType.Bool)] out bool opaqueBlend);
 
+    public const uint DWM_BB_ENABLE = 0x1;
+    public const uint DWM_BB_BLURREGION = 0x2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DWM_BLURBEHIND
+    {
+        public uint dwFlags;
+        [MarshalAs(UnmanagedType.Bool)] public bool fEnable;
+        public IntPtr hRgnBlur;
+        [MarshalAs(UnmanagedType.Bool)] public bool fTransitionOnMaximized;
+    }
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmEnableBlurBehindWindow(IntPtr hWnd, ref DWM_BLURBEHIND blurBehind);
+
+    // ---- gdi32 ----
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DeleteObject(IntPtr obj);
+
     // ---- shell32 ----
     [DllImport("shell32.dll")]
     public static extern UIntPtr SHAppBarMessage(uint message, ref APPBARDATA data);

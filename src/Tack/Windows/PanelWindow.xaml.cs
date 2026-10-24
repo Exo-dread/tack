@@ -21,7 +21,7 @@ namespace Tack.Windows;
 /// The expanded state: a compact acrylic panel with Tasks and Notes.
 /// It knows nothing about the orb; AppShell decides where and when it appears.
 /// </summary>
-public partial class PanelWindow : Window
+public partial class PanelWindow : Window, IFadingWindow
 {
     private const int WM_SIZING = 0x0214;
     private const int WM_ENTERSIZEMOVE = 0x0231;
@@ -164,13 +164,101 @@ public partial class PanelWindow : Window
         return IntPtr.Zero;
     }
 
-    /// <summary>Acrylic on Windows 11; an opaque surface otherwise or when the user turns glass off.</summary>
+    /// <summary>
+    /// Acrylic on Windows 11; an opaque surface otherwise or when the user turns glass off. A panel that's
+    /// see-through without glass, or faded when idle, is clear instead: nothing behind it but what's on screen.
+    /// </summary>
     public void ApplyGlass(bool glass)
     {
         if (_hwnd == IntPtr.Zero) return;
-        bool active = WindowEffects.ApplyPanelChrome(_hwnd, glass, dark: !ThemeManager.IsLight);
-        Surface.SetResourceReference(Border.BackgroundProperty, active ? "GlassTintBrush" : "SolidSurfaceBrush");
+        bool clear = WantsClear(glass);
+        // In this order (DWM drops the acrylic otherwise): no longer clear before the frame and glass come back;
+        // clear only once they're gone.
+        if (!clear && _clear) WindowEffects.SetClear(_hwnd, _clear = false);
+        _glassActive = WindowEffects.ApplyPanelChrome(_hwnd, glass, dark: !ThemeManager.IsLight, clear);
+        if (clear && !_clear) WindowEffects.SetClear(_hwnd, _clear = true);
+        ApplyBackground();
     }
+
+    private bool _glassActive;
+    private bool _clear;
+    private bool _faded;
+
+    /// <summary>
+    /// Nothing behind the panel: while faded when idle, or see-through without glass (Windows 11, where the
+    /// slider is; blur-behind itself shows a window's own transparency since Windows 8).
+    /// </summary>
+    private bool WantsClear(bool glass) =>
+        _faded || (WindowEffects.SupportsSystemBackdrop && !glass && _ws.Settings.PanelBackgroundSolid is < 1);
+
+    /// <summary>
+    /// The background under everything (Settings → Look → Panel background): the theme's tint over the glass,
+    /// or its solid surface, made as solid as the setting says. Only this layer: text and controls never fade.
+    /// At the default (no setting) it's the palette's own brush, exactly as it has always been.
+    /// </summary>
+    public void ApplyBackground()
+    {
+        string key = _glassActive ? "GlassTintBrush" : "SolidSurfaceBrush";
+        double? opacity = _glassActive ? _ws.Settings.PanelBackgroundGlass : _ws.Settings.PanelBackgroundSolid;
+        // Without the system backdrop (Windows 10) there's nothing behind the panel to show through.
+        if (opacity is not double o || !WindowEffects.SupportsSystemBackdrop)
+        {
+            Surface.SetResourceReference(Border.BackgroundProperty, key);
+            return;
+        }
+        var color = (TryFindResource(key) as SolidColorBrush)?.Color ?? Colors.Black;
+        color.A = (byte)Math.Round(o * 255);
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        Surface.Background = brush;
+    }
+
+    /// <summary>Settings → Look → Panel background moved: a new tint, or (without glass, to or from solid) a new chrome too.</summary>
+    public void BackgroundChanged()
+    {
+        if (WantsClear(_ws.Settings.Glass) != _clear) ApplyGlass(_ws.Settings.Glass);
+        else ApplyBackground();
+    }
+
+    /// <summary>
+    /// The background's opacity before you change it, with glass or without, in the current theme: the
+    /// theme's tint (about half) over the glass, solid without. Where Settings → Look's slider starts.
+    /// </summary>
+    public double DefaultBackground(bool glass) =>
+        glass && TryFindResource("GlassTintBrush") is SolidColorBrush tint ? Math.Round(tint.Color.A / 255.0, 2) : 1;
+
+    /// <summary>
+    /// Fade when idle: the whole panel at half opacity, see-through (as a solid panel at half strength: frosted
+    /// glass can't be half there), and back. Back is always at once; the fade itself eases out unless
+    /// <paramref name="animate"/> is false (Windows' animation effects are off).
+    /// </summary>
+    public void SetFaded(bool faded, bool animate)
+    {
+        if (faded == _faded) return;
+        _faded = faded;
+        if (faded)
+        {
+            ApplyGlass(_ws.Settings.Glass);
+            if (animate) Anim.Fade(Root, IdleOpacity, 320, from: 1);
+            else Anim.Set(Root, OpacityProperty, IdleOpacity);
+        }
+        else
+        {
+            Anim.Set(Root, OpacityProperty, 1);
+            ApplyGlass(_ws.Settings.Glass);
+        }
+    }
+
+    public bool IsFaded => _faded;
+
+    /// <summary>True while nothing is drawn behind the panel (see-through without glass, or faded).</summary>
+    internal bool IsClear => _clear;
+
+    /// <summary>True while the frosted glass is drawn (Windows 11, glass on, not faded).</summary>
+    internal bool IsGlassActive => _glassActive;
+
+    /// <summary>How opaque the orb and a pinned panel are while faded when idle.</summary>
+    public const double IdleOpacity = 0.5;
 
     // ---- Size: each tab remembers its own; Tasks fits its list until you resize it ----
 
@@ -796,19 +884,49 @@ public partial class PanelWindow : Window
         ToastText.Text = message;
         ToastUndo.Visibility = undo != null ? Visibility.Visible : Visibility.Collapsed;
         Toast.Visibility = Visibility.Visible;
-        Anim.Fade(Toast, 1, 140, from: 0);
-        Anim.Slide(Toast, 0, 10, 220);
+        _toastUp = true;
+        // A picture of it slides and fades in; the live toast takes over once it's still.
+        ToastStandIn.Take();
+        ToastStandIn.Stand();
+        Anim.Fade(ToastPicture, 1, 140, from: 0);
+        var (_, slide) = Anim.Transforms(ToastPicture);
+        Anim.To(slide, TranslateTransform.YProperty, 0, 220, from: 10, completed: () =>
+        {
+            if (_toastUp && ToastStandIn.IsStanding) ToastStandIn.Live(keep: true); // kept for the fade out
+        });
         _toastTimer.Stop();
         _toastTimer.Start();
+        ToastChanged?.Invoke();
     }
 
     private void HideToast()
     {
         _toastTimer.Stop();
         _undo = null;
-        if (Toast.Visibility == Visibility.Visible)
-            Anim.Fade(Toast, 0, 160, () => { if (_undo == null) Toast.Visibility = Visibility.Collapsed; });
+        if (!_toastUp) return;
+        ToastStandIn.Stand();
+        Anim.Fade(ToastPicture, 0, 160, () =>
+        {
+            if (_undo != null) return;
+            _toastUp = false;
+            ToastStandIn.Live(keep: false);
+            Toast.Visibility = Visibility.Collapsed;
+            ToastChanged?.Invoke();
+        });
     }
+
+    private bool _toastUp;
+
+    /// <summary>The toast's picture, which stands in for it while it slides and fades (see <see cref="StandIn"/>).</summary>
+    internal StandIn ToastStandIn => _toastStandIn ??= new StandIn(Toast, ToastHost, ToastPicture);
+
+    private StandIn? _toastStandIn;
+
+    /// <summary>True while the undo toast is up (the panel doesn't fade when idle meanwhile).</summary>
+    public bool IsToastShown => _toastUp;
+
+    /// <summary>Raised when the toast comes up or has gone.</summary>
+    public event Action? ToastChanged;
 
     public bool Undo()
     {

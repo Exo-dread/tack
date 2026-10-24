@@ -507,6 +507,80 @@
         </Setter>
     </Style>
 
+    <!-- Slider (Settings → Look → Panel background): a thin track, accent up to the thumb's centre. -->
+
+    <Style x:Key="SliderFill" TargetType="RepeatButton">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RepeatButton">
+                    <Grid Background="Transparent">
+                        <Border Height="4" CornerRadius="2" VerticalAlignment="Center" Background="{TemplateBinding Background}" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="SliderThumb" TargetType="Thumb">
+        <Setter Property="Width" Value="18" />
+        <Setter Property="Height" Value="18" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Grid Background="Transparent">
+                        <Ellipse Fill="{DynamicResource FlyoutBrush}" Stroke="{DynamicResource StrokeStrongBrush}" StrokeThickness="1" />
+                        <Ellipse x:Name="Dot" Width="9" Height="9" Fill="{DynamicResource AccentBrush}" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Dot" Property="Width" Value="11" />
+                            <Setter TargetName="Dot" Property="Height" Value="11" />
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="Dot" Property="Width" Value="7" />
+                            <Setter TargetName="Dot" Property="Height" Value="7" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="SettingSlider" TargetType="Slider">
+        <Setter Property="Height" Value="26" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="IsMoveToPointEnabled" Value="True" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid Background="Transparent">
+                        <Border Height="4" CornerRadius="2" Margin="9,0" VerticalAlignment="Center" Background="{DynamicResource StrokeStrongBrush}" />
+                        <Track x:Name="PART_Track">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Command="Slider.DecreaseLarge" Style="{StaticResource SliderFill}" Background="{DynamicResource AccentBrush}" Margin="9,0,-9,0" />
+                            </Track.DecreaseRepeatButton>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Command="Slider.IncreaseLarge" Style="{StaticResource SliderFill}" Background="Transparent" />
+                            </Track.IncreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource SliderThumb}" />
+                            </Track.Thumb>
+                        </Track>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Accent swatch: a coloured dot (colour in Tag) with a ring when selected. -->
     <Style x:Key="Swatch" TargetType="RadioButton">
         <Setter Property="Width" Value="26" />
