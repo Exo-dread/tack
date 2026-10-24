@@ -17,8 +17,43 @@ namespace Tack.Launcher;
 internal static class LauncherIcons
 {
     private static readonly Dictionary<string, ImageSource?> Cache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, ImageSource?> ByExtension = new(StringComparer.OrdinalIgnoreCase);
 
-    public static void Clear() => Cache.Clear();
+    public static void Clear()
+    {
+        Cache.Clear();
+        ByExtension.Clear();
+    }
+
+    /// <summary>
+    /// A kind of file's small icon (.rvt, .dwg), for recent files: by extension only, so no file is opened and no
+    /// network path is touched. Cached per extension.
+    /// </summary>
+    public static ImageSource? ForExtension(string extension)
+    {
+        string ext = extension.Trim().ToLowerInvariant();
+        if (ext.Length < 2 || ext.Length > 16 || ext[0] != '.' || ext.IndexOfAny(['\\', '/', ':', '*', '?', '"', '<', '>', '|', ' ']) >= 0) return null;
+        if (ByExtension.TryGetValue(ext, out var cached)) return cached;
+        ImageSource? icon = null;
+        try
+        {
+            var info = new SHFILEINFO();
+            IntPtr ok = SHGetFileInfo("file" + ext, FILE_ATTRIBUTE_NORMAL, ref info, (uint)Marshal.SizeOf<SHFILEINFO>(), SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES);
+            if (ok != IntPtr.Zero && info.hIcon != IntPtr.Zero)
+            {
+                try
+                {
+                    var source = Imaging.CreateBitmapSourceFromHIcon(info.hIcon, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                    source.Freeze();
+                    icon = source;
+                }
+                finally { DestroyIcon(info.hIcon); }
+            }
+        }
+        catch { /* no icon: the row still has its name */ }
+        ByExtension[ext] = icon;
+        return icon;
+    }
 
     /// <summary>A Segoe Fluent / MDL2 glyph for shortcuts without a shell icon.</summary>
     public static string Glyph(Shortcut s) => s.KindValue switch

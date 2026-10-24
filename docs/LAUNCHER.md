@@ -13,7 +13,8 @@ behaves as before, nothing extra is loaded beyond reading a settings file if one
 | **Open (gesture)** | **Shift+press** the orb and, without letting go, drag toward a shortcut (it highlights) and release. Release over nothing, over an empty position or back on the orb, and nothing happens. |
 | **Groups** | Drag onto a group and its shortcuts fan out beyond it; carry on to one and release. Releasing on the group itself just leaves it open. |
 | **Choose a display** | Keep dragging *past* an app or folder (or rest on it a moment) and a small map of your displays appears; drag onto one and release. With clicks: right-click a shortcut, or rest on it. Shortcuts can also always ask, or remember a display (Settings). |
-| **Keyboard** (after Shift+click) | Arrows/Tab move, **Enter** or **Space** opens, **M**, **Shift+Enter** or the Menu key shows the displays, **1–6** (top row or number pad) open a position, **Esc** steps back and closes, **Alt+F4** closes. The display map never opens by itself while you use the keys (only when the pointer rests on a shortcut). |
+| **Recent files** (optional) | With **Settings → Launcher → Recent files** on, rest on an app a moment and the files it opened last fan out beside it (up to 8); drag onto one and release, or click it, and it opens with that app. Dragging on past the app without stopping still shows the displays. With clicks: rest on the app, or press **R**. Off by default: resting then shows the displays, as before. |
+| **Keyboard** (after Shift+click) | Arrows/Tab move, **Enter** or **Space** opens, **M**, **Shift+Enter** or the Menu key shows the displays, **R** shows an app's recent files, **1–6** (top row or number pad) open a position, **Esc** steps back and closes, **Alt+F4** closes. The display map never opens by itself while you use the keys (only when the pointer rests on a shortcut). |
 | **Narrator** | Each shortcut and display is a button with its name and what it opens; the keyboard focus follows the highlight, and messages ("can't be found", "Opening…") are read out. |
 
 Shift+click and Shift+drag are told apart by movement only: a press that never moves more than 7 DIPs
@@ -26,11 +27,12 @@ no framework, no change to tasks, notes, tack.json or sync.
 
 | File | What |
 |---|---|
-| `Core/` | Platform-neutral and unit-tested (`tests/Tack.Tests/LauncherTests.cs`): config and `launcher.json` (`LauncherConfig`, `LauncherConfigFile`), shortcut rules (`ShortcutRules`), layout (`RadialLayout`, `LauncherScene`), the interaction state machine (`LauncherSession`) and window-placement maths (`Placement`). |
+| `Core/` | Platform-neutral and unit-tested (`tests/Tack.Tests/LauncherTests.cs`, `LauncherRecentsTests.cs`): config and `launcher.json` (`LauncherConfig`, `LauncherConfigFile`), shortcut rules (`ShortcutRules`), layout (`RadialLayout`, `LauncherScene`), the interaction state machine (`LauncherSession`), window-placement maths (`Placement`) and picking an app's recent files from its lists (`RecentFiles`). |
 | `LauncherModule.cs` | The controller: settings, opening/closing the window, routing input, launching. Every entry point catches its own errors: a launcher failure is logged, the launcher closes, Tack carries on. |
 | `RadialWindow.cs` | The launcher window. Created when opened and **closed** (not hidden) when closed. Draws what the session says, forwards input. |
 | `LauncherDesktop.cs` | Windows side: display enumeration, `ShellExecute` launching, and best-effort window placement (`WindowPlacer`). |
-| `LauncherIcons.cs` | Shell icons for programs and folders (cached per path); glyphs for websites and groups. |
+| `LauncherRecents.cs` | Windows side of recent files: Jump Lists (`IApplicationDocumentLists`), the Start menu's app IDs, Store apps' execution aliases, the registry, read on a background thread while the launcher opens. |
+| `LauncherIcons.cs` | Shell icons for programs and folders (cached per path), and for kinds of file (by extension); glyphs for websites and groups. |
 | `LauncherSettingsView.cs` | Settings → Launcher: the switch, six positions, a compact editor. |
 
 Hooks in existing code: `OrbWindow` hands a press to the launcher only when it's on **and** Shift is
@@ -81,6 +83,46 @@ keeps Windows busy for 20 s or more, and Tack's orb, panel and launcher must not
 shortcuts start within a moment, and the launcher then closes (or says why it couldn't open). After 0.4 s it
 says "Opening …" and can be dismissed (Esc, a click elsewhere); a failure that arrives after that is logged.
 
+### Recent files (optional, off by default)
+
+An app shortcut can show the files that app opened last, so a model is one gesture away: Shift+drag to Revit,
+rest a moment, drag onto the model, let go.
+
+- **Where they come from**, best first, up to 8 that are there:
+  1. **The app's Jump List**, the list Windows keeps per app (`IApplicationDocumentLists`, read-only). It's kept
+     under the app's AppUserModelID, which Tack finds from the program the shortcut starts: the Start menu entry
+     for that very program (`shell:AppsFolder`: Revit, Navisworks and AutoCAD get `Microsoft.AutoGenerated.{…}`
+     IDs from their Start menu shortcuts), a Store app's ID through its execution alias (`notepad.exe` → the new
+     Notepad), the ID an app sets itself for another copy of it (VS Code installed for everyone and for you), and
+     last the ID Windows makes from the program's path.
+  2. **The app's own list**, when the Jump List gives fewer than 8: Revit's `Revit.ini` (`[Recent File List]`,
+     in `%APPDATA%\Autodesk\Revit\Autodesk Revit 2024\`), AutoCAD's and Navisworks' `Recent File List` in the
+     registry (`HKCU\Software\Autodesk\AutoCAD\R25.1\ACAD-…\`, `HKCU\Software\Autodesk\Navisworks Manage\24.0\`).
+     Each is matched to the release installed in the shortcut's program folder (`AcadLocation`, Navisworks'
+     `Location`), so Revit 2024 never shows Revit 2022's files.
+- **When**: read each time the launcher opens, on one short-lived background thread, and only then: no polling,
+  no file watching, nothing cached between openings except the Start menu's app list (about a second to read;
+  kept, and read again after 30 minutes, on an opening). Only with the option on, and only for app shortcuts
+  that point at a program (`.exe`). Nothing is written anywhere, and nothing comes from synced data.
+- **What's shown**: full local or network paths to documents that exist. Entries that aren't (programs, scripts,
+  shortcuts, web or cloud addresses like Revit's `cld://`, device paths, `..`, line breaks) are dropped: these lists
+  can be written by any program you run. Files on network shares aren't checked (Tack never contacts a server by
+  itself; Windows says so if one has gone). If Windows is set not to keep recently opened items (Settings →
+  Personalization → Start, or the policy), there are none, from any list.
+- **Gestures**: resting on an app with recent files (260 ms dragging, 550 ms with clicks) shows them instead of the
+  display picker; dragging on past the app *without* resting still opens the picker, and so does right-click. An
+  app with none offers the picker after the rest, as before. While the card is out, passing over a neighbouring
+  shortcut doesn't put it away (as with an open group); resting on the neighbour, or heading back toward the orb,
+  does. Releasing on the app itself opens the app. Keys: **R** shows them, arrows move, **Enter** opens, **M**
+  chooses a display, **Esc** steps back.
+- **Opening one**: with that app, through the same rules as the app itself. Normally the app's program is started
+  with the file as its own argument, after the shortcut's arguments (never through a command line), so a Revit 2024
+  model opens in Revit 2024 even where `.rvt` files open in Revit 2022. When Windows opens that kind of file with
+  that very program anyway, the file itself is opened instead, which lets a running copy take it (AutoCAD with
+  `.dwg`). It follows the shortcut's display choice: a remembered display, or the picker if the shortcut asks.
+- **The card**: a list (icon, name, extension) placed like the display picker, beyond the app and clear of the
+  orb; its caption names the app, then the highlighted file's folder. The app keeps an accent ring while it's out.
+
 ### Display targeting (best effort)
 
 - **Displays**: `EnumDisplayMonitors` + `GetMonitorInfo` (bounds, work area, device name) +
@@ -122,6 +164,9 @@ says "Opening …" and can be dismissed (Esc, a click elsewhere); a failure that
   read with `GetAsyncKeyState` rather than a keyboard hook). Both end when it closes.
 - **After a display-targeted launch**: the two WinEvent hooks and three one-shot timers above, for at most
   15 s (60 s with a splash screen), then nothing.
+- **Recent files on**: while opening, one background thread reads the app shortcuts' lists and ends (typically
+  0.1–0.3 s; up to about a second more the first time, for the Start menu's app list). Kept while closed: that app
+  list (a few tens of KB) and one small icon per kind of file shown.
 - No network access, no usage tracking, no file indexing, no tray icon. Icons come from the shell; websites
   get a globe glyph rather than a downloaded favicon.
 
@@ -144,3 +189,8 @@ says "Opening …" and can be dismissed (Esc, a click elsewhere); a failure that
   opened.
 - The launcher stays on the orb's monitor; it doesn't spill onto a neighbouring display.
 - Icons are the shell's 32 px icons, drawn at 22 DIPs: slightly soft above 150% scaling.
+- Recent files: an app that keeps no Jump List and no list Tack knows shows none. Revit's cloud models (`cld://`)
+  aren't files on this PC and aren't shown. A file that has moved to another drive letter (a Google Drive or
+  network drive remapped) isn't found under its old path. Opening a `.dwg` with `acad.exe` while AutoCAD is already
+  open starts a second AutoCAD, unless `.dwg` files open with that AutoCAD (then the running one takes it).
+  Shortcuts that point at a `.lnk` don't show recent files: point them at the program.

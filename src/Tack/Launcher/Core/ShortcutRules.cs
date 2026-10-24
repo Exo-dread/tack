@@ -8,9 +8,12 @@ internal interface IFileProbe
     bool FileExists(string path);
     bool DirectoryExists(string path);
     string ExpandEnvironment(string path);
+
+    /// <summary>The program Windows opens a document with (its default "open"), as a full path; null when unknown.</summary>
+    string? DefaultProgramFor(string document) => null;
 }
 
-internal sealed class RealFileProbe : IFileProbe
+internal class RealFileProbe : IFileProbe
 {
     public static readonly RealFileProbe Instance = new();
 
@@ -81,32 +84,75 @@ internal static class ShortcutRules
 
             default:
             {
-                string? path = CleanPath(s.Target, probe, out problem, what: "program");
-                if (path == null) return null;
-                string ext = WinPath.Extension(path);
-                if (!AppExtensions.Contains(ext))
-                {
-                    problem = "Choose a program (.exe) or a shortcut (.lnk).";
-                    return null;
-                }
-                string? args = s.Arguments;
-                if (args != null && HasControlChars(args, allowTab: true)) { problem = "The arguments contain line breaks."; return null; }
-                if (args != null && args.Length > LauncherConfig.MaxArguments) { problem = "The arguments are too long."; return null; }
-
-                if (WinPath.IsFullyQualified(path))
-                {
-                    if (!probe.FileExists(path)) { problem = "This program can't be found. Was it moved or uninstalled?"; return null; }
-                    string? dir = WinPath.Directory(path);
-                    return new LaunchPlan(path, args, dir, ext == ".exe" ? WinPath.FileName(path) : null, CanPlace: ext is ".exe" or ".lnk");
-                }
-                // A bare program name (notepad.exe, code.exe): Windows finds it through App Paths and PATH.
-                if (ext == ".exe" && path.IndexOfAny(['\\', '/', ':']) < 0)
-                    return new LaunchPlan(path, args, null, path, CanPlace: true);
-
-                problem = "Use the program's full path, like C:\\Program Files\\App\\app.exe.";
-                return null;
+                var app = AppPlan(s, probe, out problem);
+                return app != null && s.Document != null ? DocumentPlan(app, s.Document, probe, out problem) : app;
             }
         }
+    }
+
+    private static LaunchPlan? AppPlan(Shortcut s, IFileProbe probe, out string? problem)
+    {
+        string? path = CleanPath(s.Target, probe, out problem, what: "program");
+        if (path == null) return null;
+        string ext = WinPath.Extension(path);
+        if (!AppExtensions.Contains(ext))
+        {
+            problem = "Choose a program (.exe) or a shortcut (.lnk).";
+            return null;
+        }
+        string? args = s.Arguments;
+        if (args != null && HasControlChars(args, allowTab: true)) { problem = "The arguments contain line breaks."; return null; }
+        if (args != null && args.Length > LauncherConfig.MaxArguments) { problem = "The arguments are too long."; return null; }
+
+        if (WinPath.IsFullyQualified(path))
+        {
+            if (!probe.FileExists(path)) { problem = "This program can't be found. Was it moved or uninstalled?"; return null; }
+            string? dir = WinPath.Directory(path);
+            return new LaunchPlan(path, args, dir, ext == ".exe" ? WinPath.FileName(path) : null, CanPlace: ext is ".exe" or ".lnk");
+        }
+        // A bare program name (notepad.exe, code.exe): Windows finds it through App Paths and PATH.
+        if (ext == ".exe" && path.IndexOfAny(['\\', '/', ':']) < 0)
+            return new LaunchPlan(path, args, null, path, CanPlace: true);
+
+        problem = "Use the program's full path, like C:\\Program Files\\App\\app.exe.";
+        return null;
+    }
+
+    /// <summary>
+    /// One of an app's recent files, opened with that app: the program with the file as its own argument (after the
+    /// shortcut's arguments), so a Revit 2024 model opens in Revit 2024 even where .rvt files open in Revit 2022.
+    /// When Windows opens that kind of file with this very program anyway, the file itself is opened instead, so a
+    /// copy that's already running can take it (AutoCAD). Programs, scripts and shortcuts are never opened this way.
+    /// </summary>
+    private static LaunchPlan? DocumentPlan(LaunchPlan app, string document, IFileProbe probe, out string? problem)
+    {
+        problem = null;
+        if (WinPath.Extension(app.FileName) != ".exe")
+        {
+            problem = "Recent files open with a program (.exe).";
+            return null;
+        }
+        string? file = RecentFiles.Clean(document);
+        if (file == null)
+        {
+            problem = "Tack can't open this file from here.";
+            return null;
+        }
+        if (!probe.FileExists(file))
+        {
+            problem = "This file can't be found. Was it moved or deleted?";
+            return null;
+        }
+        string? handler = null;
+        try { handler = probe.DefaultProgramFor(file); }
+        catch { /* not known: open it with the program */ }
+        if (handler != null && WinPath.IsFullyQualified(app.FileName) &&
+            string.Equals(handler.Trim().Trim('"'), app.FileName, StringComparison.OrdinalIgnoreCase))
+            return new LaunchPlan(file, null, WinPath.Directory(file), app.ExpectedImage, app.CanPlace);
+
+        // A document path never contains a quote (that's refused), so in quotes it stays one argument.
+        string quoted = "\"" + file + "\"";
+        return app with { Arguments = string.IsNullOrEmpty(app.Arguments) ? quoted : app.Arguments + " " + quoted };
     }
 
     /// <summary>An http(s) address, adding https:// when the user typed just a host ("github.com").</summary>

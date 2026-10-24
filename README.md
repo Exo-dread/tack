@@ -45,7 +45,9 @@ and gets out of the way the moment you're done.
   F5 stamps the time, and Ctrl+Enter turns a line into a task.
 - **A launcher, if you want one.** Turn it on in Settings → Launcher, then Shift+click the orb for a ring
   of your own shortcuts (apps, folders, websites, groups), or Shift+drag to one and let go. Drag on past an
-  app to choose the display it opens on. It's off by default, and while it's off nothing changes.
+  app to choose the display it opens on. Turn on **Recent files** and resting on an app shows the files it
+  opened last (from its Jump List, or Revit's, AutoCAD's and Navisworks' own lists), to open one with that app.
+  It's off by default, and while it's off nothing changes.
 - **Windows 11 glass, light or dark.** Native acrylic, rounded corners, your accent colour, smooth and
   short animations. Follows Windows' light/dark mode, or pick one. Crisp on every monitor, at any scaling.
 - **Sized to fit.** The Tasks panel grows and shrinks with your list (then scrolls), Notes keeps its own
