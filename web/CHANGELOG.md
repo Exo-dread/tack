@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+Search, the same as Tack for Windows', and sharing to Tack from any app on Android.
+
 - **Search.** Tap the search button beside Settings (on a phone), or press **Ctrl+F** (⌘F), and type:
   open tasks, finished tasks and notes from every space are listed as you type, grouped Tasks, Done
   and Notes, each with its space while you have spaces. Case and accents don't matter, and a note
@@ -15,6 +17,8 @@
   paste a list (up to 10,000 lines). Whatever was shared stays on the device and is only ever kept
   as task text. Android may take a day to add Tack Focus to the share sheet after the update;
   reinstalling adds it at once. iPhone doesn't let web apps receive shares.
+- Tasks made on a PC by dropping something onto Tack's orb, and sheets holding snippets, arrive here
+  as their text, as always: the files, links, emails and pictures behind them stay on that PC.
 
 ## 0.4.3 (24 October 2026)
 

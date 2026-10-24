@@ -62,9 +62,11 @@ and gets out of the way the moment you're done.
   size, and any size you drag to is remembered per tab. Switching tabs never makes the panel jump.
 - **Polite.** Steps aside while a full-screen video, game or slideshow is in front.
 - **On your phone too.** [Tack Focus](#tack-focus-tack-on-your-phone) puts the same tasks, notes and spaces
-  on iPhone and Android, and the two keep in step through your own OneDrive.
-- **Yours.** No account, no telemetry, and Tack never connects to anything. Your data is one readable JSON
-  file. Sync, if you turn it on, goes through your own OneDrive folder.
+  on iPhone and Android, and the two keep in step through your own OneDrive. Search works there too, and
+  on Android you can share a page, a link or some text to Tack from any app.
+- **Yours.** No account, no telemetry, and Tack never connects to anything. Your tasks and notes are one
+  readable JSON file; snippets and what you drop onto the orb stay on the PC beside it. Sync, if you turn it
+  on, goes through your own OneDrive folder.
 
 ## Download
 
@@ -188,6 +190,13 @@ Off by default. Turn it on in **Settings → Launcher** and fill its six positio
 websites or groups of up to eight. Then **Shift+click** the orb for the ring, or **Shift+drag** to a
 shortcut and let go. Plain clicks and drags of the orb are untouched. More: [docs/LAUNCHER.md](docs/LAUNCHER.md).
 
+**Recent files** (also off by default: **Settings → Launcher → Recent files**). Rest on an app for a moment
+and the files it opened last fan out beside it, up to 8 that are still there; drag onto one and let go (or
+click it) and it opens with that very app, on the display the shortcut uses. So a Revit 2024 model opens in
+Revit 2024 even where .rvt files open in another version. The files come from the app's Jump List, then
+Revit's, AutoCAD's and Navisworks' own recent lists; they're read as the launcher opens and never stored.
+Dragging on past the app without stopping still chooses a display.
+
 <p align="center">
   <img src="docs/screenshots/launcher.png" width="300" alt="The launcher in the dark theme: six shortcuts in a ring around the orb, the top one highlighted and labelled Revit 2024" />
   &nbsp;
@@ -223,9 +232,11 @@ shortcut and let go. Plain clicks and drags of the orb are untouched. More: [doc
 | Ctrl+N | Notes | New sheet |
 | Ctrl+Tab / Ctrl+Shift+Tab | Notes | Next / previous sheet |
 | Alt+1 … Alt+9 / Alt+0 | Panel | Show the 1st … 9th space / All (once there are spaces) |
+| Drag and drop | The orb | Add a task for each file, folder, email, link or line of text (up to 20) |
 | Shift+click / Shift+drag | The orb | Open the launcher / drag to a shortcut and let go (once it's on) |
 | Arrows or Tab, Enter, 1–6 | Launcher | Move between shortcuts, open one, open a position |
 | M or Shift+Enter, Esc | Launcher | Choose the display it opens on; step back, then close |
+| R, then ↑ / ↓ and Enter | Launcher | Show the app's recent files, open one (once Recent files is on) |
 
 ## Your data
 
@@ -262,12 +273,13 @@ of native WPF libraries into `%TEMP%\.net\Tack` on first launch; it's safe to de
 **[tackfocus.app](https://tackfocus.app)** is Tack's tasks, notes and spaces as an installable web app for
 iPhone, Android and any browser. Open it and add it to your home screen; there's nothing to download. It
 works offline, keeps everything on the device, and new versions arrive by themselves when you open it.
-On Android, an installed Tack Focus is in the share sheet: share a page, a link or some text from any app
-and it becomes a task, with Undo. Turn on sync in both apps and they keep each other up to date through a
-folder in your own OneDrive, with no Tack account and no Tack server. On iPhone and in Firefox, staying signed in takes a quick visit to
-Microsoft about once a day as the app opens; if that's slow, Tack says "Renewing your OneDrive sign-in…"
-and lets you open it anyway. Privacy, in plain words: [tackfocus.app/privacy](https://tackfocus.app/privacy/).
-The code is in [`web/`](web/README.md).
+Search (the button beside Settings on a phone, or Ctrl+F) finds exactly what it finds on the PC. On
+Android, an installed Tack Focus is in the share sheet: share a page, a link or some text from any app
+and it becomes a task, with Undo. Turn on sync in both apps and they keep each other up to date through
+a folder in your own OneDrive, with no Tack account and no Tack server. On iPhone and in Firefox,
+staying signed in takes a quick visit to Microsoft about once a day as the app opens; if that's slow,
+Tack says "Renewing your OneDrive sign-in…" and lets you open it anyway. Privacy, in plain words:
+[tackfocus.app/privacy](https://tackfocus.app/privacy/). The code is in [`web/`](web/README.md).
 
 ## Lightweight by design
 

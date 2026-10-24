@@ -37,7 +37,7 @@ internal static class SearchScreenTests
         yield return ("search on screen: a task found is scrolled to, lit up, then back as it was, with the caret in it", RevealTask);
         yield return ("search on screen: a finished task found is in sight in Done", RevealDone);
         yield return ("search on screen: a sheet found opens with the match selected and in sight", RevealNote);
-        yield return ("search on screen: Settings lists Ctrl+F among the shortcuts", SettingsLists);
+        yield return ("search on screen: Settings lists Ctrl+F (and Ctrl+O, for a dropped attachment) among the shortcuts", SettingsLists);
     }
 
     private static JsonElement SharedSearch() =>
@@ -499,6 +499,16 @@ internal static class SearchScreenTests
             Check.True(Math.Abs(k.Top + k.Height / 2 - (l.Top + l.Height / 2)) < 1, "on its row, level with its name");
             Check.True(k.Right <= pill.Right && k.Right >= pill.Right - 16, $"its key lined up with the shortcut's ({k.Right:F0}, {pill.Right:F0})");
             Check.True(l.Left + label.DesiredSize.Width < k.Left, "the name before it, clear of it");
+            // Ctrl+O (open what was dropped onto the orb for a task) follows, laid out the same way.
+            var openLabel = Ui.Descendants<TextBlock>(root).Single(t => t.Text == "Open what was dropped on a task");
+            var openKey = (TextBlock)root.FindName("AttachmentKey");
+            Check.Equal("Ctrl+O", openKey.Text, "Open what was dropped on a task: Ctrl+O");
+            var o = Bounds(openKey, root);
+            var ol = Bounds(openLabel, root);
+            Check.True(o.Top > k.Bottom, "under search's row");
+            Check.True(Math.Abs(o.Top + o.Height / 2 - (ol.Top + ol.Height / 2)) < 1, "Ctrl+O on its row, level with its name");
+            Check.True(Math.Abs(o.Right - k.Right) < 0.5, $"its key lined up with Ctrl+F ({o.Right:F0}, {k.Right:F0})");
+            Check.True(ol.Left + openLabel.DesiredSize.Width < o.Left, "its name before it, clear of it");
             string? folder = Environment.GetEnvironmentVariable("TACK_SHOTS");
             if (!string.IsNullOrEmpty(folder))
             {

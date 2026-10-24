@@ -28,6 +28,8 @@ internal static class DropScreenTests
     {
         yield return ("drop on screen: the orb takes drags only once it has a drop target, hands each step on and reports its effect", OrbRouting);
         yield return ("drop on screen: dragged over, the orb lights up and the bubble says what a drop adds; let go, the toast and bubble offer one Undo", ModuleFlow);
+        yield return ("drop and snippets share the panel's one Undo: a snippet's toast retires the drop's, and each lapses once, as the panel's slot says", SharedUndo);
+        yield return ("drop and fade when idle: a drag over the orb tells the shell, so a faded orb comes back for it", OrbDragHover);
         yield return ("drop on screen: the orb shows a plus and an accent halo while it's a target, and is exactly as before when it isn't", OrbHighlight);
         yield return ("drop on screen: the bubble keeps Undo inside it and its words in one line each, in light and dark", BubbleLayout);
         yield return ("tasks on screen: a task with an attachment shows a paperclip Narrator can name, in the list, Done and the focus card; others none", Paperclips);
@@ -69,6 +71,31 @@ internal static class DropScreenTests
             _undo = null;
             UndoSettled?.Invoke();
         }
+    }
+
+    /// <summary>The panel's toast as PanelWindow wires it: one <see cref="UndoSlot"/> for every toast, its Settled as UndoSettled.</summary>
+    private sealed class SlotToast : IUndoToast
+    {
+        private readonly UndoSlot _slot = new();
+        public SlotToast() => _slot.Settled += () => UndoSettled?.Invoke();
+        public List<string> Shown { get; } = new();
+        public bool HasPendingUndo => _slot.CanUndo;
+        public event Action? UndoSettled;
+        public void ShowToast(string message, Action? undo = null) => Show(message, undo, null);
+        public void Show(string message, Action? undo, Action? lapsed)
+        {
+            _slot.Hold(undo, lapsed);
+            Shown.Add(message);
+        }
+        public void Announce(string text) { }
+        public bool Offers(Action undo) => _slot.Holds(undo);
+        public bool UndoIf(Action undo)
+        {
+            if (!_slot.Holds(undo)) return false;
+            _slot.Take()!();
+            return true;
+        }
+        public void Lapse() => _slot.Lapse();
     }
 
     private sealed class Bubble : IDropBubble
@@ -231,6 +258,94 @@ internal static class DropScreenTests
             {
                 try { Directory.Delete(folder, recursive: true); } catch { }
             }
+        });
+    }
+
+    private static void SharedUndo()
+    {
+        Ui.Run(errors =>
+        {
+            string folder = Path.Combine(Path.GetTempPath(), "tack-drop-tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            try
+            {
+                var ws = new Workspace(new Settings(), new Hlc("desk0001"), WorkspaceData.Empty);
+                var view = new SpaceView(ws);
+                var module = new DropModule(folder, ws, view, new DropContext { Probe = Launcher.Core.RealFileProbe.Instance, IsProgram = DesktopDrop.IsProgram });
+                var toast = new SlotToast();
+                var bubble = new Bubble();
+                module.Attach(_ => { }, toast, () => bubble);
+                int settled = 0;
+                toast.UndoSettled += () => settled++;
+
+                string a = Path.Combine(folder, "Clash report L3.pdf");
+                File.WriteAllText(a, "x");
+                var files = new DataObject(DataFormats.FileDrop, new[] { a });
+                module.DragEnter(files, DragDropEffects.All);
+                module.Drop(files, DragDropEffects.All);
+                var dropped = view.Open[0];
+                var dropUndo = bubble.OfferedUndo!;
+                Check.True(toast.Offers(dropUndo) && toast.HasPendingUndo, "the drop's Undo is the toast's");
+
+                // A snippet discarded in Notes: its toast takes the one slot, so the drop's Undo is past using.
+                int snippetLapsed = 0, snippetUndone = 0;
+                toast.Show("Snippet discarded", () => snippetUndone++, () => snippetLapsed++);
+                Check.Equal(1, settled, "the drop's Undo settled once");
+                Ui.Pump();
+                Check.Equal("hidden", bubble.State, "the bubble's Undo went with it");
+                Check.True(!toast.UndoIf(dropUndo) && !dropped.IsDeleted, "and can't undo the drop any more");
+                Check.Equal(1, module.Store.Count, "the attachment stays: its task is still here");
+
+                // The task deleted with Undo: the snippet's Undo lapses (its file would go), the attachment waits.
+                var undo = ws.Delete(dropped);
+                toast.ShowToast("Task deleted", undo);
+                Check.Equal((1, 0), (snippetLapsed, snippetUndone), "the snippet's Undo lapsed once, unused");
+                Check.Equal(2, settled, "settled again");
+                Ui.Pump();
+                Check.Equal(1, module.Store.Count, "kept while the delete's Undo is on offer");
+
+                // Used: settled before it runs, and the attachment is kept with its task back.
+                Check.True(toast.UndoIf(undo), "Undo, from the toast");
+                Check.Equal(3, settled, "settled as it was used");
+                Ui.Pump();
+                Check.True(!dropped.IsDeleted && module.Store.Count == 1, "the task back, with its paperclip");
+
+                // Deleted again, and this time the Undo lapses: the attachment goes.
+                toast.ShowToast("Task deleted", ws.Delete(dropped));
+                toast.Lapse();
+                Check.Equal(4, settled, "settled when it lapsed");
+                toast.Lapse();
+                toast.ShowToast("Nothing to undo");
+                Check.Equal(4, settled, "never without an Undo");
+                Ui.Pump();
+                Check.Equal(0, module.Store.Count, "let go once nothing can bring it back");
+                Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+            }
+            finally
+            {
+                try { Directory.Delete(folder, recursive: true); } catch { }
+            }
+        });
+    }
+
+    private static void OrbDragHover()
+    {
+        Ui.Run(errors =>
+        {
+            var orb = new OrbWindow();
+            var bead = orb.Orb;
+            var data = new DataObject(DataFormats.UnicodeText, "x");
+            var seen = new List<bool>();
+            orb.DragHoverChanged += seen.Add;
+            orb.DropTarget = new Target();
+            bead.RaiseEvent(DragArgs(DragDrop.DragEnterEvent, data, DragDropEffects.All, bead));
+            bead.RaiseEvent(DragArgs(DragDrop.DragOverEvent, data, DragDropEffects.All, bead));
+            bead.RaiseEvent(DragArgs(DragDrop.DragLeaveEvent, data, DragDropEffects.All, bead));
+            bead.RaiseEvent(DragArgs(DragDrop.DragEnterEvent, data, DragDropEffects.All, bead));
+            bead.RaiseEvent(DragArgs(DragDrop.DropEvent, data, DragDropEffects.All, bead));
+            Check.Sequence([true, false, true, false], seen, "over on entering, away on leaving or letting go");
+            orb.Close();
+            Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
         });
     }
 

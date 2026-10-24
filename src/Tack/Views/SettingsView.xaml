@@ -148,6 +148,13 @@
                                        FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}"
                                        AutomationProperties.Name="Ctrl+F, in the panel" />
                         </Grid>
+                        <Border Height="1" Background="{DynamicResource DividerBrush}" />
+                        <Grid Margin="0,9">
+                            <TextBlock Text="Open what was dropped on a task" VerticalAlignment="Center" FontSize="13" />
+                            <TextBlock x:Name="AttachmentKey" Text="Ctrl+O" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,11,0"
+                                       FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       AutomationProperties.Name="Ctrl+O, on a task with a paperclip" />
+                        </Grid>
                     </StackPanel>
                 </Border>
 

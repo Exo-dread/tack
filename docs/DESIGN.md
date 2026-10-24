@@ -11,6 +11,8 @@ that, or it isn't in Tack.
 4. **Invisible when idle.** No timers, no polling, no background CPU. It hands memory back to Windows when folded.
 5. **Your data stays yours.** Offline, one human-readable file. Tack never connects to anything; if you
    turn on sync, your OneDrive app carries a file between your devices, with no Tack server in between.
+   What only makes sense on one PC (launcher shortcuts, snippets, what a dropped task points to) sits
+   beside that file and never leaves the PC.
 
 ## Name and identity
 
@@ -88,7 +90,32 @@ The radial launcher is the one feature that isn't about *what was I doing?*: a r
 orb for the apps and folders you open all day, because the orb is already where your hand goes. So it's held
 to stricter rules than anything else: off by default, reached only with Shift (ordinary clicks and drags of
 the orb are untouched), settings in its own `launcher.json` that tack.json and sync never see, and, off,
-nothing loaded beyond checking that file. Details: [LAUNCHER.md](LAUNCHER.md).
+nothing loaded beyond checking that file. **Recent files** (off by default too) answers "the model I had open
+this morning": resting on an app shows the files it opened last, read from the app's Jump List and Revit's,
+AutoCAD's and Navisworks' own lists on one short-lived thread as the launcher opens, and never stored.
+Details: [LAUNCHER.md](LAUNCHER.md).
+
+### What stays on this PC
+Some things only make sense on the PC where they happened: a path on its disk, a screenshot taken on it,
+its own shortcuts. They live in files of their own beside tack.json, and the rule is the same for each:
+
+| File | What | Written |
+|---|---|---|
+| `launcher.json` | The launcher's shortcuts | Only from Settings → Launcher |
+| `attachments.json`, `attachments\` | What each task dropped onto the orb points to (a path or a link), and copies of emails | Only by a drop |
+| `snippets.json`, `snippets\` | Images pasted into Notes, by sheet | Only by a paste |
+
+- **Never in tack.json, never synced, imported or exported.** The sync format, device files and the shared
+  vectors don't know these exist, so every other device, and older versions of Tack, are untouched. On the
+  phone a dropped task is its text and a sheet is its text.
+- **Nothing until used.** None of these files or folders exists until the feature is first used; until
+  then Tack does no more than look for them at startup.
+- **Read like anything else from outside.** Each is read entry by entry with strict checks, bounded in size
+  and count, and a file name is only ever made from an id Tack chose. What a damaged or hand-edited file
+  says never becomes a path Tack wouldn't have written itself, or something to launch that a drop couldn't
+  have made. Hostile cases for each are in `tests/Tack.Tests/HostileFileTests.cs`.
+- **Tidied with what they belong to.** Deleting a task or a sheet for good (once its Undo has lapsed, or
+  another device deleted it) lets its attachment or snippets go, and startup clears files nothing points to.
 
 ### Dropping onto the orb: capture without switching
 The orb is always on screen, so it's also the quickest place to put something you've just seen: an email in
@@ -119,7 +146,10 @@ The orb's ring is *today's* finished share of work: done today ÷ (done today + 
 reset button, no streaks, no stats screen. Each morning it starts empty again.
 
 ### Undo instead of "Are you sure?"
-Deleting a task or a sheet, clearing Done, and bulk-adding from a paste all show a toast with **Undo**.
+Deleting a task or a sheet, clearing Done, bulk-adding from a paste, discarding a snippet and dropping onto
+the orb all show a toast with **Undo** (a drop also offers it in the bubble beside the orb: the same Undo).
+There's one Undo on offer at a time; whatever waits on it (a discarded snippet's file, a deleted task's
+attachment) goes only once it can no longer be used.
 Ticking a task has a short grace period (a second click un-ticks it) before it moves to Done.
 
 ### Notes are sheets of paper
@@ -189,10 +219,11 @@ Two optional touches in Settings → Look, both leaving Tack exactly as it was u
   the slider (close to it *is* the default), and the default writes nothing to tack.json.
 - **Fade when idle** (off by default). The orb, and the panel while it's pinned, fade to half once the
   pointer has been away for three seconds, and come back the moment it returns or the panel gets the
-  focus. Never while the panel is in use, a menu or the undo toast is up, or you drag or resize. A faded
-  panel is truly see-through (half a solid panel: frosted glass can't be half there), so you can see the
-  model behind it. Nothing runs while idle: a one-shot timer starts when the pointer leaves, and the fade
-  is one short animation, none if Windows' animation effects are off.
+  focus (or something is dragged over the orb). Never while the panel is in use, a menu, the undo toast, a
+  snippet or the bubble beside the orb is up, or you drag or resize. A faded panel is truly see-through
+  (half a solid panel: frosted glass can't be half there), so you can see the model behind it. Nothing
+  runs while idle: a one-shot timer starts when the pointer leaves, and the fade is one short animation,
+  none if Windows' animation effects are off.
 
 ### Light and dark
 Tack follows Windows' light/dark app mode by default (and switches live when Windows does), or can be set
@@ -250,7 +281,8 @@ keeps them in step, and with no space besides Main (or in All) it hands the view
 collections, which is what keeps the panel exactly as it was until a second space exists.
 
 ### Windows
-Three top-level windows (four with the launcher open, and a bubble beside the orb for a drop), each doing one job:
+Three top-level windows (more only while they're needed: the launcher, the bubble beside the orb after a
+drop, a snippet shown full size), each doing one job:
 
 | Window | Kind | Why |
 |---|---|---|
@@ -259,6 +291,7 @@ Three top-level windows (four with the launcher open, and a bubble beside the or
 | Panel | Normal window with DWM backdrop, topmost | Real acrylic, native corners/shadow, resizable |
 | Launcher (optional) | Layered, topmost; created when opened, closed after | Exists only while it's open |
 | Drop bubble | Layered, topmost, `WS_EX_NOACTIVATE`; click-through until it offers Undo | Made the first time something is dragged over the orb |
+| Snippet viewer | Plain window on the panel's display; made when a snippet is opened, closed after | A pasted image at its own pixels |
 
 ### Placement across monitors
 All placement is done in **physical pixels** through `SetWindowPos`, never WPF's `Left`/`Top`
