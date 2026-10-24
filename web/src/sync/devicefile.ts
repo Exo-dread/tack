@@ -1,6 +1,6 @@
 import { focusRecord, isObject, readFocus, readSheetRecord, readSpaceRecord, readTaskRecord, sheetRecord, spaceRecord, taskRecord } from '../model/file';
 import { isPlausibleStamp, ZERO, type Stamp } from '../model/hlc';
-import { MAX_NOTE_TEXT, MAX_RECORDS, MAX_SPACES, MAX_TAKEN, MAX_TASK_TEXT, MAX_TRICKLE } from '../model/limits';
+import { MAX_NOTE_TEXT, MAX_RECORDS, MAX_TAKEN, MAX_TASK_TEXT, MAX_TRICKLE } from '../model/limits';
 import { mergeSheet, mergeSpace, mergeTask } from '../model/merge';
 import { MAX_SPACE_NAME } from '../model/spaces';
 import { wellFormedValues } from '../model/text';
@@ -39,7 +39,7 @@ export const MAX_FILE_BYTES = 20 * 1024 * 1024;
  * more `seen` entries than MAX_SEEN isn't refused: it's marked `seenOver` (see trimSeen).
  */
 export const MAX_SEEN = 1_000;
-export { MAX_NOTE_TEXT, MAX_RECORDS, MAX_SPACE_NAME, MAX_SPACES, MAX_TAKEN, MAX_TASK_TEXT, MAX_TRICKLE };
+export { MAX_NOTE_TEXT, MAX_RECORDS, MAX_SPACE_NAME, MAX_TAKEN, MAX_TASK_TEXT, MAX_TRICKLE };
 
 const DEVICE_ID = /^[0-9A-Za-z]{4,32}$/;
 const FILE_NAME = /^([0-9A-Za-z]{4,32})\.json$/;

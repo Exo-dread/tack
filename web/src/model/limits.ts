@@ -20,7 +20,12 @@ export const MAX_TAKEN = MAX_RECORDS - 20_000;
  * (a whole workspace, a flood) is held to MAX_TAKEN.
  */
 export const MAX_TRICKLE = 2_000;
-/** Live spaces a device shows before it takes no more from elsewhere: every one is a button on screen. */
-export const MAX_SPACES = 1_000;
+/**
+ * Spaces one list draws at once (the switcher, Move to, Settings; Tack for Windows' strip and menus
+ * too): "More spaces" draws as many again. Only a crafted file or import brings more than a few
+ * dozen, and every one is kept and synced: a limit on what a device takes in would stop devices
+ * that differ by a single space taking each other's files, so the screen is protected instead.
+ */
+export const MAX_SPACES_LISTED = 1_000;
 /** Lines one paste (or one "Make task" from a note) turns into tasks. */
 export const MAX_PASTE_LINES = 10_000;

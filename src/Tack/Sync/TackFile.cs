@@ -27,11 +27,8 @@ internal interface IImportTarget
     /// <summary>Every task, sheet and space held, deleted ones included (as a device file counts them).</summary>
     int RecordCount { get; }
 
-    /// <summary>
-    /// How many records taking <paramref name="data"/> in would add, and how many spaces it would
-    /// show that don't show now (new live ones, deleted ones brought back).
-    /// </summary>
-    (int Records, int Spaces) WouldAdd(WorkspaceData data);
+    /// <summary>How many records taking <paramref name="data"/> in would add (tasks, sheets and spaces).</summary>
+    int WouldAdd(WorkspaceData data);
 }
 
 /// <summary>
@@ -113,7 +110,7 @@ internal static partial class TackFile
     /// </summary>
     private static WorkspaceData WithinLimits(WorkspaceData data, IImportTarget ws)
     {
-        var (added, _) = ws.WouldAdd(data);
+        int added = ws.WouldAdd(data);
         if (added > 0 && ws.RecordCount + added > DeviceFile.MaxTaken) throw new TackFileException(TooMany);
         return data;
     }

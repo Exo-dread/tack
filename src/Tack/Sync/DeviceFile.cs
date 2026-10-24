@@ -61,12 +61,11 @@ internal sealed record DeviceFile(
     /// <see cref="MaxRecords"/>. New records one device file may still bring past that (a peer's
     /// everyday edits), up to <see cref="MaxRecords"/>: so devices that share a lot keep syncing, while
     /// a file that would add more at once (a whole workspace, a flood) is held to <see cref="MaxTaken"/>.
-    /// Live spaces a device shows before it takes no more from elsewhere: every one is a button on
-    /// screen. Lines one paste (or one "Make task" from a note) turns into tasks. (limits.ts)
+    /// Lines one paste (or one "Make task" from a note) turns into tasks. (limits.ts) Spaces are
+    /// records like any other here; how many a list draws is up to the screen (<see cref="Tack.Model.SpaceView.MaxListed"/>).
     /// </summary>
     public const int MaxTaken = MaxRecords - 20_000;
     public const int MaxTrickle = 2_000;
-    public const int MaxSpaces = 1_000;
     public const int MaxPasteLines = 10_000;
 
     /// <summary>

@@ -2,25 +2,34 @@
 
 ## Unreleased
 
-Sync is sturdier again: one damaged or hostile file can't stop it, even after it's gone. From a
-second security review of Tack and Tack Focus.
+Sync stands up better to damaged and hostile files. From a second security review of Tack and
+Tack Focus.
 
-- **A bad file can't stop sync any more.** A damaged or hostile file in the sync folder can no
-  longer stop sync between your other devices, even after it's gone. Each device now takes no more
-  from the folder than its own sync file can carry: a file that would go past that is set aside and
-  shown in Settings, and the rest keeps syncing. Tack never reads more than 20 MB of a file. What
-  Tack writes stays readable by earlier versions of Tack and Tack Focus. See docs/SYNC.md.
+- **Sturdier against bad files in the sync folder.** Ways a damaged or hostile file could stop sync
+  between your other devices, even after it was gone, are closed. Each PC now takes in no more
+  tasks, notes and spaces from the folder than its own sync file can carry (far beyond real use): a
+  file that would go past that is set aside, Settings names the device whose changes aren't
+  arriving, and the rest keeps syncing; everyday changes from your other devices keep coming in.
+  Tack never reads more than 20 MB of a file. What Tack writes stays readable by earlier versions of
+  Tack and Tack Focus, and a device still on an earlier version keeps syncing with this one. See
+  docs/SYNC.md.
 - **Turn on sync takes only OneDrive\Apps\Tack Focus by itself.** A Tack sync folder anywhere else
   (under a translated "Apps" folder, say) is pointed out instead, and Choose folder… picks it if
   it's yours.
 - **Imports, pasting and typing keep to what sync can carry.** Importing a file with more tasks and
   notes than Tack can keep in sync says so instead of importing it, and a task over 100,000
-  characters or a note over 1,000,000 is skipped, as sync skips it. Pasting a list, or Make task from
-  a note, takes up to 10,000 lines at a time.
+  characters or a note over 1,000,000 is skipped, as sync skips it; the boxes stop there too.
+  Pasting a list, or Make task from a note, takes up to 10,000 lines at a time.
 - An imported task that was finished stays finished on every device, even when its file gave the
   date without a time.
 - If this PC holds more than sync can carry, Settings keeps saying so until it fits again, instead
   of going back to "In step with the sync folder".
+- **Take it in anyway.** When Settings says a device's changes aren't arriving because its file
+  holds too much at once, a button next to it takes that file in anyway, still within what sync can
+  carry.
+- A list of more than 1,000 spaces shows 1,000 at a time, with More spaces, so the strip, menus and
+  Settings stay quick.
+- A PC that rebuilds its sync state from its own file no longer keeps an older copy of a note twice.
 - Downloads are built only from versions already merged into main.
 
 ## 1.6.0 (2026-10-23)

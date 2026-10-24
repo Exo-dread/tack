@@ -23,6 +23,7 @@ public partial class SettingsView : UserControl
     private bool _capturing;
     private bool _rebuilding;
     private readonly Dictionary<UIElement, (string Id, string Part)> _spaceParts = new();
+    private int _spaceRowsLimit = SpaceView.MaxListed; // rows drawn ("More spaces" draws as many again)
 
     public SettingsView()
     {
@@ -109,10 +110,12 @@ public partial class SettingsView : UserControl
             _spaceParts.Clear();
             var tabs = _view.Tabs;
             UIElement? refocus = null;
-            for (int i = 0; i < tabs.Count; i++)
+            // So many at a time: only a crafted file or import makes more.
+            var (listed, more) = SpaceView.Listed(tabs, _spaceRowsLimit);
+            foreach (var (tab, i) in listed)
             {
                 int index = i;
-                var (id, name) = tabs[i];
+                var (id, name) = tab;
                 bool main = id == SpaceField.Main;
                 if (i > 0)
                 {
@@ -157,6 +160,24 @@ public partial class SettingsView : UserControl
                         refocus = (p.Part == "up" ? up : down).IsEnabled ? (p.Part == "up" ? up : down) : p.Part == "up" ? down : up;
                 }
                 SpaceRows.Children.Add(row);
+            }
+            if (more > 0)
+            {
+                string left = $"{more:N0} more";
+                var line = new Border { Height = 1, Margin = new Thickness(6, 0, 0, 0) };
+                line.SetResourceReference(Border.BackgroundProperty, "DividerBrush");
+                SpaceRows.Children.Add(line);
+                var button = new Button { Style = (Style)FindResource("TextButton"), Content = $"More spaces ({left})", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(-8, 4, 0, 4) };
+                AutomationProperties.SetName(button, $"More spaces, {left}");
+                button.Click += (_, _) =>
+                {
+                    // As many again; the name of the first of them takes the focus.
+                    string next = tabs[listed.Count].Id;
+                    _spaceRowsLimit += SpaceView.MaxListed;
+                    BuildSpaceRows();
+                    _spaceParts.FirstOrDefault(p => p.Value == (next, "name")).Key?.Focus();
+                };
+                SpaceRows.Children.Add(button);
             }
 
             if (refocus != null)
@@ -437,6 +458,7 @@ public partial class SettingsView : UserControl
                 line += $"\nOther devices: {string.Join(", ", st.Peers.Select(p => $"{(p.Name.Length > 0 ? p.Name : "another device")} (last change {At(p.WrittenMs)})"))}.";
             line += "\nThe OneDrive app carries the files: if changes don't arrive, check it's running.";
         }
+        var full = new List<(string Device, string Who)>();
         foreach (var (device, problem) in on ? st.Problems : [])
         {
             string who = st.Peers.FirstOrDefault(p => p.Device == device)?.Name is { Length: > 0 } n ? n : "another device";
@@ -446,7 +468,9 @@ public partial class SettingsView : UserControl
                 Tack.Sync.DeviceFileProblem.Full => $"\n{who} holds more than this PC can take in, so its changes aren't arriving here.",
                 _ => $"\nThe sync file from {who} couldn't be read. It'll be written again the next time that device syncs.",
             };
+            if (problem == Tack.Sync.DeviceFileProblem.Full) full.Add((device, who));
         }
+        ShowTakeIn(full);
         if (SyncStatusText.Text != (line ?? ""))
         {
             SyncStatusText.Text = line ?? "";
@@ -458,6 +482,35 @@ public partial class SettingsView : UserControl
         SyncStatusText.SetResourceReference(TextBlock.ForegroundProperty, on && st.Phase == SyncPhase.Error ? "DangerBrush" : "TextPrimaryBrush");
         SyncFolderText.Text = on ? _ws.Settings.SyncFolder : "";
         SyncFolderText.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private string _takeInShown = "";
+
+    /// <summary>
+    /// "Take it in anyway", for each device whose file this PC set aside as too much at once. A file
+    /// can be taken by one device and be too much for another, which then sets aside the first one's
+    /// whole file too: this takes it in, up to what this PC's own file may carry. Rebuilt only when the
+    /// list changes, so a button keeps the focus through the syncs that follow.
+    /// </summary>
+    private void ShowTakeIn(List<(string Device, string Who)> full)
+    {
+        string key = string.Join("\n", full.Select(f => $"{f.Device}\t{f.Who}"));
+        if (key == _takeInShown) return;
+        _takeInShown = key;
+        SyncTakeIn.Children.Clear();
+        foreach (var (device, who) in full)
+        {
+            var button = new Button
+            {
+                Style = (Style)FindResource("TextButton"),
+                Content = full.Count == 1 ? "Take it in anyway" : $"Take in {SpaceView.Shorten(who, 40)} anyway",
+                ToolTip = $"Takes in what {who} has, as long as this PC's own sync file can carry it",
+            };
+            AutomationProperties.SetName(button, $"Take in {who}'s changes anyway");
+            button.Click += (_, _) => _shell.Sync.TakeIn(device);
+            SyncTakeIn.Children.Add(button);
+        }
+        SyncTakeIn.Visibility = full.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>"at 14:05", "yesterday at 14:05", "on 12 Oct at 14:05": a time, which (unlike "3 min ago") never goes stale.</summary>

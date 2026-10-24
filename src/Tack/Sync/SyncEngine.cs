@@ -89,7 +89,9 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             if (device == null || device == me) continue;
             present.Add(entry.Name);
             meta.Files.TryGetValue(entry.Name, out var known);
-            if (known != null && known.Tag == entry.Tag && known.Reader == Reader)
+            // Unchanged since this reader read it, unless it was set aside as too much and you asked
+            // to take it in anyway.
+            if (known != null && known.Tag == entry.Tag && known.Reader == Reader && !(known.Problem == "full" && TakeAsked(meta, entry.Name, entry.Tag)))
             {
                 if (known.Problem != null) result.Problems.Add((device, ProblemOf(known.Problem)));
                 continue;
@@ -127,29 +129,49 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
             }
         }
         foreach (string name in meta.Files.Keys.Where(n => !present.Contains(n)).ToList()) meta.Files.Remove(name);
+        // A request to take a file in anyway is for the version you saw: once it's gone or changed, so is the request.
+        if (meta.Take != null)
+        {
+            foreach (string name in meta.Take.Keys.Where(n => !TakeAsked(meta, n, meta.Files.GetValueOrDefault(n)?.Tag)).ToList()) meta.Take.Remove(name);
+            if (meta.Take.Count == 0) meta.Take = null;
+        }
+        // More claims than any device writes (a version before TrimSeen passing on a crafted file's):
+        // those about this PC and the devices in the folder still count, so a note that device edited
+        // after seeing another's isn't kept twice. The rest are made up.
+        IReadOnlyDictionary<string, string> ClaimsOf(DeviceFile file) => file.SeenOver
+            ? file.Seen.Where(e => e.Key == me || present.Contains(DeviceFile.FileName(e.Key))).ToDictionary(e => e.Key, e => e.Value)
+            : file.Seen;
 
         // ---- merge what's new
         bool news = false;
-        if (adopted != null) news |= ws.MergeFrom(new WorkspaceData(adopted.Tasks, adopted.Sheets, adopted.Focus, adopted.Spaces));
+        if (adopted != null)
+        {
+            news |= ws.MergeFrom(new WorkspaceData(adopted.Tasks, adopted.Sheets, adopted.Focus, adopted.Spaces));
+            // This PC holds all its own file held again, so what that file says it had seen of the
+            // others holds too (as for any file, no further than its "written"). Without it, an older
+            // text of a note in an out-of-date device's file would look like an edit made at the same
+            // time as this PC's, and be kept as a copy beside it.
+            foreach (var (d, w) in ClaimsOf(adopted))
+                if (d != me) meta.Seen[d] = Later(meta.Seen.GetValueOrDefault(d), Stamp.IsLater(w, adopted.Written) ? adopted.Written : w);
+        }
         foreach (var file in fresh.OrderBy(f => f.Device, StringComparer.Ordinal))
         {
             // Taking this file in would leave this device holding more than its own file may carry
             // (each file is within the limits, but not several, or one on top of all this device has):
             // it's set aside, noted until it changes, so this device's file stays one its peers take.
-            if (OverBudget(file))
+            // One you asked to take in anyway is held to what that file may carry only.
+            string fileName = DeviceFile.FileName(file.Device);
+            bool anyway = TakeAsked(meta, fileName, meta.Files.GetValueOrDefault(fileName)?.Tag);
+            // Answered either way (taken, or still too much for this PC's own file): not read again for it.
+            if (anyway) meta.Take!.Remove(fileName);
+            if (OverBudget(file, anyway))
             {
-                string fileName = DeviceFile.FileName(file.Device);
                 meta.Files[fileName] = meta.Files[fileName] with { Problem = "full" };
                 result.Problems.Add((file.Device, DeviceFileProblem.Full));
                 Tack.Services.Log.Info($"Sync: set {fileName} aside: taking it in would leave this PC holding more than sync can carry.");
                 continue;
             }
-            // More claims than any device writes (a version before TrimSeen passing on a crafted
-            // file's): those about this PC and the devices in the folder still count, so a note that
-            // device edited after seeing another's isn't kept twice. The rest are made up.
-            var claims = file.SeenOver
-                ? file.Seen.Where(e => e.Key == me || present.Contains(DeviceFile.FileName(e.Key))).ToDictionary(e => e.Key, e => e.Value)
-                : file.Seen;
+            var claims = ClaimsOf(file);
             // Every changed file is merged, even one that seems already had through another device:
             // merges are idempotent, and skipping on another file's word would let one bad file
             // hide a device's changes from everyone.
@@ -167,6 +189,7 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
         }
         // Claims passed on stay within what every reader takes (a crafted file may make up a thousand).
         DeviceFile.TrimSeen(meta.Seen, me, present);
+        if (meta.Take is { Count: 0 }) meta.Take = null;
 
         if (meta.Own.Written == null && meta.Own.Pending == null && present.Count > 0) hooks.Joined?.Invoke();
 
@@ -205,20 +228,41 @@ internal sealed class SyncEngine(Workspace ws, ISyncFolder folder, SyncHooks hoo
 
     /// <summary>
     /// Would taking <paramref name="file"/> in leave this device holding more than it takes from
-    /// elsewhere? Records (deleted ones included, as its own file counts them): a few more, as a peer's
-    /// everyday edits bring, up to <see cref="DeviceFile.MaxRecords"/>; more at once
-    /// (<see cref="DeviceFile.MaxTrickle"/>), up to <see cref="DeviceFile.MaxTaken"/>. Live spaces: up
-    /// to <see cref="DeviceFile.MaxSpaces"/> (a deleted one is a record like any other). Only a file
-    /// that adds records or brings spaces back can be over; one that changes what's here never is
-    /// (overBudget in engine.ts).
+    /// elsewhere? Records (tasks, sheets and spaces, deleted ones included, as its own file counts
+    /// them): a few more, as a peer's everyday edits bring, up to <see cref="DeviceFile.MaxRecords"/>;
+    /// more at once (<see cref="DeviceFile.MaxTrickle"/>), up to <see cref="DeviceFile.MaxTaken"/>,
+    /// unless you asked to take this one in <paramref name="anyway"/>. Only a file that adds records can
+    /// be over; one that changes what's here never is. Spaces count as records and no more: a limit on
+    /// how many show would stop devices that differ by one space taking each other's files, for good,
+    /// so the screen draws only so many at once instead (<see cref="SpaceView.MaxListed"/>). overBudget
+    /// in engine.ts.
     /// </summary>
-    private bool OverBudget(DeviceFile file)
+    private bool OverBudget(DeviceFile file, bool anyway)
     {
-        var (added, shown) = ws.WouldAdd(new WorkspaceData(file.Tasks, file.Sheets, file.Focus, file.Spaces));
+        int added = ws.WouldAdd(new WorkspaceData(file.Tasks, file.Sheets, file.Focus, file.Spaces));
         int total = ws.RecordCount + added;
-        if (added > 0 && (total > DeviceFile.MaxRecords || (added > DeviceFile.MaxTrickle && total > DeviceFile.MaxTaken))) return true;
-        return shown > 0 && ws.LiveSpaceCount + shown > DeviceFile.MaxSpaces;
+        return added > 0 && (total > DeviceFile.MaxRecords || (!anyway && added > DeviceFile.MaxTrickle && total > DeviceFile.MaxTaken));
     }
+
+    /// <summary>
+    /// You asked to take in <paramref name="device"/>'s file though this PC set it aside as "full"
+    /// (Settings → Take it in anyway): the next cycle takes that version in, held only to what this
+    /// PC's own file may carry (<see cref="DeviceFile.MaxRecords"/>), not to what it takes in at once
+    /// (<see cref="DeviceFile.MaxTaken"/>). The way out when a file sized between two devices' totals
+    /// was taken by one and set aside by the other, which then sets aside that device's whole file
+    /// too, for good. False if that file isn't set aside as "full". takeIn in engine.ts.
+    /// </summary>
+    public static bool TakeIn(SyncMeta meta, string device)
+    {
+        string name = DeviceFile.FileName(device);
+        if (!meta.Files.TryGetValue(name, out var known) || known.Problem != "full") return false;
+        (meta.Take ??= new())[name] = known.Tag;
+        return true;
+    }
+
+    /// <summary>Is this version of the file (by its tag) one you asked to take in anyway?</summary>
+    private static bool TakeAsked(SyncMeta meta, string name, string? tag) =>
+        tag != null && meta.Take != null && meta.Take.TryGetValue(name, out string? asked) && asked == tag;
 
     /// <summary>A file the listing already shows to be too big to be Tack's.</summary>
     private static bool TooBig(FolderEntry entry) => entry.Size is { } size && size > DeviceFile.MaxBytes;
@@ -326,6 +370,13 @@ internal sealed class SyncMeta
 
     /// <summary>Other devices' files, by file name, as last read.</summary>
     public Dictionary<string, FileSummary> Files { get; set; } = new();
+
+    /// <summary>
+    /// Files set aside as "full" that you asked to take in anyway (Settings), by file name: the tag of
+    /// the version you saw. See <see cref="SyncEngine.TakeIn"/>.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, string>? Take { get; set; }
 
     public OwnFile Own { get; set; } = new(null, null, null);
 

@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Hlc } from '../../src/model/hlc';
+import { Hlc, ZERO } from '../../src/model/hlc';
 import { Workspace } from '../../src/model/workspace';
 import { MemoryBackend } from '../../src/store/db';
 import type { Store } from '../../src/store/persist';
 import { SyncController } from '../../src/sync/controller';
+import { emptyMeta, type SyncMeta } from '../../src/sync/engine';
 import { AuthError, emptyAuth, SCOPES, type AuthRecord } from '../../src/sync/msauth';
 import { AUTHORITY, CONSUMERS, FakeMicrosoft } from '../fakes/microsoft';
 
@@ -461,5 +462,33 @@ describe('waiting as long as Microsoft asks', () => {
     expect(renew).toHaveBeenCalledTimes(1);
     const auth = (await backend.getMeta<AuthRecord>('auth'))!;
     expect([auth.frameTimeouts, auth.frameWorks, auth.tokens!.refreshToken]).toEqual([0, true, 'r2']);
+  });
+});
+
+/**
+ * Settings → Take it in anyway: a file set aside as more than this device takes in at once is
+ * marked, by the version (tag) set aside, in the sync state every tab reads, for the next cycle.
+ */
+describe('taking in anyway a file set aside as full', () => {
+  it('marks that version in the stored sync state, and nothing else', async () => {
+    const backend = new MemoryBackend();
+    const meta: SyncMeta = {
+      ...emptyMeta('folder'),
+      files: {
+        'abcd1234.json': { tag: 't7', device: 'abcd1234', name: 'Phone', app: 'Tack Focus', written: ZERO, problem: 'full', reader: 2 },
+        'efgh5678.json': { tag: 't8', device: 'efgh5678', name: 'Laptop', app: 'Tack Focus', written: ZERO, reader: 2 },
+        'ijkl9012.json': { tag: 't9', device: 'ijkl9012', name: 'Tablet', app: 'Tack Focus', written: ZERO, problem: 'unreadable', reader: 2 },
+      },
+    };
+    await backend.putMeta('sync', { enabled: true, meta });
+    const sync = await SyncController.create({} as Workspace, {} as Store, backend, null);
+    await sync.takeIn('abcd1234');
+    await sync.takeIn('efgh5678');
+    await sync.takeIn('ijkl9012');
+    await sync.takeIn('mnop3456');
+    const stored = (await backend.getMeta<{ enabled: boolean; meta: SyncMeta }>('sync'))!;
+    expect(stored.enabled).toBe(true);
+    expect(stored.meta.take).toEqual({ 'abcd1234.json': 't7' });
+    expect(stored.meta.files).toEqual(meta.files);
   });
 });

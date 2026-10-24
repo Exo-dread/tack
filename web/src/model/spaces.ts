@@ -89,3 +89,18 @@ export function effectiveSpace(space: string, spaces: Iterable<Space>): string {
   for (const s of spaces) if (s.id === space && !s.deleted) return space;
   return MAIN;
 }
+
+/**
+ * The spaces a list on screen draws, with their places in `tabs`: the first `limit`
+ * (MAX_SPACES_LISTED, then as many again for each "More spaces"), and `keep` (the space on show,
+ * say) wherever it is; `more` is how many it leaves out. Only a crafted file or import brings more
+ * than the screen can sensibly draw, and every one is still kept and synced (a limit on what a
+ * device takes in could stop devices that differ by one space taking each other's files).
+ */
+export function listed<T extends { id: string }>(tabs: readonly T[], limit: number, keep?: string): { list: { tab: T; index: number }[]; more: number } {
+  const list: { tab: T; index: number }[] = [];
+  tabs.forEach((tab, index) => {
+    if (index < limit || tab.id === keep) list.push({ tab, index });
+  });
+  return { list, more: tabs.length - list.length };
+}

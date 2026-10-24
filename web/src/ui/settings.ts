@@ -1,5 +1,6 @@
 import { exportFile, FileError, importFile } from '../model/file';
-import { cleanSpaceName, MAIN, spaceLabel } from '../model/spaces';
+import { MAX_SPACES_LISTED } from '../model/limits';
+import { cleanSpaceName, listed, MAIN, spaceLabel } from '../model/spaces';
 import { shorten } from '../model/text';
 import { parseDate } from '../model/time';
 import type { SpaceTab, Workspace } from '../model/workspace';
@@ -12,7 +13,7 @@ import { hapticsSupported, setHaptics } from './haptics';
 import { icons } from './icons';
 import { installKind, onInstallChange, promptInstall } from './install';
 import { afterAnimation, animate, EASE_IN, SPRING } from './motion';
-import { newSpaceEntry, type SpaceUi } from './spaces';
+import { moreSpaces, newSpaceEntry, type SpaceUi } from './spaces';
 import { ACCENTS } from './theme';
 import type { Toasts } from './toast';
 
@@ -203,6 +204,8 @@ export class Settings {
     const rows = h('div.space-rows');
     let focusNext: string | null = null;
     let waiting = false;
+    // Drawn MAX_SPACES_LISTED at a time (only a crafted file or import makes that many).
+    let limit = MAX_SPACES_LISTED;
     const render = () => {
       // Never under someone's typing: a name being changed is put back on screen when it's done.
       const typing = document.activeElement;
@@ -212,7 +215,20 @@ export class Settings {
       }
       waiting = false;
       const tabs = this.ws.spaceTabs;
-      rows.replaceChildren(...tabs.map((tab, i) => this.spaceRow(tab, i, tabs.length, (key) => (focusNext = key), () => waiting && render())));
+      const { list, more } = listed(tabs, limit);
+      rows.replaceChildren(
+        ...list.map(({ tab, index }) => this.spaceRow(tab, index, tabs.length, (key) => (focusNext = key), () => waiting && render())),
+        ...(more > 0
+          ? [
+              moreSpaces(more, () => {
+                // The first one it draws takes the focus.
+                focusNext = `name:${tabs[list.length]?.id ?? MAIN}`;
+                limit += MAX_SPACES_LISTED;
+                render();
+              }),
+            ]
+          : []),
+      );
       if (focusNext) {
         const key = focusNext;
         focusNext = null;
@@ -373,7 +389,8 @@ export class Settings {
     const action = h('button.text-button.inline', { type: 'button', hidden: true });
     const status = h('p.note.sync-status', {}, phase, when, ' ', action);
     const peers = h('p.note.small', { hidden: true });
-    const problems = h('p.note.small.warn', { hidden: true });
+    const problems = h('div.sync-problems', { hidden: true });
+    let problemsShown = '';
     const syncNow = h('button.button', {
       type: 'button',
       text: 'Sync now',
@@ -450,14 +467,35 @@ export class Settings {
         peers.hidden = !others;
         const issues = st.problems.map((x) => {
           const who = st.peers.find((y) => y.device === x.device)?.name || 'another device';
-          return x.reason === 'newer'
-            ? `${who} has a newer Tack. Update Tack here to keep syncing with it.`
-            : x.reason === 'full'
-              ? `${who} holds more than this device can take in, so its changes aren\u2019t arriving here.`
-              : `The sync file from ${who} couldn\u2019t be read. It\u2019ll be written again the next time that device syncs.`;
+          return {
+            device: x.device,
+            full: x.reason === 'full',
+            text:
+              x.reason === 'newer'
+                ? `${who} has a newer Tack. Update Tack here to keep syncing with it.`
+                : x.reason === 'full'
+                  ? `${who} holds more than this device can take in, so its changes aren\u2019t arriving here.`
+                  : `The sync file from ${who} couldn\u2019t be read. It\u2019ll be written again the next time that device syncs.`,
+          };
         });
-        const issueText = issues.join(' ');
-        if (problems.textContent !== issueText) problems.textContent = issueText;
+        // Rebuilt only when what it says changes, so a button keeps the focus through the minute-by-minute sync.
+        const issueKey = JSON.stringify(issues);
+        if (issueKey !== problemsShown) {
+          problemsShown = issueKey;
+          problems.replaceChildren(
+            ...issues.map((x) =>
+              h(
+                'p.note.small.warn',
+                {},
+                x.text,
+                // A file can be taken by one device and be too much at once for another, which then
+                // sets aside the first one's file too: you can take it in anyway, up to what this
+                // device's own file may carry.
+                ...(x.full ? [' ', h('button.text-button.inline', { type: 'button', text: 'Take it in anyway', onclick: () => void this.sync.takeIn(x.device) })] : []),
+              ),
+            ),
+          );
+        }
         problems.hidden = issues.length === 0;
       },
     };

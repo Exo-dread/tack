@@ -43,7 +43,21 @@ internal static class HostileFileTests
         yield return ("regression review: a peer's everyday edits still arrive after a flood filled this PC", FloodTrickle);
         yield return ("regression review: a bulk file is held to what this PC takes in at once, every file to the most one carries", BulkHeld);
         yield return ("regression review: only spaces that show count against the spaces budget", SpacesLiveOnly);
-        yield return ("regression review: a file showing too many spaces, new or brought back, is still set aside", SpacesShownHeld);
+        yield return ("final pass, M1: spaces are records: however many show, new ones or deleted ones brought back, they're taken in", SpacesTakenAsRecords);
+        yield return ("final pass, M1: at a thousand spaces, an honest PC that adds a space still reaches every other device", () => SpacesAtTheCap(ws => ws.AddSpace("Groceries")));
+        yield return ("final pass, M1: at a thousand spaces, an honest PC that renames Main still reaches every other device", () => SpacesAtTheCap(ws => ws.RenameSpace(SpaceField.Main, "Inbox")));
+        yield return ("final pass, M1: at a thousand spaces, an honest PC that moves Main still reaches every other device", () => SpacesAtTheCap(ws => ws.MoveSpace(SpaceField.Main, 1)));
+        yield return ("final pass, M1: at a thousand spaces, an honest PC that undoes a space's deletion still reaches every other device", SpacesAtTheCapUndo);
+        yield return ("final pass, M1: at a thousand spaces, an honest PC that deletes one space and adds another still reaches every other device", () => SpacesAtTheCap(ws =>
+        {
+            ws.DeleteSpace(Work(ws));
+            ws.AddSpace("Garden");
+        }));
+        yield return ("final pass, M1: a file landing while one PC has a space the other hasn't seen yet splits neither way", SpacesSplitNeitherWay);
+        yield return ("final pass, M1: an import with more than a thousand spaces is taken, here and by every peer", SpacesImported);
+        yield return ("final pass, L1: a file sized between two PCs' totals can be taken in anyway, which heals the split", TakeInAnyway);
+        yield return ("final pass, L1: a request to take a file in is for the version set aside, and never past what a file may carry", TakeInBounded);
+        yield return ("final pass, L2: a PC taking back its own file knows again what it had seen: an old device's older note text isn't kept as a copy", AdoptKnowsSeen);
         yield return ("second audit, L1: imports no more than a device can pass on", ImportLimits);
         yield return ("second audit, L1: imports skip text longer than any device reads", ImportLongText);
         yield return ("second audit, L2: imported dates are kept only as every device reads them", ImportDates);
@@ -577,21 +591,261 @@ internal static class HostileFileTests
         Check.Equal(6, pc.ToData().Spaces.Count(s => !s.Deleted), "and its spaces");
     }
 
-    private static void SpacesShownHeld()
+    private static void SpacesTakenAsRecords()
     {
         var folder = new Folder();
         var (ws, meta) = Device("desk0001");
-        folder.Put("evil0006.json", Spaces("evil0006", live: LiveSpaces(DeviceFile.MaxSpaces + 1, Stamp.Zero)));
-        Check.True(Cycle(ws, folder, meta).Problems.SequenceEqual([("evil0006", DeviceFileProblem.Full)]), "too many new spaces: set aside");
-        // Deleted, they're taken in...
-        folder.Put("evil0006.json", Spaces("evil0006", deleted: DeviceFile.MaxSpaces + 1));
-        Check.Equal(0, Cycle(ws, folder, meta).Problems.Count, "deleted ones are records like any other");
-        Check.Equal(DeviceFile.MaxSpaces + 1, ws.ToData().Spaces.Count, "taken in");
-        // ...but not brought back all at once.
-        folder.Put("evil0007.json", Spaces("evil0007", live: LiveSpaces(DeviceFile.MaxSpaces + 1, Stamp.Encode(Now - 1000, 0, "evil0007"))));
-        Check.True(Cycle(ws, folder, meta).Problems.SequenceEqual([("evil0007", DeviceFileProblem.Full)]), "too many brought back: set aside");
-        Check.Equal(0, ws.ToData().Spaces.Count(s => !s.Deleted), "none shows");
+        int n = SpaceView.MaxListed + 1;
+        folder.Put("evil0006.json", Spaces("evil0006", deleted: n));
+        Check.Equal(0, Cycle(ws, folder, meta).Problems.Count, "deleted ones are taken in");
+        Check.Equal(n, ws.ToData().Spaces.Count, "all of them");
+        folder.Put("evil0007.json", Spaces("evil0007", live: LiveSpaces(n, Stamp.Encode(Now - 1000, 0, "evil0007"))));
+        Check.Equal(0, Cycle(ws, folder, meta).Problems.Count, "and brought back");
+        Check.Equal(n, ws.SpaceList.Count, "every one shows");
+        DeviceFile.Parse(folder.Files["desk0001.json"].Bytes, "desk0001", Now); // every device takes this PC's file
     }
+
+    // ---------------------------------------------------------------- final pass
+
+    // A limit on how many spaces show, applied as files come in, let one file of junk spaces bring
+    // honest devices to the limit, after which the next honest change that showed one more space had
+    // the acting device's whole file set aside by every peer, for good.
+
+    private static string Work(Workspace ws) => ws.SpaceList.First(s => s.Name == "Work").Id;
+
+    /// <summary>A folder writer's file of live spaces bringing <paramref name="ws"/> to exactly a thousand.</summary>
+    private static string JunkSpaces(Workspace ws)
+    {
+        string at = Stamp.Encode(Now - 5000, 0, "evil0001");
+        int n = 1000 - ws.SpaceList.Count;
+        string live = "[" + string.Join(",", Enumerable.Range(0, n).Select(i =>
+            $"{{\"id\":\"junk{i}\",\"name\":\"junk {i}\",\"order\":\"W\",\"deleted\":false,\"clk\":{{\"name\":\"{at}\",\"order\":\"{at}\",\"deleted\":\"{Stamp.Zero}\"}}}}")) + "]";
+        return Craft("evil0001", Now, text: "from evil0001", extra: $"\"seen\":{{}},\"spaces\":{live}");
+    }
+
+    /// <summary>Two PCs sharing two spaces; <paramref name="before"/> (on the second) synced everywhere; the file; then <paramref name="act"/>.</summary>
+    private static void SpacesAtTheCap(Action<Workspace> act, Action<Workspace>? before = null)
+    {
+        var folder = new Folder();
+        var (phone, phoneMeta) = Device("phon0001");
+        var (pc, pcMeta) = Device("pcpc0001");
+        var problems = new List<(string, DeviceFileProblem)>();
+        void Settle(int rounds)
+        {
+            for (int i = 0; i < rounds; i++)
+            {
+                problems.AddRange(Cycle(phone, folder, phoneMeta).Problems);
+                problems.AddRange(Cycle(pc, folder, pcMeta).Problems);
+            }
+        }
+        phone.AddTask("base");
+        phone.AddSpace("Home");
+        phone.AddSpace("Work");
+        Settle(2);
+        if (before != null)
+        {
+            before(pc);
+            Settle(2);
+        }
+        folder.Put("evil0001.json", JunkSpaces(phone));
+        Settle(1);
+        Check.Equal(1000, phone.SpaceList.Count, "a thousand spaces show");
+        act(pc);
+        pc.AddTask("call mom");
+        Settle(2);
+        Check.Equal(0, problems.Count, "no file is set aside");
+        Check.True(phone.Open.Any(t => t.Text == "call mom"), "the PC's changes arrive");
+        Check.Data(Sorted(pc.ToData()), Sorted(phone.ToData()), "both hold the same");
+    }
+
+    private static void SpacesAtTheCapUndo()
+    {
+        Action undo = () => { };
+        SpacesAtTheCap(_ => undo(), ws => undo = ws.DeleteSpace(Work(ws)));
+    }
+
+    private static void SpacesSplitNeitherWay()
+    {
+        var folder = new Folder();
+        var (phone, phoneMeta) = Device("phon0001");
+        var (pc, pcMeta) = Device("pcpc0001");
+        var problems = new List<(string, DeviceFileProblem)>();
+        void Round()
+        {
+            problems.AddRange(Cycle(phone, folder, phoneMeta).Problems);
+            problems.AddRange(Cycle(pc, folder, pcMeta).Problems);
+        }
+        phone.AddTask("base");
+        phone.AddSpace("Home");
+        Round();
+        Round();
+        phone.AddTask("milk", space: phone.AddSpace("Groceries").Id);
+        Cycle(phone, folder, phoneMeta);
+        // Sized for the PC, which hasn't seen Groceries yet: one too many for the phone.
+        folder.Put("evil0001.json", JunkSpaces(pc));
+        problems.AddRange(Cycle(pc, folder, pcMeta).Problems);
+        problems.AddRange(Cycle(phone, folder, phoneMeta).Problems);
+        for (int i = 0; i < 3; i++)
+        {
+            phone.AddTask($"phone {i}");
+            pc.AddTask($"pc {i}");
+            Round();
+        }
+        Round();
+        Check.Equal(0, problems.Count, "no file is set aside");
+        Check.True(phone.Open.Any(t => t.Text == "pc 2"), "the PC's changes reach the phone");
+        Check.True(pc.Open.Any(t => t.Text == "phone 2") && pc.Open.Any(t => t.Text == "milk"), "and the phone's the PC");
+        Check.Data(Sorted(pc.ToData()), Sorted(phone.ToData()), "both hold the same");
+    }
+
+    private static void SpacesImported()
+    {
+        var folder = new Folder();
+        var (phone, phoneMeta) = Device("phon0001");
+        var (pc, pcMeta) = Device("pcpc0001");
+        phone.AddTask("base");
+        for (int i = 0; i < 2; i++)
+        {
+            Cycle(phone, folder, phoneMeta);
+            Cycle(pc, folder, pcMeta);
+        }
+        string at = Stamp.Encode(Now - 5000, 0, "aaaa1111");
+        string spaces = "[" + string.Join(",", Enumerable.Range(0, 1001).Select(i =>
+            $"{{\"id\":\"imp{i}\",\"name\":\"imported {i}\",\"order\":\"W\",\"deleted\":false,\"clk\":{{\"name\":\"{at}\",\"order\":\"{at}\",\"deleted\":\"{Stamp.Zero}\"}}}}")) + "]";
+        var (message, _) = FileImport.Run(pc, Encoding.UTF8.GetBytes($"{{\"version\":1,\"tasks\":[],\"sheets\":[],\"tackFocus\":{{\"tasks\":[],\"sheets\":[],\"spaces\":{spaces}}}}}"), null);
+        Check.True(!message.Contains("can't", StringComparison.Ordinal) && !message.Contains("more tasks", StringComparison.Ordinal), $"imported ({message})");
+        Check.Equal(1001, pc.SpaceList.Count, "every space");
+        pc.AddTask("after the import");
+        var problems = new List<(string, DeviceFileProblem)>();
+        for (int i = 0; i < 2; i++)
+        {
+            problems.AddRange(Cycle(pc, folder, pcMeta).Problems);
+            problems.AddRange(Cycle(phone, folder, phoneMeta).Problems);
+        }
+        Check.Equal(0, problems.Count, "no file is set aside");
+        Check.Equal(1001, phone.SpaceList.Count, "the phone takes them");
+        Check.True(phone.Open.Any(t => t.Text == "after the import"), "and what came after");
+        DeviceFile.Parse(folder.Files["pcpc0001.json"].Bytes, "pcpc0001", Now); // every device takes the PC's file
+    }
+
+    // Whether a device takes a file in at once depends on what it already holds, and honest devices
+    // differ by their unsynced edits: one file sized between two devices' totals is taken by one and
+    // set aside by the other, which then sets aside the first one's whole file too.
+
+    private static void TakeInAnyway()
+    {
+        var folder = new Folder();
+        var (h1, h1Meta) = Device("hone0001");
+        var (h2, h2Meta) = Device("htwo0001");
+        h1.AddTask("base");
+        for (int i = 0; i < 2; i++)
+        {
+            Cycle(h1, folder, h1Meta);
+            Cycle(h2, folder, h2Meta);
+        }
+        for (int i = 0; i < 5; i++) h1.AddTask($"unsynced {i}");
+        folder.Put("evil0001.json", Deletions("evil0001", DeviceFile.MaxTaken - h2.RecordCount - 1));
+        Check.Equal(0, Cycle(h2, folder, h2Meta).Problems.Count, "one PC takes it");
+        Check.Equal(DeviceFile.MaxTaken, h2.RecordCount, "up to what it takes in at once");
+        h2.AddTask("h2 work");
+        Cycle(h2, folder, h2Meta);
+        // h1 holds a few more (its unsynced tasks): the file is too much at once for it, and so is
+        // h2's, which now carries it. Without a way out, it would stay so.
+        for (int i = 0; i < 2; i++)
+            Check.True(Cycle(h1, folder, h1Meta).Problems.SequenceEqual([("evil0001", DeviceFileProblem.Full), ("htwo0001", DeviceFileProblem.Full)]), "the other sets both aside");
+        Check.True(!h1.Open.Any(t => t.Text == "h2 work"), "and h2's changes don't arrive");
+        // Settings → Take it in anyway.
+        Check.True(SyncEngine.TakeIn(h1Meta, "htwo0001"), "asked");
+        Check.True(!SyncEngine.TakeIn(h1Meta, "hone0001"), "only a file set aside can be asked for");
+        Check.True(Cycle(h1, folder, h1Meta).Problems.SequenceEqual([("evil0001", DeviceFileProblem.Full)]), "taken in");
+        Check.True(h1.Open.Any(t => t.Text == "h2 work"), "h2's changes arrive");
+        Check.True(h1Meta.Take == null, "the request is spent");
+        // From then on, both ways, and with the folder writer's file gone too.
+        folder.Files.Remove("evil0001.json");
+        var problems = new List<(string, DeviceFileProblem)>();
+        for (int i = 0; i < 3; i++)
+        {
+            if (i < 2)
+            {
+                h1.AddTask($"h1 {i}");
+                h2.AddTask($"h2 {i}");
+            }
+            problems.AddRange(Cycle(h1, folder, h1Meta).Problems);
+            problems.AddRange(Cycle(h2, folder, h2Meta).Problems);
+        }
+        Check.Equal(0, problems.Count, "nothing is set aside");
+        Check.True(h1.Open.Any(t => t.Text == "h2 1") && h2.Open.Any(t => t.Text == "h1 1"), "changes arrive both ways");
+        DeviceFile.Parse(folder.Files["hone0001.json"].Bytes, "hone0001", Now); // every device takes h1's file
+    }
+
+    private static void TakeInBounded()
+    {
+        var folder = new Folder();
+        var (ws, meta) = Device("desk0001");
+        folder.Put("aaaa0001.json", Deletions("aaaa0001", DeviceFile.MaxTaken - 10, "a"));
+        folder.Put("bbbb0001.json", Deletions("bbbb0001", DeviceFile.MaxRecords - DeviceFile.MaxTaken + 100, "b"));
+        Check.True(Cycle(ws, folder, meta).Problems.SequenceEqual([("bbbb0001", DeviceFileProblem.Full)]), "set aside");
+        Check.True(SyncEngine.TakeIn(meta, "bbbb0001"), "asked");
+        Check.True(Cycle(ws, folder, meta).Problems.SequenceEqual([("bbbb0001", DeviceFileProblem.Full)]), "past what this PC's own file may carry: still set aside");
+        Check.True(ws.RecordCount <= DeviceFile.MaxRecords, "never more than a file may carry");
+        DeviceFile.Parse(folder.Files["desk0001.json"].Bytes, "desk0001", Now);
+        Check.True(meta.Take == null, "the request is spent");
+        Check.Equal(2, folder.Reads.GetValueOrDefault("bbbb0001.json"), "read once for it");
+        Cycle(ws, folder, meta);
+        Check.Equal(2, folder.Reads.GetValueOrDefault("bbbb0001.json"), "and not again");
+        // A new version is judged afresh: the request was for the version you saw.
+        folder.Put("bbbb0001.json", Deletions("bbbb0001", DeviceFile.MaxTrickle + 5, "b"));
+        Check.True(SyncEngine.TakeIn(meta, "bbbb0001"), "asked about the old version");
+        Check.True(Cycle(ws, folder, meta).Problems.SequenceEqual([("bbbb0001", DeviceFileProblem.Full)]), "the new one is judged afresh");
+        Check.True(meta.Take == null, "that request is gone");
+        Check.True(SyncEngine.TakeIn(meta, "bbbb0001"), "asked about this one");
+        Check.Equal(0, Cycle(ws, folder, meta).Problems.Count, "taken in");
+        Check.True(meta.Take == null, "and spent");
+    }
+
+    // With the user's own files: a device that lost its sync state takes back its own file, but went
+    // on to judge an out-of-date device's older text of a note as written at the same time as its own,
+    // and kept a copy of it that then went to every device.
+
+    private static void AdoptKnowsSeen()
+    {
+        var folder = new Folder();
+        long wall = Now;
+        // Merged in this order: the old device's file before the phone's.
+        var (old, oldMeta) = Device("AAAAold1", () => wall);
+        var (pc, pcMeta) = Device("mmmmpc01", () => wall);
+        var (phone, phoneMeta) = Device("zzzzphon", () => wall);
+        var note = phone.AddSheet(text: "Notes v1");
+        for (int i = 0; i < 2; i++)
+        {
+            Cycle(old, folder, oldMeta, wall);
+            Cycle(pc, folder, pcMeta, wall);
+            Cycle(phone, folder, phoneMeta, wall);
+        }
+        // The old device is left behind; the phone edits the note, and the PC takes it in.
+        wall += 1000;
+        phone.SheetById(note.Id)!.Text = "Notes v2";
+        for (int i = 0; i < 2; i++)
+        {
+            Cycle(phone, folder, phoneMeta, wall);
+            Cycle(pc, folder, pcMeta, wall);
+        }
+        Check.Equal("Notes v2", string.Join("|", pc.Sheets.Select(s => s.Text).Where(t => t.Length > 0)), "the PC has the phone's edit");
+        // The PC loses its sync state (not its data or its id), and takes its own file back.
+        wall += 1000;
+        pcMeta = SyncMeta.Empty("folder");
+        var result = Cycle(pc, folder, pcMeta, wall);
+        Check.Equal("AAAAold1,zzzzphon", string.Join(",", result.Merged), "both other files merged, the old one first");
+        Check.Equal("Notes v2", string.Join("|", pc.Sheets.Select(s => s.Text).Where(t => t.Length > 0)), "and no copy of the older text");
+        Check.True(pcMeta.Seen.ContainsKey("zzzzphon"), "what it had seen is known again");
+    }
+
+    private static WorkspaceData Sorted(WorkspaceData d) => d with
+    {
+        Tasks = d.Tasks.OrderBy(t => t.Id, StringComparer.Ordinal).ToList(),
+        Sheets = d.Sheets.OrderBy(s => s.Id, StringComparer.Ordinal).ToList(),
+        Spaces = d.Spaces.OrderBy(s => s.Id, StringComparer.Ordinal).ToList(),
+    };
 
     // ---------------------------------------------------------------- helpers
 

@@ -39,9 +39,14 @@ folder), **tack.json imports** (from anywhere), then paste, the URL query and ha
 - **One rule per field.** A value one entry point accepts (an import, say) must be one the sync reader accepts too.
   Store the normalised form, never the raw string.
 - **Limits** live in `web/src/model/limits.ts` and `src/Tack/Sync/DeviceFile.cs`, and they must match. A device
-  must never hold or write more than its peers accept. Anything that adds records (a merge, an import, a paste)
-  checks the intake budget (`MAX_TAKEN`, `MAX_SPACES`). The write guard counts records and bytes, and it says so
-  in Settings on every cycle. Changing a limit is a format change: both apps, readers and writers, in one release.
+  must never hold or write more than its peers accept: `MAX_RECORDS` (200,000, deletions included) per file. Sync
+  intake (`overBudget` / `OverBudget`) sets a file aside as `full` unless it fits: one adding up to `MAX_TRICKLE`
+  (2,000) new records may fill a device to `MAX_RECORDS`, one adding more only to `MAX_TAKEN` (180,000). Spaces
+  count as records: there is no intake cap on spaces (any cap that depends on what the reader holds can split
+  honest devices). Screens list at most `MAX_SPACES_LISTED` / `SpaceView.MaxListed` (1,000) at a time, with
+  More spaces. **Take it in anyway** lifts `MAX_TAKEN` for one version of one file. Imports stop at `MAX_TAKEN`,
+  a paste at `MAX_PASTE_LINES`; writers trim `seen` to `MAX_SEEN`. The write guard counts records and bytes and says
+  so in Settings on every cycle. Changing a limit is a format change: both apps, readers and writers, in one release.
 - Keep the size caps: 20 MB for imports and device files (checked before reading, and while streaming), 256 KB for
   launcher.json. `JsonDocument` keeps its default `MaxDepth` (64).
 - **Peer data never becomes** a URL, a file path, HTML or something to launch. Peer file names are only matched
@@ -69,9 +74,9 @@ folder), **tack.json imports** (from anywhere), then paste, the URL query and ha
 ## Calling Microsoft
 
 - Every request has a timeout (30 s; the reachability probe 5 s; the hidden frame 10 s).
-- **429, 503 (and 509 from Graph) mean "throttled".** Honour `Retry-After` (30 s if missing). Nothing syncs inside
-  that window, whatever asked for it: an edit, a return to the app, hiding it, `online`, or Sync now. Every sync
-  goes through `schedule()`, which respects `notBefore`.
+- **429, 503 (and 509 from Graph) mean "throttled".** Honour `Retry-After` (30 s if missing, 6 h at most). Nothing
+  syncs inside that window, whatever asked for it: an edit, a return to the app, hiding it, `online`, or Sync now.
+  Every sync goes through `schedule()`, which respects `notBefore` (the last exchange on hiding checks it itself).
 - **Back off, never loop.** Failures back off from 5 s to 30 min. A folder listing stops at `MAX_PAGES`. The hidden
   renewal frame backs off after timeouts and hands over to the visit path. Only one tab syncs (Web Locks), and
   polling happens only while the app is visible.

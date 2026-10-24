@@ -146,18 +146,7 @@ public partial class NotesView : UserControl
         moveTo.Visibility = _view.HasSpaces ? Visibility.Visible : Visibility.Collapsed;
         moveTo.Items.Clear();
         if (!_view.HasSpaces) return;
-        string current = _view.SpaceOf(sheet);
-        foreach (var space in _view.Tabs)
-        {
-            var item = new MenuItem
-            {
-                Header = new TextBlock { Text = space.Name, MaxWidth = 220, TextTrimming = TextTrimming.CharacterEllipsis },
-                IsEnabled = space.Id != current,
-            };
-            System.Windows.Automation.AutomationProperties.SetName(item, space.Name);
-            item.Click += (_, _) => MoveToSpace(sheet, space.Id);
-            moveTo.Items.Add(item);
-        }
+        SpaceMenu.Fill(moveTo.Items, _view.Tabs, _view.SpaceOf(sheet), space => MoveToSpace(sheet, space));
     }
 
     /// <summary>Puts a sheet in another space; only its space changes. Undo puts it back.</summary>

@@ -4,8 +4,10 @@ import { encode, Hlc, isStamp, MAX_AHEAD_MS, stampTime, ZERO } from '../../src/m
 import { isOrderKey, MAX_ORDER_KEY } from '../../src/model/order';
 import { wellFormed } from '../../src/model/text';
 import { Workspace } from '../../src/model/workspace';
-import { deadTask, DeviceFileError, fileName, makeDeviceFile, MAX_FILE_BYTES, MAX_NOTE_TEXT, MAX_RECORDS, MAX_SEEN, MAX_SPACES, MAX_TAKEN, MAX_TASK_TEXT, MAX_TRICKLE, parseDeviceFile, serializeDeviceFile, trimSeen } from '../../src/sync/devicefile';
-import { seenBy } from '../../src/sync/engine';
+import { MAX_SPACES_LISTED } from '../../src/model/limits';
+import { listed, MAIN } from '../../src/model/spaces';
+import { deadTask, DeviceFileError, fileName, makeDeviceFile, MAX_FILE_BYTES, MAX_NOTE_TEXT, MAX_RECORDS, MAX_SEEN, MAX_TAKEN, MAX_TASK_TEXT, MAX_TRICKLE, parseDeviceFile, serializeDeviceFile, trimSeen } from '../../src/sync/devicefile';
+import { emptyMeta, seenBy, takeIn } from '../../src/sync/engine';
 import { Cloud, DAY, Device, records, settle, visible, type Clock } from './synchelpers';
 
 /**
@@ -497,23 +499,227 @@ describe('M2 (second audit): files that would fill a device', () => {
     expect([...laptop.ws.spaces.values()].filter((s) => !s.deleted)).toHaveLength(6);
   });
 
-  it('still sets aside a file that would show more spaces than any device does, new ones or deleted ones brought back', async () => {
+  it('takes spaces in as records: however many show, new ones or deleted ones brought back', async () => {
     const { cloud, clock, devices, tick } = world('desk');
     const [desk] = devices as [Device];
     const at = encode(clock.now - 5000, 0, 'evil0006');
-    const live = (deleted: string) => Array.from({ length: MAX_SPACES + 1 }, (_, i) => ({ id: `s${i}`, name: `junk ${i}`, order: 'V', deleted: false, clk: { name: at, order: at, deleted } }));
-    putFile(cloud, 'evil0006.json', craft('evil0006', clock.now, { spaces: live(ZERO) }));
-    expect((await desk.sync()).problems).toEqual([{ device: 'evil0006', reason: 'full' }]);
-    // Deleted, they're taken in...
-    tick();
-    putFile(cloud, 'evil0006.json', craft('evil0006', clock.now, { deleted: { tasks: {}, sheets: {}, spaces: deletions(MAX_SPACES + 1, at, 's') } }));
+    const n = MAX_SPACES_LISTED + 1;
+    const live = (deleted: string) => Array.from({ length: n }, (_, i) => ({ id: `s${i}`, name: `junk ${i}`, order: 'V', deleted: false, clk: { name: at, order: at, deleted } }));
+    putFile(cloud, 'evil0006.json', craft('evil0006', clock.now, { deleted: { tasks: {}, sheets: {}, spaces: deletions(n, at, 's') } }));
     expect((await desk.sync()).problems).toEqual([]);
-    expect(desk.ws.spaces.size).toBe(MAX_SPACES + 1);
-    // ...but not brought back all at once.
+    expect(desk.ws.spaces.size).toBe(n);
     tick();
     putFile(cloud, 'evil0007.json', craft('evil0007', clock.now, { spaces: live(encode(clock.now - 1000, 0, 'evil0007')) }));
-    expect((await desk.sync()).problems).toEqual([{ device: 'evil0007', reason: 'full' }]);
-    expect([...desk.ws.spaces.values()].filter((s) => !s.deleted)).toHaveLength(0);
+    expect((await desk.sync()).problems).toEqual([]);
+    expect(desk.ws.spaceList).toHaveLength(n);
+    expect(takes(cloud, desk, clock.now)).toBe(true);
+  });
+});
+
+// The final pass: a limit on how many spaces show, applied as files come in, let one file of junk
+// spaces bring honest devices to the limit, after which the next honest change that showed one
+// more space had the acting device's whole file set aside by every peer, for good.
+describe('M1 (final pass): spaces are records, never a reason to set a file aside', () => {
+  /** A folder writer's file of live spaces bringing `d` to exactly `cap` spaces on show. */
+  const junkSpaces = (d: Device, now: number, cap = 1000) => {
+    const at = encode(now - 5000, 0, 'evil0001');
+    const n = cap - d.ws.spaceList.length;
+    return craft('evil0001', now, { spaces: Array.from({ length: n }, (_, i) => ({ id: `junk${i}`, name: `junk ${i}`, order: 'W', deleted: false, clk: { name: at, order: at, deleted: ZERO } })) });
+  };
+
+  const work = (ws: Workspace) => ws.spaceList.find((s) => s.name === 'Work')!.id;
+  let undo = () => {};
+  /** What the laptop does (after `before`, synced everywhere before the folder writer's file lands). */
+  const actions: [string, (ws: Workspace) => void, ((ws: Workspace) => void)?][] = [
+    ['adds a space', (ws) => void ws.addSpace('Groceries')],
+    ['renames Main', (ws) => ws.renameSpace(MAIN, 'Inbox')],
+    ['moves Main', (ws) => ws.moveSpace(MAIN, 1)],
+    ['undoes the deletion of a space', () => undo(), (ws) => void (undo = ws.deleteSpace(work(ws)))],
+    ['deletes one space and adds another', (ws) => {
+      ws.deleteSpace(work(ws));
+      ws.addSpace('Garden');
+    }],
+  ];
+  for (const [what, act, before] of actions) {
+    it(`an honest device that ${what} at a thousand spaces still reaches every other device`, async () => {
+      const { cloud, clock, devices, tick } = world('phone', 'laptop');
+      const [phone, laptop] = devices as [Device, Device];
+      phone.ws.addTask('base');
+      phone.ws.addSpace('Home');
+      phone.ws.addSpace('Work');
+      await settle(devices, 2);
+      if (before) {
+        tick();
+        before(laptop.ws);
+        await settle(devices, 2);
+      }
+      putFile(cloud, 'evil0001.json', junkSpaces(phone, clock.now));
+      tick();
+      await settle(devices, 1);
+      expect(phone.ws.spaceList).toHaveLength(1000);
+      tick();
+      act(laptop.ws);
+      laptop.ws.addTask('call mom');
+      await settle(devices, 2);
+      expect([...phone.log, ...laptop.log].flatMap((r) => r.problems)).toEqual([]);
+      expect(visible(phone.ws).open).toContain('call mom');
+      expect(records(phone.ws)).toEqual(records(laptop.ws));
+    });
+  }
+
+  it('a file that lands while one device has a space the other hasn’t seen yet splits neither way', async () => {
+    const { cloud, clock, devices, tick } = world('phone', 'laptop');
+    const [phone, laptop] = devices as [Device, Device];
+    phone.ws.addTask('base');
+    phone.ws.addSpace('Home');
+    await settle(devices, 2);
+    tick();
+    phone.ws.addTask('milk', { space: phone.ws.addSpace('Groceries').id });
+    await phone.sync();
+    // Sized for the laptop, which hasn't seen Groceries yet: one too many for the phone.
+    putFile(cloud, 'evil0001.json', junkSpaces(laptop, clock.now));
+    tick();
+    await laptop.sync();
+    await phone.sync();
+    for (let i = 0; i < 3; i++) {
+      tick();
+      phone.ws.addTask(`phone ${i}`);
+      laptop.ws.addTask(`laptop ${i}`);
+      await settle(devices, 1);
+    }
+    await settle(devices, 1);
+    expect([...phone.log, ...laptop.log].flatMap((r) => r.problems)).toEqual([]);
+    expect(visible(phone.ws).open).toContain('laptop 2');
+    expect(visible(laptop.ws).open).toEqual(expect.arrayContaining(['phone 2', 'milk']));
+    expect(records(phone.ws)).toEqual(records(laptop.ws));
+  });
+
+  it('an import with more than a thousand spaces is taken, here and by every peer', async () => {
+    const { cloud, devices } = world('phone', 'laptop');
+    const [phone, laptop] = devices as [Device, Device];
+    phone.ws.addTask('base');
+    await settle(devices, 2);
+    const at = encode(NOW - 5000, 0, 'aaaa1111');
+    const spaces = Array.from({ length: 1001 }, (_, i) => ({ id: `imp${i}`, name: `imported ${i}`, order: 'W', deleted: false, clk: { name: at, order: at, deleted: ZERO } }));
+    importFile(laptop.ws, JSON.stringify({ version: 1, tasks: [], sheets: [], tackFocus: { tasks: [], sheets: [], spaces } }));
+    laptop.ws.addTask('after the import');
+    await settle(devices, 2);
+    expect([...phone.log, ...laptop.log].flatMap((r) => r.problems)).toEqual([]);
+    expect(phone.ws.spaceList).toHaveLength(1001);
+    expect(visible(phone.ws).open).toContain('after the import');
+    expect(takes(cloud, laptop, NOW)).toBe(true);
+  });
+
+  it('lists draw a thousand spaces at a time, and always the one on show', () => {
+    const tabs = Array.from({ length: MAX_SPACES_LISTED + 5 }, (_, i) => ({ id: `s${i}` }));
+    expect(listed(tabs.slice(0, 3), MAX_SPACES_LISTED)).toEqual({ list: tabs.slice(0, 3).map((tab, index) => ({ tab, index })), more: 0 });
+    const first = listed(tabs, MAX_SPACES_LISTED);
+    expect(first.list).toHaveLength(MAX_SPACES_LISTED);
+    expect(first.more).toBe(5);
+    const kept = listed(tabs, MAX_SPACES_LISTED, `s${MAX_SPACES_LISTED + 3}`);
+    expect(kept.list.at(-1)).toEqual({ tab: tabs[MAX_SPACES_LISTED + 3], index: MAX_SPACES_LISTED + 3 });
+    expect(kept.more).toBe(4);
+    expect(listed(tabs, 2 * MAX_SPACES_LISTED)).toMatchObject({ more: 0 });
+  });
+});
+
+// The final pass: whether a device takes a file in at once depends on what it already holds, and
+// honest devices differ by their unsynced edits: one file sized between two devices' totals is
+// taken by one and set aside by the other, which then sets aside the first one's whole file too.
+describe('L1 (final pass): a file sized between two devices’ totals', () => {
+  it('can be taken in anyway, which heals the split (and still no further than a file may carry)', async () => {
+    const { cloud, clock, devices, tick } = world({ label: 'h1', id: 'hone0001' }, { label: 'h2', id: 'htwo0001' });
+    const [h1, h2] = devices as [Device, Device];
+    h1.ws.addTask('base');
+    await settle(devices, 2);
+    tick();
+    for (let i = 0; i < 5; i++) h1.ws.addTask(`unsynced ${i}`);
+    const held = (d: Device) => d.ws.tasks.size + d.ws.sheets.size + d.ws.spaces.size;
+    putFile(cloud, 'evil0001.json', craft('evil0001', clock.now, { deleted: { tasks: deletions(MAX_TAKEN - held(h2) - 1, encode(clock.now - 5000, 0, 'evil0001')), sheets: {} } }));
+    tick();
+    expect((await h2.sync()).problems).toEqual([]);
+    expect(held(h2)).toBe(MAX_TAKEN);
+    tick();
+    h2.ws.addTask('h2 work');
+    await h2.sync();
+    // h1 holds a few more (its unsynced tasks): the file is too much at once for it, and so is
+    // h2's, which now carries it. Without a way out, it would stay so.
+    expect((await h1.sync()).problems).toEqual([{ device: 'evil0001', reason: 'full' }, { device: 'htwo0001', reason: 'full' }]);
+    expect((await h1.sync()).problems).toEqual([{ device: 'evil0001', reason: 'full' }, { device: 'htwo0001', reason: 'full' }]);
+    expect(visible(h1.ws).open).not.toContain('h2 work');
+    // Settings → Take it in anyway.
+    expect(takeIn(h1.saved, 'htwo0001')).toBe(true);
+    expect(takeIn(h1.saved, 'hone0001')).toBe(false);
+    expect((await h1.sync()).problems).toEqual([{ device: 'evil0001', reason: 'full' }]);
+    expect(visible(h1.ws).open).toContain('h2 work');
+    expect(h1.saved.take).toBeUndefined();
+    // From then on, both ways, and with the folder writer's file gone too.
+    cloud.files.delete('evil0001.json');
+    for (let i = 0; i < 2; i++) {
+      tick();
+      h1.ws.addTask(`h1 ${i}`);
+      h2.ws.addTask(`h2 ${i}`);
+      await settle(devices, 1);
+    }
+    await settle(devices, 1);
+    expect(h1.log.at(-1)!.problems).toEqual([]);
+    expect(h2.log.at(-1)!.problems).toEqual([]);
+    expect(visible(h1.ws).open).toContain('h2 1');
+    expect(visible(h2.ws).open).toContain('h1 1');
+    expect(takes(cloud, h1, clock.now)).toBe(true);
+  }, 120_000);
+
+  it('a request is for the version set aside, and never past what a file may carry', async () => {
+    const { cloud, clock, devices, tick } = world('desk');
+    const [desk] = devices as [Device];
+    const at = encode(clock.now - 5000, 0, 'q');
+    putFile(cloud, 'aaaa0001.json', craft('aaaa0001', clock.now, { deleted: { tasks: deletions(MAX_TAKEN - 10, at, 'a'), sheets: {} } }));
+    putFile(cloud, 'bbbb0001.json', craft('bbbb0001', clock.now, { deleted: { tasks: deletions(MAX_RECORDS - MAX_TAKEN + 100, at, 'b'), sheets: {} } }));
+    expect((await desk.sync()).problems).toEqual([{ device: 'bbbb0001', reason: 'full' }]);
+    expect(takeIn(desk.saved, 'bbbb0001')).toBe(true);
+    // Past what this device's own file may carry: still set aside, and the request is spent.
+    expect((await desk.sync()).problems).toEqual([{ device: 'bbbb0001', reason: 'full' }]);
+    expect(desk.ws.tasks.size).toBeLessThanOrEqual(MAX_RECORDS);
+    expect(takes(cloud, desk, clock.now)).toBe(true);
+    expect(desk.saved.take).toBeUndefined();
+    expect(desk.view.reads.get('bbbb0001.json')).toBe(2);
+    expect((await desk.sync()).problems).toEqual([{ device: 'bbbb0001', reason: 'full' }]);
+    expect(desk.view.reads.get('bbbb0001.json')).toBe(2);
+    // A new version is judged afresh: the request was for the version you saw.
+    tick();
+    putFile(cloud, 'bbbb0001.json', craft('bbbb0001', clock.now, { deleted: { tasks: deletions(MAX_TRICKLE + 5, at, 'b'), sheets: {} } }));
+    expect(takeIn(desk.saved, 'bbbb0001')).toBe(true);
+    expect((await desk.sync()).problems).toEqual([{ device: 'bbbb0001', reason: 'full' }]);
+    expect(desk.saved.take).toBeUndefined();
+    expect(takeIn(desk.saved, 'bbbb0001')).toBe(true);
+    expect((await desk.sync()).problems).toEqual([]);
+    expect(desk.saved.take).toBeUndefined();
+  }, 60_000);
+});
+
+// The final pass, with the user's own files: a device that lost its sync state takes back its own
+// file, but went on to judge an out-of-date device's older text of a note as written at the same
+// time as its own, and kept a copy of it that then went to every device.
+describe('L2 (final pass): a device taking back its own file', () => {
+  it('knows again what that file had seen, so an out-of-date device’s older text is not kept as a copy', async () => {
+    // Merged in this order: the old tab's file before the phone's.
+    const { devices, tick } = world({ label: 'old tab', id: 'AAAAold1' }, { label: 'pc', id: 'mmmmpc01' }, { label: 'phone', id: 'zzzzphon' });
+    const [old, pc, phone] = devices as [Device, Device, Device];
+    const note = phone.ws.addSheet('Notes v1');
+    await settle(devices, 2);
+    // The old tab is left behind; the phone edits the note, and the PC takes it in.
+    tick();
+    phone.ws.editSheet(note.id, 'Notes v2');
+    await settle([phone, pc], 2);
+    expect(visible(pc.ws).sheets).toEqual(['Notes v2']);
+    // The PC loses its sync state (not its data or its id), and takes its own file back.
+    pc.saved = emptyMeta('folder');
+    tick();
+    const r = await pc.sync();
+    expect(r.merged).toEqual(['AAAAold1', 'zzzzphon']);
+    expect(visible(pc.ws).sheets).toEqual(['Notes v2']);
+    expect(pc.saved.seen.zzzzphon).toBeDefined();
+    void old;
   });
 });
 

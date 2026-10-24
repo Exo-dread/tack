@@ -53,7 +53,7 @@ export class Workspace {
   private readonly listeners = new Set<(change: Change) => void>();
   private pending: Change | null = null;
   private depth = 0;
-  private views: { open?: Task[]; done?: Task[]; sheets?: Sheet[]; spaces?: Space[]; tabs?: SpaceTab[]; live?: Set<string> } = {};
+  private views: { open?: Task[]; done?: Task[]; sheets?: Sheet[]; spaces?: Space[]; tabs?: SpaceTab[]; labels?: Map<string, string>; live?: Set<string> } = {};
 
   constructor(
     readonly hlc: Hlc,
@@ -143,7 +143,9 @@ export class Workspace {
 
   /** How a space is shown ("Main" for Main until it's renamed). */
   labelOf(id: string): string {
-    return this.spaceTabs.find((s) => s.id === id)?.label ?? spaceLabel(MAIN, this.spaces.get(MAIN)?.name ?? '');
+    // Looked up, not searched for: All shows each task's space, and a crafted file may bring thousands.
+    this.views.labels ??= new Map(this.spaceTabs.map((s) => [s.id, s.label]));
+    return this.views.labels.get(id) ?? spaceLabel(MAIN, this.spaces.get(MAIN)?.name ?? '');
   }
 
   /**
@@ -749,7 +751,7 @@ export class Workspace {
     if (observe) this.hlc.observe(maxClock(space.clk));
     this.spaces.set(space.id, space);
     this.current().spaces.add(space.id);
-    this.views.spaces = this.views.tabs = this.views.live = undefined;
+    this.views.spaces = this.views.tabs = this.views.labels = this.views.live = undefined;
   }
 
   /** A new task's or sheet's space: `space` if it's a live space other than Main, else none (''). */

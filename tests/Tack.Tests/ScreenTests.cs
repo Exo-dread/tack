@@ -26,6 +26,34 @@ internal static class ScreenTests
         yield return ("notes on screen: what's typed on a space's blank paper can be undone, all of it, on the sheet it made", UndoOnBlankPaper);
         yield return ("panel on screen: the toast keeps Undo inside the panel, however long its message", ToastKeepsUndo);
         yield return ("peek on screen: a long space name gives way to the counts and stays inside the bubble; with only Main, as before", PeekLongName);
+        yield return ("menus on screen: Move to lists a thousand spaces at a time, the rest under More spaces, made when it opens", MoveMenuInPages);
+    }
+
+    private static void MoveMenuInPages()
+    {
+        Ui.Run(errors =>
+        {
+            var tabs = Enumerable.Range(0, SpaceView.MaxListed + 5).Select(i => new SpaceTab($"s{i}", $"space {i}")).ToList();
+            var few = new ContextMenu();
+            SpaceMenu.Fill(few.Items, tabs.Take(3).ToList(), "s1", _ => { });
+            Check.Equal(3, few.Items.Count, "a few: each of them");
+            Check.True(!((MenuItem)few.Items[1]).IsEnabled, "the current one greyed out");
+
+            string? picked = null;
+            var menu = new ContextMenu();
+            SpaceMenu.Fill(menu.Items, tabs, "s0", id => picked = id);
+            Check.Equal(SpaceView.MaxListed + 1, menu.Items.Count, "a thousand, and More spaces");
+            var more = (MenuItem)menu.Items[^1];
+            Check.Equal("More spaces, 5 more", System.Windows.Automation.AutomationProperties.GetName(more), "which says how many");
+            Check.Equal(1, more.Items.Count, "made only when it opens");
+            more.RaiseEvent(new RoutedEventArgs(MenuItem.SubmenuOpenedEvent, more));
+            Check.Equal(5, more.Items.Count, "then the rest");
+            var last = (MenuItem)more.Items[^1];
+            Check.Equal($"space {SpaceView.MaxListed + 4}", System.Windows.Automation.AutomationProperties.GetName(last), "in order");
+            last.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, last));
+            Check.Equal($"s{SpaceView.MaxListed + 4}", picked, "and each can be picked");
+            Check.Equal(0, errors.Count, "no error");
+        });
     }
 
     private static void UndoOnBlankPaper()

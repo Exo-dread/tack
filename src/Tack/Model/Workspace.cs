@@ -362,25 +362,16 @@ public sealed class Workspace : Observable, IImportTarget
     /// <summary>
     /// How many records taking <paramref name="data"/> in would add (tasks, sheets and spaces this
     /// workspace has no record of, deleted or not): what an import or another device's file would add
-    /// to this device's own sync file. And how many spaces it would show that don't show now: new live
-    /// ones, and deleted ones it brings back (a deleted space is only a record, not a button).
+    /// to this device's own sync file. Spaces are records like any other here: how many show is up to
+    /// the screen (<see cref="SpaceView.MaxListed"/>).
     /// </summary>
-    internal (int Records, int Spaces) WouldAdd(WorkspaceData data)
-    {
-        int records = data.Tasks.Select(t => t.Id).Distinct().Count(id => !_tasks.ContainsKey(id))
-            + data.Sheets.Select(s => s.Id).Distinct().Count(id => !_sheets.ContainsKey(id))
-            + data.Spaces.Select(s => s.Id).Distinct().Count(id => !_spaces.ContainsKey(id));
-        int shown = data.Spaces.DistinctBy(s => s.Id).Count(s => _spaces.TryGetValue(s.Id, out var had)
-            ? had.Deleted && !Merge.Space(had, s).Value.Deleted
-            : !s.Deleted);
-        return (records, shown);
-    }
+    internal int WouldAdd(WorkspaceData data) =>
+        data.Tasks.Select(t => t.Id).Distinct().Count(id => !_tasks.ContainsKey(id))
+        + data.Sheets.Select(s => s.Id).Distinct().Count(id => !_sheets.ContainsKey(id))
+        + data.Spaces.Select(s => s.Id).Distinct().Count(id => !_spaces.ContainsKey(id));
 
     /// <summary>Every task, sheet and space held, deleted ones included (as a device file counts them).</summary>
     internal int RecordCount => _tasks.Count + _sheets.Count + _spaces.Count;
-
-    /// <summary>Spaces held that aren't deleted.</summary>
-    internal int LiveSpaceCount => _spaces.Values.Count(s => !s.Deleted);
 
     /// <summary>Adds a space after the last one.</summary>
     internal SpaceData AddSpace(string name)
@@ -1063,5 +1054,5 @@ public sealed class Workspace : Observable, IImportTarget
 
     int IImportTarget.RecordCount => RecordCount;
 
-    (int Records, int Spaces) IImportTarget.WouldAdd(WorkspaceData data) => WouldAdd(data);
+    int IImportTarget.WouldAdd(WorkspaceData data) => WouldAdd(data);
 }

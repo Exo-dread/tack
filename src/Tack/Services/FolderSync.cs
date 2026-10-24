@@ -34,6 +34,7 @@ internal sealed class FolderSync : IDisposable
     private bool _again;
     private int _failures;
     private bool _disposed;
+    private readonly HashSet<string> _takeIn = new(); // devices whose file you asked to take in anyway
 
     public FolderSync(Workspace ws, StateStore store)
     {
@@ -122,6 +123,18 @@ internal sealed class FolderSync : IDisposable
         _ws.Settings.SyncFolder = null;
         _store.Flush();
         SetStatus(SyncStatus.Off);
+    }
+
+    /// <summary>
+    /// Settings → Take it in anyway, for a device whose file was set aside as more than this PC takes
+    /// in at once ("full"): that version is taken in next, up to what this PC's own file may carry
+    /// (<see cref="SyncEngine.TakeIn"/>). Then syncs.
+    /// </summary>
+    public void TakeIn(string device)
+    {
+        if (!Enabled) return;
+        _takeIn.Add(device);
+        SyncNow();
     }
 
     /// <summary>Syncs now (Settings, or when the panel opens).</summary>
@@ -330,6 +343,9 @@ internal sealed class FolderSync : IDisposable
     {
         string key = Path.GetFullPath(root).TrimEnd('\\').ToLowerInvariant();
         var meta = LoadMeta() is { } m && m.Folder == key ? m : SyncMeta.Empty(key);
+        // Asked for since the last cycle (one that fails forgets nothing: they're asked for again next time).
+        var asked = _takeIn.ToList();
+        foreach (string device in asked) SyncEngine.TakeIn(meta, device);
         var version = Assembly.GetExecutingAssembly().GetName().Version;
         var engine = new SyncEngine(_ws, folder, new SyncHooks
         {
@@ -348,6 +364,7 @@ internal sealed class FolderSync : IDisposable
         {
             var result = await engine.CycleAsync(meta, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             await SaveMetaAsync(meta);
+            _takeIn.ExceptWith(asked);
             return (meta.LastSync, result.Peers, result.Problems);
         }
         catch (DeviceCollisionException) when (!collisionRetried)

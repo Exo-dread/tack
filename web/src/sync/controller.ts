@@ -2,7 +2,7 @@ import { newDeviceId } from '../model/ids';
 import type { Workspace } from '../model/workspace';
 import type { Backend } from '../store/db';
 import type { Store } from '../store/persist';
-import { DeviceCollision, emptyMeta, SyncEngine, SyncError, type CycleResult, type PeerInfo, type SyncMeta } from './engine';
+import { DeviceCollision, emptyMeta, SyncEngine, SyncError, takeIn, type CycleResult, type PeerInfo, type SyncMeta } from './engine';
 import { AuthError, emptyAuth, isSignInReturn, MicrosoftAuth, SCOPES, type Account, type AuthRecord, type Tokens } from './msauth';
 import { OneDriveFolder } from './onedrive';
 
@@ -276,6 +276,28 @@ export class SyncController {
     this.folder = null;
     this.folderKey = null;
     this.update({ phase: 'off', message: null, peers: [], problems: [] });
+  }
+
+  /**
+   * Settings → Take it in anyway, for a device whose file was set aside as more than this device
+   * takes in at once ('full'): that version is taken in next, up to what this device's own file
+   * may carry (see takeIn in engine.ts). Then syncs.
+   */
+  async takeIn(device: string): Promise<void> {
+    const mark = async () => {
+      await this.running;
+      const stored = (await this.backend.getMeta<SyncRecord>('sync')) ?? this.record;
+      if (!stored.enabled || !stored.meta) return;
+      const meta = structuredClone(stored.meta);
+      if (!takeIn(meta, device)) return;
+      this.record = { ...stored, meta };
+      await this.saveRecord();
+    };
+    // Between cycles (in any tab), so none saves its own copy of the state over this.
+    const locks = (navigator as Navigator & { locks?: LockManager }).locks;
+    if (locks) await locks.request('tack-sync', mark);
+    else await mark();
+    this.syncNow();
   }
 
   /** Syncs now (e.g. from Settings), or as soon as Microsoft allows. */
