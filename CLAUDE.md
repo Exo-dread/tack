@@ -19,17 +19,20 @@ Tack what it promises to be, and how to work on this repo without touching anyon
   fetched without it. Tokens are never logged, put in a URL, exported or written to a device file. The refresh token
   is never extended past 24 hours from sign-in.
 - **Imports and device files carry records only** (tasks, sheets, spaces, focus). They never change settings, the
-  device id, the sync folder, launch at startup, the hotkey or the launcher.
-- **launcher.json is local:** never synced, imported or exported, and written only from Settings → Launcher. Launches
-  go through `ShortcutRules` and `ShellExecute` with arguments as their own field, never through `cmd` or a built
-  command line.
+  device id, the sync folder, launch at startup, the hotkey, the launcher, attachments or snippets.
+- **Local files stay local:** launcher.json, attachments.json with the attachments folder, and snippets.json with the
+  snippets folder are never synced, imported or exported, and never written into tack.json. launcher.json is written
+  only from Settings → Launcher, attachments only by a drop onto the orb, snippets only by a paste in Notes. Launches
+  (shortcuts, a task's paperclip, recent files) go through `ShortcutRules` and `ShellExecute` with arguments as their
+  own field, never through `cmd` or a built command line.
 - **Tack for Windows adopts only `<OneDrive>\Apps\Tack Focus` by itself.** Any other folder with Tack's marker is
   only suggested; the user picks it with Choose folder.
 
 ## Untrusted input
 
 Where it comes from, riskiest first: **device files in the sync folder** (anyone who can write the user's app
-folder), **tack.json imports** (from anywhere), then paste, the URL query and hash, launcher.json and browser storage.
+folder), **tack.json imports** (from anywhere), then paste, the URL query and hash, drags onto the orb, pasted images,
+the share target's query (Tack Focus), launcher.json, attachments.json, snippets.json and browser storage.
 
 - Read it with the existing validators, never by hand: `parseDeviceFile` / `DeviceFile.Parse`, `readTaskRecord`,
   `readSheetRecord`, `readSpaceRecord` / `TackFile.ReadTaskRecord`…, `isFileDate` / `IsFileDate`, `isDeviceId`,
@@ -47,8 +50,8 @@ folder), **tack.json imports** (from anywhere), then paste, the URL query and ha
   More spaces. **Take it in anyway** lifts `MAX_TAKEN` for one version of one file. Imports stop at `MAX_TAKEN`,
   a paste at `MAX_PASTE_LINES`; writers trim `seen` to `MAX_SEEN`. The write guard counts records and bytes and says
   so in Settings on every cycle. Changing a limit is a format change: both apps, readers and writers, in one release.
-- Keep the size caps: 20 MB for imports and device files (checked before reading, and while streaming), 256 KB for
-  launcher.json. `JsonDocument` keeps its default `MaxDepth` (64).
+- Keep the size caps: 20 MB for imports and device files (checked before reading, and while streaming), 16 MB for
+  attachments.json, 256 KB for launcher.json and snippets.json. `JsonDocument` keeps its default `MaxDepth` (64).
 - **Peer data never becomes** a URL, a file path, HTML or something to launch. Peer file names are only matched
   against the device-id pattern.
 - There is no window `message` or `storage` listener. Adding one needs origin and source checks. `BroadcastChannel('tack')`
