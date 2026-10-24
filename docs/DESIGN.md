@@ -309,9 +309,12 @@ exactly where the orb was. Move the panel and the orb's home moves to the panel'
 positions are clamped back onto a connected monitor at startup and whenever displays change.
 
 Resizing while open goes through `WindowBoundsAnimator`, which interpolates each edge separately, so the
-anchored edges don't move by even a pixel. It takes one step per frame: resizing a WPF window renders it
-inside `SetWindowPos`, and that render raises a frame of its own, which the animator ignores (otherwise each
-step would set off the next and the glide would run through in a burst). A glide's clock starts on its
+anchored edges don't move by even a pixel. Resizing a WPF window renders it inside `SetWindowPos`, and that
+render raises a frame of its own. The animator never steps from inside it (were those renders instant, each
+step would set off the next and the glide would run through in a burst); it notes it, and once the step
+returns takes the next one straight away if most of a refresh (0.8 of the display's) has gone by, else on
+the next frame. So in software the glide moves at the pace the panel can be drawn, never faster than the
+display, and each step costs one render rather than two. A glide's clock starts on its
 first frame, after a one-pixel step, so the wait for that frame doesn't eat the start of the curve. If the
 size changes again mid-glide, it carries on from where it is and keeps its end time (at least 120 ms more
 for a big change late on). A row folding away (a task ticked, deleted or moved to another space) is left out
@@ -379,8 +382,11 @@ apart, how many of the display's refreshes show no new frame, and the CPU it tak
   panel no faster; `Timeline.DesiredFrameRate` set to the display's rate makes every animation *less* smooth
   (WPF then waits on a coarse timer between frames: small ones drop from 110–140 to about 90); waiting for
   DWM each frame (`DwmFlush`) does too; `BitmapCache` and pictures of the whole panel cost as much as drawing it.
-- The panel's size glide (`WindowBoundsAnimator`) has to resize the window each frame, since DWM draws the
-  acrylic, shadow and corners for the window's own rectangle; it runs at the same pace as the rest.
+- The panel's size glide (`WindowBoundsAnimator`) has to resize the window each step, since DWM draws the
+  acrylic, shadow and corners for the window's own rectangle, and each resize draws the panel. Taking the
+  next step as soon as that drawing is done (not waiting for a frame of its own, which drew the panel a
+  second time) gave, on a 240 Hz display at 150%, 130–170 new heights a second for a tab switch and
+  150–190 for an added row (22–26 heights a glide), against 100–130 and 120–155 (14–20 heights).
 
 `-- --screens` takes pictures of the panel's looks as DWM shows them (over a striped window of its own),
 `-- --frames --exp …` tries the rejected options above.

@@ -18,6 +18,7 @@ internal static class GlideTests
     {
         yield return ("panel glide: the clock starts on the glide's first frame, so a late first frame doesn't eat the start of the curve", ClockStartsOnFirstFrame);
         yield return ("panel glide: a resize that renders the window and raises a frame inside it moves one step, not the rest of the glide in a burst", OneStepPerFrame);
+        yield return ("panel glide: when that render takes most of a refresh (software), the next step follows it at once, never faster than the display", StepsAtRenderPace);
         yield return ("panel glide: sent somewhere new mid-flight, it carries on from where it is and keeps its end; with little time left it gets enough", RetargetKeepsTime);
         yield return ("panel glide: in step with a row folding away, it follows the row's clock and ease-in, and a rounding pixel doesn't change that", InStepWithFold);
         yield return ("tasks on screen: while a ticked row folds away, the list already asks for its final height, so the panel never chases it", FoldAsksFinalHeight);
@@ -52,6 +53,8 @@ internal static class GlideTests
         }
 
         public void Frames(EventHandler frame, bool on) => OnFrame = on ? frame : null;
+
+        public double RefreshMs { get; set; } = Frame;
 
         public void Tick() => OnFrame?.Invoke(null, EventArgs.Empty);
 
@@ -120,6 +123,40 @@ internal static class GlideTests
         Check.True(perFrame.All(n => n <= 1), $"one step per frame (steps in each frame: {string.Join(",", perFrame)})");
         Check.True(perFrame.Count >= 12, $"over many frames ({perFrame.Count})");
         Check.Equal(Taller(240), w.Landed, "and it lands");
+    }
+
+    private static void StepsAtRenderPace()
+    {
+        foreach (double renderMs in new[] { 8.5, 13.0 })
+        {
+            var w = new FakeWindow(Start);
+            int depth = 0;
+            w.DuringPlace = win =>
+            {
+                // Drawing the whole panel in software, inside SetWindowPos: most of a 10 ms refresh, or more.
+                if (++depth > 64) throw new TestFailure("frames nest without end");
+                win.NowMs += renderMs;
+                win.Tick();
+                depth--;
+            };
+            var glide = new WindowBoundsAnimator(w);
+            glide.AnimateTo(Taller(240));
+            int most = 0;
+            for (int i = 0; i < 300 && w.OnFrame != null; i++)
+            {
+                int before = w.Steps.Count;
+                w.NowMs += 1; // the next frame comes as soon as the last is drawn
+                w.Tick();
+                most = Math.Max(most, w.Steps.Count - before);
+            }
+            var placed = w.Steps.Take(w.Steps.Count - 1).ToList(); // the landing aside
+            Check.Equal(Taller(240), w.Landed, $"{renderMs} ms renders: it lands");
+            double closest = Enumerable.Range(1, placed.Count - 1).Min(i => placed[i].T - placed[i - 1].T);
+            Check.True(closest >= 0.8 * Frame - 0.01, $"{renderMs} ms renders: steps never closer than most of a refresh ({closest} ms)");
+            Check.True(closest <= renderMs + 0.01, $"{renderMs} ms renders: each follows the last one's render at once ({closest} ms apart)");
+            Check.True(placed.Count >= WindowBoundsAnimator.DurationMs / (renderMs + 1) - 2, $"{renderMs} ms renders: a step for each render ({placed.Count} steps)");
+            Check.True(most >= 5, $"{renderMs} ms renders: without waiting for a frame of their own each (at most {most} steps in one frame)");
+        }
     }
 
     private static void RetargetKeepsTime()
@@ -217,7 +254,22 @@ internal static class GlideTests
             Check.True(slot > 20, $"the row has a height ({slot})");
             var box = Ui.Descendants<ToggleButton>(row).First(b => b.Name == "Check");
 
-            // Each frame from the fold's start until the row is gone: what the list asks for, and how far the row has folded.
+            // What the list asks for as the row starts to fold (still its full height), and with it half folded:
+            // taken in the fold's own first moment, so they don't depend on how many frames a busy PC draws.
+            // A list that chased the row would ask for its old height there, then half a row too much.
+            var atStart = new List<(double Height, double Row)>();
+            tasks.RowFolding += _ =>
+            {
+                tasks.UpdateLayout();
+                atStart.Add((tasks.FittedHeight(width), row.DesiredSize.Height));
+                row.Height = slot / 2; // as the fold has it halfway (its animation starts after this, from the full height)
+                tasks.UpdateLayout();
+                atStart.Add((tasks.FittedHeight(width), row.DesiredSize.Height));
+                row.ClearValue(FrameworkElement.HeightProperty);
+                tasks.UpdateLayout();
+            };
+
+            // And every frame drawn from then until the row is gone, however few.
             var asked = new List<(double Height, double Row)>();
             EventHandler sample = (_, _) =>
             {
@@ -239,11 +291,11 @@ internal static class GlideTests
             Check.True(task.IsDone && !view.Open.Contains(task), "the task is done");
             Check.Sequence([200.0], foldMs, "the panel heard the row start to fold, and for how long");
             Check.True(Math.Abs(after - (before - slot)) < 1, $"the list lost the row ({before} → {after}, the row was {slot})");
-            int midway = asked.Count(s => s.Row > 0.5 && s.Row < slot - 0.5);
-            Check.True(midway >= 3, $"the row was seen folding ({midway} frames)");
-            double far = asked.Max(s => Math.Abs(s.Height - after));
-            Check.True(far < 1, $"while it folds, the list asks for its final height ({after:F1}) all along, so the panel never chases it " +
-                $"(off by up to {far:F1}: {string.Join(" ", asked.Select(s => s.Height.ToString("F1")))})");
+            Check.True(atStart.Count == 2 && Math.Abs(atStart[0].Row - slot) < 0.5 && Math.Abs(atStart[1].Row - slot / 2) < 0.5,
+                $"looked at as the fold starts, the row whole then half folded ({string.Join(", ", atStart.Select(a => a.Row.ToString("F1")))})");
+            foreach (var (height, rowHeight) in atStart.Concat(asked))
+                Check.True(Math.Abs(height - after) < 1, $"with the row at {rowHeight:F1} of {slot:F1}, the list asks for its final height ({after:F1}), not {height:F1}, " +
+                    $"so the panel never chases it (frames: {string.Join(" ", asked.Select(a => a.Height.ToString("F1")))})");
             Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
         });
     }

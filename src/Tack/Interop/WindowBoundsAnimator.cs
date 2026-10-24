@@ -27,6 +27,9 @@ internal interface IGlideWindow
 
     /// <summary>Starts or stops calling <paramref name="frame"/> once per rendered frame.</summary>
     void Frames(EventHandler frame, bool on);
+
+    /// <summary>How long one refresh of the window's display takes (ms).</summary>
+    double RefreshMs { get; }
 }
 
 /// <summary>
@@ -36,6 +39,13 @@ internal interface IGlideWindow
 /// ease-out is on screen. Retargeting mid-flight continues smoothly from wherever the window is and
 /// keeps to the time that's left. A glide <see cref="GlideTiming">in step</see> with something else
 /// follows that thing's own clock and curve.
+/// <para>
+/// Pace: each step resizes the window, and WPF renders a resized window inside that call, which is a
+/// frame in its own right. Stepping from inside it would set off the next step at once (a burst, if
+/// those renders take no time), so it's only noted; once the step returns, the next one follows
+/// straight away if a refresh's worth of time (or nearly) has gone by, so in software the glide moves
+/// at the pace the window can be drawn, never faster than the display, and each step costs one render.
+/// </para>
 /// </summary>
 internal sealed class WindowBoundsAnimator
 {
@@ -54,6 +64,9 @@ internal sealed class WindowBoundsAnimator
     private double _duration;
     private bool _easeIn;
     private bool _placing;
+    private bool _rendered; // a frame was drawn inside the last step's resize
+    private double _steppedAt = double.NegativeInfinity; // when the last step was taken
+    private double _minStepMs; // steps never come closer than this: most of one refresh of the display
     private double _shownAt; // the moment on the glide's clock that the window's last step stands for
 
     public WindowBoundsAnimator(Visual root, IntPtr hwnd) : this(new HwndGlideWindow(root, hwnd)) { }
@@ -113,6 +126,7 @@ internal sealed class WindowBoundsAnimator
         _to = target;
         if (IsRunning) return;
         IsRunning = true;
+        _minStepMs = 0.8 * _window.RefreshMs;
         _window.Frames(OnFrame, true);
     }
 
@@ -163,25 +177,42 @@ internal sealed class WindowBoundsAnimator
     private void Place(Int32Rect r)
     {
         _placing = true;
+        _rendered = false;
+        _steppedAt = _window.NowMs;
         try { _window.Place(r); }
         finally { _placing = false; }
     }
 
     private void OnFrame(object? sender, EventArgs e)
     {
-        // Resizing renders the window inside the call and raises a frame there: one step per frame,
-        // or every step would set off the next and the glide would run through in a burst.
-        if (_placing || !IsRunning) return;
+        if (!IsRunning) return;
+        if (_placing)
+        {
+            // A frame drawn inside a step's resize: stepping from here would set off the next step at once,
+            // and the glide would run through in a burst. It's noted, for the loop below.
+            _rendered = true;
+            return;
+        }
+        Step();
+        // That step was drawn as it was taken (a frame of its own): the next follows it here, at the pace
+        // the window can be drawn, but never sooner than most of a refresh after the last, so never in a
+        // burst, and never from inside a render. Otherwise (no frame drawn, or too soon) the next frame takes it.
+        for (int i = 0; i < 1000 && IsRunning && _rendered && _window.NowMs - _steppedAt >= _minStepMs; i++)
+            Step();
+    }
 
+    private void Step()
+    {
+        _rendered = false;
         if (double.IsNaN(_start))
         {
             // A glide is asked for after a layout pass, and its first frame can come tens of ms later.
             // Starting the clock only now, once a first one-pixel step has landed (which also pays for
             // the first resize), keeps that wait from eating the start of the curve.
             var current = _window.Rect;
-            int Step(int a, int b) => a + Math.Sign(b - a);
-            int left = Step(current.X, _to.X), top = Step(current.Y, _to.Y);
-            int right = Step(current.X + current.Width, _to.X + _to.Width), bottom = Step(current.Y + current.Height, _to.Y + _to.Height);
+            int Toward(int a, int b) => a + Math.Sign(b - a);
+            int left = Toward(current.X, _to.X), top = Toward(current.Y, _to.Y);
+            int right = Toward(current.X + current.Width, _to.X + _to.Width), bottom = Toward(current.Y + current.Height, _to.Y + _to.Height);
             var first = new Int32Rect(left, top, right - left, bottom - top);
             if (first != _to) Place(first);
             Aim(first, _to, 0);
@@ -219,6 +250,8 @@ internal sealed class WindowBoundsAnimator
         public void Land(Int32Rect r) => ScreenGeometry.PlaceExact(root, hwnd, r);
 
         public double NowMs => Clock;
+
+        public double RefreshMs => ScreenGeometry.RefreshMs(hwnd);
 
         public void Frames(EventHandler frame, bool on)
         {

@@ -37,6 +37,18 @@ internal static class ScreenGeometry
         return new MonitorArea(ToInt32Rect(info.rcMonitor), ToInt32Rect(info.rcWork), scale);
     }
 
+    /// <summary>How long one refresh of the display a window is on takes (ms); 60 Hz if Windows doesn't say.</summary>
+    public static double RefreshMs(IntPtr hwnd)
+    {
+        var info = new NativeMethods.MONITORINFOEX { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MONITORINFOEX>() };
+        var mode = new NativeMethods.DEVMODE { dmSize = (ushort)System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.DEVMODE>() };
+        IntPtr monitor = NativeMethods.MonitorFromWindow(hwnd, NativeMethods.MONITOR_DEFAULTTONEAREST);
+        bool known = NativeMethods.GetMonitorInfoEx(monitor, ref info)
+            && NativeMethods.EnumDisplaySettings(info.szDevice, NativeMethods.ENUM_CURRENT_SETTINGS, ref mode)
+            && mode.dmDisplayFrequency is >= 24 and <= 500;
+        return 1000.0 / (known ? mode.dmDisplayFrequency : 60);
+    }
+
     public static Int32Rect GetWindowRect(IntPtr hwnd)
     {
         NativeMethods.GetWindowRect(hwnd, out var r);
