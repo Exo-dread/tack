@@ -48,10 +48,12 @@ internal sealed class OleSource : ComTypes.IDataObject
 
     public OleSource Storage(string format, Func<NativeMethods.IStorage> make, int index)
     {
-        _items.Add((Id(format), index, () => new ComTypes.STGMEDIUM
+        _items.Add((Id(format), index, () =>
         {
-            tymed = ComTypes.TYMED.TYMED_ISTORAGE,
-            unionmember = Marshal.GetComInterfaceForObject(make(), typeof(NativeMethods.IStorage)),
+            var storage = make();
+            IntPtr pointer = Marshal.GetComInterfaceForObject(storage, typeof(NativeMethods.IStorage));
+            Marshal.ReleaseComObject(storage); // the medium's reference is the one that stays, as from another process
+            return new ComTypes.STGMEDIUM { tymed = ComTypes.TYMED.TYMED_ISTORAGE, unionmember = pointer };
         }));
         return this;
     }
