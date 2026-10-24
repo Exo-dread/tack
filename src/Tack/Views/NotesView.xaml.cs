@@ -24,6 +24,9 @@ internal interface INotesHost
     void Announce(string text);
 
     void ViewSnippet(string path, Snippet snippet);
+
+    /// <summary>The Undo on offer, if there is one, lapses now (a paste needs the room what it holds back).</summary>
+    void EndUndo();
 }
 
 /// <summary>
@@ -413,6 +416,13 @@ public partial class NotesView : UserControl
             foreach (var png in found.Images)
             {
                 var (snippet, refusal) = store.Add(sheet.Id, png, DateTimeOffset.Now);
+                if (refusal == SnippetRefusal.Held)
+                {
+                    // The room is held by snippets an Undo could still put back: the paste is the newer
+                    // action, so that Undo lapses (its files go) and the paste has the room, as with any toast.
+                    _host?.EndUndo();
+                    (snippet, refusal) = store.Add(sheet.Id, png, DateTimeOffset.Now);
+                }
                 if (snippet == null)
                 {
                     problem = Explain(refusal);
@@ -455,6 +465,7 @@ public partial class NotesView : UserControl
         SnippetRefusal.Full => $"Notes keeps up to {SnippetStore.MaxCount} snippets: discard one to make room",
         SnippetRefusal.NoRoom => $"Notes keeps up to {SnippetStore.MaxTotalBytes / (1024 * 1024)} MB of snippets: discard one to make room",
         SnippetRefusal.CantSave => "Couldn't keep that image",
+        SnippetRefusal.Held => $"Notes keeps up to {SnippetStore.MaxCount} snippets: discard one to make room",
         _ => null,
     };
 

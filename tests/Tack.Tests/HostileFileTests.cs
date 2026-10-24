@@ -69,10 +69,13 @@ internal static class HostileFileTests
         yield return ("snippets, hostile paste: damaged DIB headers are refused", CorruptDibs);
         yield return ("snippets, hostile paste: copied files on shares, device paths, cloud placeholders, oversized or misnamed are never read", HostileFiles);
         yield return ("snippets, hostile snippets.json: entries naming other files or out of range are dropped; only Tack's own files are cleared", HostileIndex);
+        yield return ("snippets, hostile snippets.json: one that can't be read (nor its .bak) clears no file, is kept aside and never written over", UnreadableSnippetIndex);
+        yield return ("snippets, hostile snippets.json: entries past the caps aren't loaded, and their files aren't cleared away", SnippetsPastTheCaps);
         yield return ("snippets, hostile snippet file: one replaced by a vast, damaged or oversized image shows an empty frame, no error", HostileStoredFile);
         // Dropping onto the orb: hostile drags (huge lists, javascript: links, device paths, endless streams) are in DropTests.
         yield return ("attachments.json: a damaged or hand-edited file can't point a paperclip anywhere a drop couldn't; the good entries still load", AttachmentsEntries);
         yield return ("attachments.json: too large, too deep or too many is bounded, and the backup takes over", AttachmentsBounds);
+        yield return ("attachments.json: one that can't be read (nor its .bak) sweeps no saved email, is kept aside and never written over", UnreadableAttachments);
     }
 
     // ---------------------------------------------------------------- attachments.json (local, never synced)
@@ -169,6 +172,50 @@ internal static class HostileFileTests
             File.Delete(path + ".bak");
             store.Load();
             Check.True(store.Count == 0 && !File.Exists(path) && !Directory.Exists(store.Folder), "no attachments, no file made");
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch { }
+        }
+    }
+
+    private static void UnreadableAttachments()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "tack-drop-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var store = new Tack.Drop.Core.AttachmentStore(folder);
+            string id = "abcdefabcdef", mail = Path.Combine(store.Folder, id, "Site visit.msg");
+            Directory.CreateDirectory(Path.GetDirectoryName(mail)!);
+            File.WriteAllText(mail, "pretend");
+            Check.True(store.Add("bbbbbbbbbbbb", Tack.Drop.Core.Attachment.Clean(Tack.Drop.Core.AttachmentKind.File, id + "\\Site visit.msg", "Site visit.msg", true, _ => false)!), "kept");
+            store.Save();
+            Directory.SetLastWriteTimeUtc(Path.GetDirectoryName(mail)!, DateTime.UtcNow.AddDays(-3)); // dropped days ago
+            string path = store.FilePath;
+            foreach (var (name, text, bak) in new[]
+            {
+                ("cut short, its .bak too", "{ \"attachments\": ", "{ \"attachments\": "),
+                ("a top-level array (another shape)", "[{\"task\":\"bbbbbbbbbbbb\"}]", "[]"),
+                ("too large, no .bak", "{\"attachments\":[]}" + new string(' ', (int)Tack.Drop.Core.DropLimits.MaxFileBytes), null),
+            })
+            {
+                File.WriteAllText(path, text);
+                if (bak != null) File.WriteAllText(path + ".bak", bak);
+                else File.Delete(path + ".bak");
+                var again = new Tack.Drop.Core.AttachmentStore(folder);
+                again.Load();
+                Check.True(again.LeftAlone && again.Count == 0, $"{name}: unreadable, so left alone");
+                Check.Equal(0, again.SweepOrphans(DateTime.UtcNow.AddMinutes(1)), $"{name}: nothing swept");
+                Check.True(File.Exists(mail), $"{name}: the saved email stays");
+                Check.True(!again.Add("cccccccccccc", new Tack.Drop.Core.Attachment(Tack.Drop.Core.AttachmentKind.Link, "https://y.example/", "y")), $"{name}: nothing added");
+                again.Save();
+                Check.True(File.ReadAllText(path) == text, $"{name}: never written over");
+                var copies = Directory.GetFiles(folder, Tack.Drop.Core.AttachmentStore.FileName + ".unreadable-*");
+                Check.True(copies.Count(c => File.ReadAllText(c) == text) == (text.Length > 20 * 1024 * 1024 ? 0 : 1), $"{name}: kept aside, once");
+                new Tack.Drop.Core.AttachmentStore(folder).Load();
+                Check.Equal(copies.Length, Directory.GetFiles(folder, Tack.Drop.Core.AttachmentStore.FileName + ".unreadable-*").Length, $"{name}: no second copy at the next start");
+            }
         }
         finally
         {
@@ -450,6 +497,61 @@ internal static class HostileFileTests
         Check.Equal(SnippetRefusal.CantSave, newer.Add("sheet0000001", new SnippetPng(png, 20, 20, null), SnippetTests.At(9, 0)).Refusal, "nor written over");
         newer.Prune(_ => false);
         Check.True(File.ReadAllText(index) == later && File.Exists(Path.Combine(folder, Id(1) + ".png")), "left exactly as it was");
+    }
+
+    private static void UnreadableSnippetIndex()
+    {
+        Ui.Run(_ =>
+        {
+            using var dir = new SnippetTests.Temp();
+            var store = new SnippetStore(dir.Path);
+            var png = new SnippetPng(SnippetTests.Png(SnippetTests.Picture(20, 20)), 20, 20, null);
+            var a = store.Add("sheet0000001", png, SnippetTests.At(9, 0)).Snippet!;
+            var b = store.Add("sheet0000001", png, SnippetTests.At(9, 1)).Snippet!;
+            foreach (var (name, text, bak) in new[]
+            {
+                ("a top-level array (a later shape, or damage), its .bak too", "[]", "[]"),
+                ("cut short, its .bak zeroed", "{ \"version\": 1, \"snippets\": [", "\0\0\0"),
+                ("over 256 KB, no .bak", "{\"version\":1,\"snippets\":[]," + new string(' ', 300_000) + "}", null),
+            })
+            {
+                File.WriteAllText(store.IndexPath, text);
+                if (bak != null) File.WriteAllText(store.IndexPath + ".bak", bak);
+                else File.Delete(store.IndexPath + ".bak");
+                var again = new SnippetStore(dir.Path);
+                Check.True(again.LeftAlone && again.Count == 0, $"{name}: unreadable, so left alone");
+                Check.True(File.Exists(store.PathOf(a)) && File.Exists(store.PathOf(b)), $"{name}: every PNG stays");
+                Check.Equal(SnippetRefusal.CantSave, again.Add("sheet0000001", png, SnippetTests.At(9, 2)).Refusal, $"{name}: nothing added over it");
+                again.Prune(_ => false);
+                Check.True(File.ReadAllText(store.IndexPath) == text && File.Exists(store.PathOf(a)), $"{name}: never written over, nothing cleared");
+                var copies = Directory.GetFiles(dir.Path, SnippetStore.IndexName + ".unreadable-*");
+                Check.Equal(1, copies.Count(c => File.ReadAllText(c) == text), $"{name}: kept aside");
+                Check.True(new SnippetStore(dir.Path).LeftAlone, $"{name}: still left alone at the next start");
+                Check.Equal(copies.Length, Directory.GetFiles(dir.Path, SnippetStore.IndexName + ".unreadable-*").Length, $"{name}: once, not at every start");
+            }
+        });
+    }
+
+    private static void SnippetsPastTheCaps()
+    {
+        Ui.Run(_ =>
+        {
+            using var dir = new SnippetTests.Temp();
+            string folder = Path.Combine(dir.Path, SnippetStore.FolderName), index = Path.Combine(dir.Path, SnippetStore.IndexName);
+            Directory.CreateDirectory(folder);
+            byte[] png = SnippetTests.Png(SnippetTests.Picture(20, 20));
+            static string Id(int n) => n.ToString("x32");
+            int over = SnippetStore.MaxCount + 5;
+            for (int n = 1; n <= over; n++) File.WriteAllBytes(Path.Combine(folder, Id(n) + ".png"), png);
+            File.WriteAllText(index, JsonSerializer.Serialize(new
+            {
+                version = 1,
+                snippets = Enumerable.Range(1, over).Select(n => new { id = Id(n), sheetId = "sheet0000001", file = Id(n) + ".png", created = "2026-10-24T09:05:00.000+01:00", size = 1, width = 20, height = 20 }),
+            }));
+            var store = new SnippetStore(dir.Path);
+            Check.Equal(SnippetStore.MaxCount, store.Count, "fifty loaded");
+            Check.Equal(over, Directory.GetFiles(folder, "*.png").Length, "the five past the cap keep their files");
+        });
     }
 
     private static void HostileStoredFile()

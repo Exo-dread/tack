@@ -38,6 +38,9 @@ internal static class SnippetTests
         yield return ("snippets: up to 50 snippets and 50 MB, then a toast says why", Caps);
         yield return ("snippets: never in tack.json, so never synced, imported or exported", NeverInTackJson);
         yield return ("snippets: at start, snippets of deleted sheets and files nothing names are cleared away", PrunedAtStart);
+        yield return ("snippets: a tack.json that can't be read (nor its .bak) clears none of them, all session; restored, each sheet has its own", KeptWhileTackJsonUnreadable);
+        yield return ("snippets: discarded ones an Undo could put back keep their room, so Undo never takes Notes past its caps", UndoWithinCaps);
+        yield return ("notes: a paste that needs the room an Undo holds ends that Undo, and the paste is kept", PasteEndsHeldUndo);
         yield return ("toast undo: Undo runs once and nothing lapses; another toast, the toast going or quitting makes it lapse once", UndoSlotLapses);
         yield return ("notes on screen: no snippets, the paper exactly as before; a paste shows a thumbnail strip above the text", StripOnScreen);
         yield return ("notes on screen: x discards at once with Undo, Undo puts it back, and the file goes once Undo lapses", DiscardWithUndo);
@@ -248,6 +251,119 @@ internal static class SnippetTests
         Check.True(next.Of("gone00000001").Count == 0 && !File.Exists(next.PathOf(gone)), "the gone sheet's snippet goes, file and all");
         Check.True(File.Exists(mine) && File.Exists(upper) && File.Exists(tack), "nothing else is touched");
         Check.Equal(1, new SnippetStore(dir.Path).Count, "and that's saved");
+    }
+
+    private static void KeptWhileTackJsonUnreadable()
+    {
+        Ui.Run(_ =>
+        {
+            using var dir = new Temp();
+            var state = new StateStore(dir.Path);
+            var ws = state.Attach(state.Load());
+            var sheet = ws.AddSheet(null, "Clash review L3");
+            state.Flush();
+            var snip = new SnippetStore(dir.Path).Add(sheet.Id, new SnippetPng(Png(Picture(20, 20)), 20, 20, null), At(9, 0)).Snippet!;
+            sheet.Text = "Clash review L3\n- duct vs beam at C4";
+            state.Flush(); // so tack.json.bak is there too
+            byte[] good = File.ReadAllBytes(state.FilePath);
+            Check.True(File.Exists(state.FilePath + ".bak"), "tack.json and its .bak");
+
+            // Both unreadable (a bad sector, a sync tool, a half-copied folder): Tack starts empty.
+            File.WriteAllText(state.FilePath, "{ \"version\": 1, \"tasks\": [");
+            File.WriteAllText(state.FilePath + ".bak", "\0\0\0");
+            var lost = new StateStore(dir.Path);
+            var empty = lost.Attach(lost.Load());
+            Check.True(lost.LoadFailed && empty.LoadFailed && empty.SheetById(sheet.Id) == null, "started empty, and knows why");
+            var held = new SnippetStore(dir.Path);
+            held.Prune(empty);
+            Check.True(held.Count == 1 && File.Exists(held.PathOf(snip)), "the snippet and its file stay at start");
+            empty.AddSheet(null, "Carrying on");
+            lost.Flush();
+            held.Prune(empty);
+            Check.True(held.Count == 1 && File.Exists(held.PathOf(snip)), "and all session, whatever is written meanwhile");
+
+            // tack.json restored (from a backup): the sheet has its snippet again.
+            File.WriteAllBytes(state.FilePath, good);
+            var restored = new StateStore(dir.Path);
+            var back = restored.Attach(restored.Load());
+            var again = new SnippetStore(dir.Path);
+            again.Prune(back);
+            Check.True(!back.LoadFailed && again.Of(sheet.Id).Count == 1, "restored: the sheet and its snippet");
+
+            // A tack.json that reads, without the sheet (deleted for good): its snippets go, as ever.
+            back.DeleteSheet(back.SheetById(sheet.Id)!);
+            again.Prune(back);
+            Check.True(again.Count == 0 && !File.Exists(again.PathOf(snip)), "a sheet that's really gone takes its snippets");
+        });
+    }
+
+    private static void UndoWithinCaps()
+    {
+        Ui.Run(_ =>
+        {
+            using var dir = new Temp();
+            var store = new SnippetStore(dir.Path);
+            var png = new SnippetPng(Png(Picture(16, 16)), 16, 16, null);
+            var onA = Enumerable.Range(0, 10).Select(i => store.Add("sheetaaaaaaa", png, At(9, i)).Snippet!).ToList();
+            for (int i = 0; i < 35; i++) store.Add("sheetbbbbbbb", png, At(10, i));
+            store.Detach(onA); // sheet A deleted: its Undo on offer
+            int pasted = 0;
+            SnippetRefusal last = SnippetRefusal.None;
+            for (int i = 0; i < 10; i++)
+            {
+                var (s, refusal) = store.Add("sheetbbbbbbb", png, At(11, i));
+                if (s != null) pasted++;
+                else last = refusal;
+            }
+            Check.Equal(5, pasted, "pasted only into the room the Undo doesn't hold");
+            Check.Equal(SnippetRefusal.Held, last, "and says why");
+            store.Attach(onA); // Undo
+            Check.Equal(SnippetStore.MaxCount, store.Count, "Undo puts them all back, and that's the cap");
+            var restarted = new SnippetStore(dir.Path);
+            Check.True(restarted.Count == SnippetStore.MaxCount && restarted.Of("sheetaaaaaaa").Count == 10, "a restart keeps every one, the ones Undo put back too");
+            Check.Equal(SnippetStore.MaxCount, Directory.GetFiles(restarted.Folder, "*.png").Length, "and every file");
+
+            // Once the Undo lapses, the room is free again.
+            var one = restarted.Of("sheetaaaaaaa").Take(1).ToList();
+            restarted.Detach(one);
+            Check.Equal(SnippetRefusal.Held, restarted.Add("sheetbbbbbbb", png, At(12, 0)).Refusal, "held while its Undo is on offer");
+            restarted.Forget(one);
+            Check.Equal(SnippetRefusal.None, restarted.Add("sheetbbbbbbb", png, At(12, 1)).Refusal, "free once it lapses");
+
+            // Bytes are held the same way.
+            var big = new SnippetPng(new byte[20 * 1024 * 1024], 10, 10, null);
+            using var roomy = new Temp();
+            var bytes = new SnippetStore(roomy.Path);
+            var first = bytes.Add("sheetaaaaaaa", big, At(9, 0)).Snippet!;
+            bytes.Add("sheetaaaaaaa", big, At(9, 1));
+            bytes.Detach([first]);
+            Check.Equal(SnippetRefusal.Held, bytes.Add("sheetaaaaaaa", big, At(9, 2)).Refusal, "20 MB held by a discarded one");
+            bytes.Attach([first]);
+            Check.True(bytes.TotalBytes <= SnippetStore.MaxTotalBytes, "Undo stays within 50 MB");
+        });
+    }
+
+    private static void PasteEndsHeldUndo()
+    {
+        Ui.Run(errors =>
+        {
+            using var dir = new Temp();
+            var ws = new Workspace(new Settings(), new Hlc("desk0001"), WorkspaceData.Empty);
+            var store = new SnippetStore(dir.Path);
+            var host = new Host();
+            var notes = Notes(ws, store, host);
+            using var window = Ui.Host(notes);
+            var png = new SnippetPng(Png(Picture(16, 16)), 16, 16, null);
+            for (int i = 0; i < SnippetStore.MaxCount; i++) store.Add(ws.ActiveSheet.Id, png, At(9, i % 60));
+            var discarded = store.Of(ws.ActiveSheet.Id)[0];
+            notes.Discard(discarded); // to make room: its Undo on offer
+            Check.True(host.CanUndo, "Undo on offer");
+            notes.Keep(new PastedImages([png], PasteProblem.None), fromTasks: false);
+            Check.True(!host.CanUndo, "the paste ended that Undo");
+            Check.Equal(SnippetStore.MaxCount, store.Count, "and took the room");
+            Check.True(!File.Exists(store.PathOf(discarded)), "the discarded one's file went as the Undo lapsed");
+            Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+        });
     }
 
     private static void UndoSlotLapses()
@@ -554,6 +670,8 @@ internal static class SnippetTests
         public void Undo() => _slot.Take()?.Invoke();
 
         public void Lapse() => _slot.Lapse();
+
+        public void EndUndo() => _slot.Lapse();
     }
 
     internal static NotesView Notes(Workspace ws, SnippetStore store, INotesHost host)

@@ -114,7 +114,7 @@ internal sealed record DropItem(ItemKind Kind, string Text, string? Target = nul
     int ContentIndex = -1, string? CopyFrom = null, long? Size = null, DropNote? Note = null);
 
 /// <summary>Reasons an item comes without its attachment.</summary>
-internal enum DropNote { Program, TooBig, FolderFull, StoreFull, Unreadable }
+internal enum DropNote { Program, TooBig, FolderFull, StoreFull, Unreadable, StoreLeftAlone }
 
 /// <summary>The kinds of drag Tack recognises, in the order it prefers them.</summary>
 internal enum DropFamily { None, Files, Links, VirtualFiles, Text }

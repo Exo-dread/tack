@@ -116,6 +116,10 @@ its own shortcuts. They live in files of their own beside tack.json, and the rul
   have made. Hostile cases for each are in `tests/Tack.Tests/HostileFileTests.cs`.
 - **Tidied with what they belong to.** Deleting a task or a sheet for good (once its Undo has lapsed, or
   another device deleted it) lets its attachment or snippets go, and startup clears files nothing points to.
+- **Never on a guess.** If tack.json and its backup can't be read, Tack starts empty (keeping the file
+  aside), and nothing beside it is let go all session: the sheets and tasks it belongs to may come back.
+  An index of these that can't be read is kept aside too, and it and its folder are left exactly as they
+  are (as for one a later version wrote) until it reads again.
 
 ### Dropping onto the orb: capture without switching
 The orb is always on screen, so it's also the quickest place to put something you've just seen: an email in
@@ -174,7 +178,8 @@ The rules keep it a scrap, not a gallery:
   file is deleted when that Undo lapses (the toast goes or another takes its place), and if Tack quits
   first, the next start clears it away. Deleting a sheet takes its snippets the same way, and a
   snippet whose sheet was deleted on another device goes at the next start.
-- **Small and bounded.** Up to 50 snippets and 50 MB in all. A pasted image is checked from its
+- **Small and bounded.** Up to 50 snippets and 50 MB in all, counting discarded ones an Undo could
+  still put back (a paste that needs their room ends that Undo). A pasted image is checked from its
   header before anything is decoded (40 million pixels at most), kept as it came when it fits, and
   otherwise scaled to fit 8192 pixels a side (16.7 million in all) and saved as a plain PNG. Only
   Windows' own PNG, BMP, JPEG, GIF and TIFF decoders are used, image files are read only from this

@@ -61,6 +61,14 @@ turn it on or out of sight until you use it; until then Tack looks and behaves a
 - Notes: a sheet switch that comes in the middle of an edit (from a keystroke, say) waits for the
   edit to end before clearing Undo, instead of being able to crash Tack. As before, the switch isn't
   an undo step, and what's typed on blank paper stays undoable.
+- **Snippets and attachments are never cleared on a guess.** If tack.json (and its backup) can't be
+  read, Tack starts empty as before, keeps the unreadable file aside, and now also leaves every
+  snippet, attachment and saved email exactly as it is for that session, so restoring tack.json
+  brings them back with their sheets and tasks. A snippets.json or attachments.json that can't be
+  read is kept aside the same way, and it and its folder are left as they are (no new snippets or
+  paperclips until it reads again), instead of everything in the folder being cleared away.
+- Snippets: Undo of a discarded snippet (or a deleted sheet) can no longer take Notes past 50
+  snippets or 50 MB; a paste that needs the room it holds ends that Undo instead.
 
 ## 1.6.1 (2026-10-24)
 

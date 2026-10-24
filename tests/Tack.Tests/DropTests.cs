@@ -8,6 +8,7 @@ using Tack.Drop.Core;
 using Tack.Interop;
 using Tack.Launcher.Core;
 using Tack.Model;
+using Tack.Services;
 using Tack.Sync;
 
 namespace Tack.Tests;
@@ -38,6 +39,7 @@ internal static class DropTests
         yield return ("attachments: the folder and the store have caps; past them the task is made without its attachment", Caps);
         yield return ("attachments: a task deleted for good lets go of its attachment and saved copy; Undo on offer, a live task or a peer's fresh delete keep it", LettingGo);
         yield return ("attachments: copies nothing points to are swept, only Tack's own folders, and attachments.json reads back what it wrote", SweepAndRoundTrip);
+        yield return ("attachments: a tack.json that can't be read (nor its .bak) lets go of none of them, and sweeps no copy, all session", KeptWhileTackJsonUnreadable);
         yield return ("attachments: the paperclip opens by the launcher's rules, and a missing file says so", Opening);
     }
 
@@ -600,7 +602,58 @@ internal static class DropTests
         Check.True(DropIntake.Keep(ws, task.Id, now), "a minute after another device deleted it: kept");
         Check.True(!DropIntake.Keep(ws, task.Id, now + DropIntake.PeerGrace.TotalMilliseconds), "past the grace: let go");
         Check.True(!DropIntake.Keep(ws, "f00000000000", now), "a task this PC no longer knows: let go");
-        Check.True(DropIntake.Keep(NewWorkspace(), "f00000000000", now), "unless it knows no task at all (a tack.json that didn't load)");
+        Check.True(!DropIntake.Keep(NewWorkspace(), "f00000000000", now), "even when it knows no task at all (tack.json read, and empty)");
+        Check.True(DropIntake.Keep(new Workspace(new Settings(), new Hlc("desk0001"), WorkspaceData.Empty) { LoadFailed = true }, "f00000000000", now),
+            "unless tack.json couldn't be read");
+    }
+
+    private static void KeptWhileTackJsonUnreadable()
+    {
+        Ui.Run(_ =>
+        {
+            string folder = TempDir();
+            try
+            {
+                var state = new StateStore(folder);
+                var ws = state.Attach(state.Load());
+                var task = ws.AddTask("RFI 112: slab edge at grid 7");
+                state.Flush();
+                // An email kept by a drop from Outlook, three days ago, and a copy nothing names (an orphan).
+                var store = new AttachmentStore(folder, DesktopDrop.IsProgram);
+                string mail = Path.Combine(store.Folder, "0123456789ab", "RFI 112.msg"), orphan = Path.Combine(store.Folder, "aaaaaaaaaaaa");
+                Directory.CreateDirectory(Path.GetDirectoryName(mail)!);
+                File.WriteAllText(mail, "pretend .msg");
+                Directory.CreateDirectory(orphan);
+                File.WriteAllText(Path.Combine(orphan, "lost.eml"), "x");
+                Directory.SetLastWriteTimeUtc(orphan, DateTime.UtcNow.AddDays(-3));
+                Check.True(store.Add(task.Id, Attachment.Clean(AttachmentKind.File, "0123456789ab\\RFI 112.msg", "RFI 112.msg", saved: true, DesktopDrop.IsProgram)!), "kept");
+                store.Save();
+                ws.AddTask("Second");
+                state.Flush(); // tack.json.bak too
+
+                File.WriteAllText(state.FilePath, "{");
+                File.WriteAllText(state.FilePath + ".bak", "{");
+                var lost = new StateStore(folder);
+                var empty = lost.Attach(lost.Load());
+                Check.True(empty.LoadFailed, "started empty: tack.json couldn't be read");
+                var view = new SpaceView(empty);
+                var module = new DropModule(folder, empty, view, new DropContext { Probe = Launcher.Core.RealFileProbe.Instance, IsProgram = DesktopDrop.IsProgram });
+                module.Prune();
+                module.SweepOrphans();
+                Check.True(module.Store.Count == 1 && File.Exists(mail), "at start: the attachment and its email stay");
+                Check.True(Directory.Exists(orphan), "and nothing is swept");
+                empty.AddTask("Call the site office"); // carrying on
+                module.Prune(); // an Undo lapsing, or midnight
+                Check.True(module.Store.Count == 1 && File.Exists(mail), "nor later in the session, with tasks in the list again");
+                var reloaded = new AttachmentStore(folder, DesktopDrop.IsProgram);
+                reloaded.Load();
+                Check.True(reloaded.For(task.Id) != null, "attachments.json still says so");
+            }
+            finally
+            {
+                try { Directory.Delete(folder, recursive: true); } catch { }
+            }
+        });
     }
 
     private static void SweepAndRoundTrip()

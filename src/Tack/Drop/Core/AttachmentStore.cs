@@ -84,6 +84,13 @@ internal sealed class AttachmentStore
 
     public bool IsFull => _order.Count >= DropLimits.MaxAttachments;
 
+    /// <summary>
+    /// attachments.json (and its .bak) was there but couldn't be read: it's kept aside, and it and the attachments
+    /// folder are left exactly as they are this session (nothing added, saved, let go or swept), since nothing
+    /// can say which copies are still wanted.
+    /// </summary>
+    public bool LeftAlone { get; private set; }
+
     public IEnumerable<(string TaskId, Attachment Attachment)> All => _order.Select(id => (id, _byTask[id]));
 
     public Attachment? For(string taskId) => _byTask.GetValueOrDefault(taskId);
@@ -91,7 +98,7 @@ internal sealed class AttachmentStore
     /// <summary>Keeps an attachment for a task (replacing one it had). False when Tack already keeps as many as it will.</summary>
     public bool Add(string taskId, Attachment attachment)
     {
-        if (!Ids.IsValid(taskId)) return false;
+        if (LeftAlone || !Ids.IsValid(taskId)) return false;
         if (_byTask.ContainsKey(taskId)) Remove(taskId);
         else if (IsFull) return false;
         _byTask[taskId] = attachment;
@@ -144,6 +151,7 @@ internal sealed class AttachmentStore
     /// </summary>
     public int SweepOrphans(DateTime olderThanUtc)
     {
+        if (LeftAlone) return 0;
         int swept = 0;
         try
         {
@@ -197,16 +205,20 @@ internal sealed class AttachmentStore
     /// <summary>
     /// Reads attachments.json (or its .bak): unknown fields are ignored, every known one is checked, and an
     /// entry that fails is dropped on its own; the rest load. A missing file is no attachments, and creates nothing.
+    /// One that's there but can't be read, nor its .bak, leaves everything as it is (<see cref="LeftAlone"/>).
     /// </summary>
     public void Load(Action<string, Exception?>? onError = null)
     {
         _byTask.Clear();
         _order.Clear();
+        LeftAlone = false;
+        bool found = false;
         foreach (string candidate in new[] { _path, _path + ".bak" })
         {
             try
             {
                 if (!File.Exists(candidate)) continue;
+                found = true;
                 if (new FileInfo(candidate).Length > DropLimits.MaxFileBytes) throw new InvalidDataException("attachments.json is too large");
                 Parse(File.ReadAllBytes(candidate));
                 return;
@@ -218,6 +230,10 @@ internal sealed class AttachmentStore
                 onError?.Invoke($"Could not read {Path.GetFileName(candidate)}", ex);
             }
         }
+        if (!found) return;
+        LeftAlone = true;
+        Services.Unreadable.KeepAside(File.Exists(_path) ? _path : _path + ".bak");
+        onError?.Invoke("attachments.json couldn't be read; it and the attachments folder are left as they are", null);
     }
 
     /// <summary>Takes in a file's entries (see <see cref="Load"/>). Throws if it isn't JSON with an "attachments" list.</summary>
@@ -275,6 +291,7 @@ internal sealed class AttachmentStore
     /// <summary>Atomic write (temp file, then replace, keeping attachments.json.bak), as launcher.json is written.</summary>
     public void Save()
     {
+        if (LeftAlone) return; // never over a file that couldn't be read
         byte[] bytes = Serialize();
         string tmp = _path + ".tmp";
         using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))

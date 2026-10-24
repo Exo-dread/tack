@@ -50,13 +50,13 @@ internal sealed class DropIntake
         if (read.Count == 0) return DropOutcome.Nothing;
 
         long room = DropLimits.MaxFolderBytes - _store.FolderBytes();
-        int slots = DropLimits.MaxAttachments - _store.Count;
+        int slots = _store.LeftAlone ? 0 : DropLimits.MaxAttachments - _store.Count;
         var made = new List<(string Text, Attachment? Attachment)>();
         var notes = new List<(DropNote Note, bool Email)>();
         foreach (var item in read.Items)
         {
             var (text, attachment, note) = item.Kind != ItemKind.Text && slots <= 0
-                ? (item.Text, null, DropNote.StoreFull)
+                ? (item.Text, null, _store.LeftAlone ? DropNote.StoreLeftAlone : DropNote.StoreFull)
                 : Make(item, data, ref room);
             if (attachment != null) slots--;
             if (note is { } n) notes.Add((n, DropNames.IsEmail(item.Label ?? "")));
@@ -171,6 +171,7 @@ internal sealed class DropIntake
             DropNote.TooBig => $"{what} {verb} kept: over {DropLimits.MaxSavedBytes / (1024 * 1024)} MB",
             DropNote.FolderFull => $"{what} {verb} kept: the attachments folder is full",
             DropNote.StoreFull => $"Tack keeps {DropLimits.MaxAttachments:N0} attachments at most",
+            DropNote.StoreLeftAlone => "No paperclip: Tack couldn't read attachments.json",
             _ => $"{what} couldn't be read",
         };
     }
@@ -183,12 +184,14 @@ internal sealed class DropIntake
     /// <summary>
     /// Whether a task's attachment stays (asked only while no Undo is on offer, so nothing deleted here can come
     /// back): it stays with a live task (open or done); it goes with a task deleted here, or deleted elsewhere
-    /// more than <see cref="PeerGrace"/> ago, or forgotten altogether, unless the workspace holds no task at
-    /// all (a tack.json that failed to load mustn't take every attachment with it).
+    /// more than <see cref="PeerGrace"/> ago, or forgotten altogether. All of them stay while tack.json couldn't
+    /// be read (<see cref="Workspace.LoadFailed"/>): the tasks they belong to may yet come back, and the
+    /// emails kept for them exist nowhere else.
     /// </summary>
     public static bool Keep(Workspace ws, string taskId, double nowMs)
     {
-        if (ws.TaskById(taskId) is not { } task) return ws.TaskCount == 0;
+        if (ws.LoadFailed) return true;
+        if (ws.TaskById(taskId) is not { } task) return false;
         if (!task.IsDeleted) return true;
         if (Stamp.Node(task.Clk.Deleted) == ws.Clock.Node) return false;
         return nowMs - Stamp.Time(task.Clk.Deleted) < PeerGrace.TotalMilliseconds;

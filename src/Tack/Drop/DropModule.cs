@@ -54,6 +54,7 @@ internal sealed class DropModule : IOrbDropTarget
     private static readonly TimeSpan NoteFor = TimeSpan.FromSeconds(3);
 
     private readonly SpaceView _view;
+    private readonly Workspace _ws;
     private readonly AttachmentStore _store;
     private readonly DropIntake _intake;
     private Action<bool> _highlight = _ => { };
@@ -65,6 +66,7 @@ internal sealed class DropModule : IOrbDropTarget
     public DropModule(string dataFolder, Workspace ws, SpaceView view, DropContext? context = null)
     {
         _view = view;
+        _ws = ws;
         _store = new AttachmentStore(dataFolder, DesktopDrop.IsProgram);
         _store.Load((message, ex) => Log.Error($"Drop: {message}", ex));
         _intake = new DropIntake(ws, _store, context ?? DesktopDrop.Context(), DesktopDrop.MarkFromOutside);
@@ -236,9 +238,13 @@ internal sealed class DropModule : IOrbDropTarget
         catch (Exception ex) { Log.Error("Drop: couldn't let attachments go", ex); }
     }
 
-    /// <summary>At startup: copies no attachment points to (Tack stopped between saving one and recording it).</summary>
+    /// <summary>
+    /// At startup: copies no attachment points to (Tack stopped between saving one and recording it). Not in a
+    /// session that started empty because tack.json couldn't be read: nothing beside it is tidied then.
+    /// </summary>
     public void SweepOrphans()
     {
+        if (_ws.LoadFailed) return;
         try { _store.SweepOrphans(DateTime.UtcNow.AddMinutes(-10)); }
         catch (Exception ex) { Log.Error("Drop: couldn't tidy the attachments folder", ex); }
     }

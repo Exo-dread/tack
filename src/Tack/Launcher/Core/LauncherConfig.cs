@@ -139,7 +139,9 @@ internal sealed class LauncherConfig
     /// <summary>
     /// Resting on an app shows the files it opened last (its Jump List, or the app's own list). Off by default, so
     /// the launcher behaves exactly as before until it's turned on: resting then shows the display picker.
+    /// Off, it isn't written, so launcher.json stays exactly as 1.6 wrote it.
     /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool RecentFiles { get; set; }
 
     /// <summary>Exactly <see cref="SlotCount"/> fixed positions, clockwise from the top. Null is an empty position:

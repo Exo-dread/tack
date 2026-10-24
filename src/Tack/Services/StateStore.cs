@@ -72,6 +72,13 @@ internal sealed class StateStore
     /// <summary>The last save failed (it's retried shortly). Sync waits for a good save before writing.</summary>
     public bool SaveFailed { get; private set; }
 
+    /// <summary>
+    /// tack.json (or its .bak) was there but neither could be read, so this session started empty. What's kept
+    /// beside tack.json (snippets, attachments) then stays exactly as it is until the next start: it belongs
+    /// to data that may yet come back (the unreadable file is kept aside).
+    /// </summary>
+    public bool LoadFailed { get; private set; }
+
     /// <summary>Portable mode: a "TackData" folder next to Tack.exe keeps everything beside the app.</summary>
     public static string ResolveFolder()
     {
@@ -84,9 +91,11 @@ internal sealed class StateStore
     {
         TryDelete(_path + ".tmp"); // left behind only if a previous write was interrupted
 
+        LoadFailed = false;
         foreach (string candidate in new[] { _path, _path + ".bak" })
         {
             if (!File.Exists(candidate)) continue;
+            LoadFailed = true; // until one of them reads
             try
             {
                 byte[] bytes = File.ReadAllBytes(candidate);
@@ -97,6 +106,7 @@ internal sealed class StateStore
                 _loadedFileTime = File.GetLastWriteTimeUtc(candidate);
                 if (candidate != _path) Log.Info("Recovered data from backup file.");
                 else _lastWritten = bytes;
+                LoadFailed = false;
                 return doc;
             }
             catch (Exception ex)
@@ -110,6 +120,7 @@ internal sealed class StateStore
                 }
             }
         }
+        if (LoadFailed) Log.Info("Started empty: tack.json couldn't be read. Snippets and attachments are left as they are.");
         return new StateDocument();
     }
 
@@ -120,7 +131,7 @@ internal sealed class StateStore
         var clock = new Hlc(StateFile.Device(doc) ?? Ids.NewDeviceId());
         long fileMs = new DateTimeOffset(_loadedFileTime, TimeSpan.Zero).ToUnixTimeMilliseconds();
         var data = StateFile.ToData(doc, clock, fileMs, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        var ws = new Workspace(doc.Settings, clock, data);
+        var ws = new Workspace(doc.Settings, clock, data) { LoadFailed = LoadFailed };
 
         _workspace = ws;
         ws.Changed += (_, _) => RequestSave();

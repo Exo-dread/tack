@@ -975,6 +975,11 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
 
     void INotesHost.Announce(string text) => Announce(text);
 
+    void INotesHost.EndUndo()
+    {
+        if (_undo.CanUndo) HideToast();
+    }
+
     // ---- Snippets ----
 
     /// <summary>A snippet is open full size: the panel mustn't fold away while it has the focus.</summary>

@@ -65,7 +65,7 @@ internal sealed class AppShell : IDisposable
         _launcher = new LauncherModule(store.Folder, () => _orb.Center);
         // Images pasted into Notes, kept beside tack.json on this PC only. Never pasted one: nothing on disk.
         Snippets = new SnippetStore(store.Folder);
-        Snippets.Prune(id => ws.SheetById(id) is { IsDeleted: false });
+        Snippets.Prune(ws); // not if tack.json couldn't be read: then it holds none of the sheets they belong to
         ws.HoldsLocalContent = Snippets.Any;
         // Dropping onto the orb: attachments.json, if there is one, puts the paperclips back on their tasks.
         _drop = new DropModule(store.Folder, ws, _view);

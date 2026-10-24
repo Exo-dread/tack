@@ -16,6 +16,7 @@ internal static class LauncherRecentsTests
     public static IEnumerable<(string Name, Action Run)> All()
     {
         yield return ("recent files: off by default and kept in launcher.json; an older launcher.json loads with it off", OffByDefault);
+        yield return ("recent files: off, a launcher.json 1.6.1 wrote is written back byte for byte", OldFileUnchanged);
         yield return ("recent files: entries that aren't plain document paths are dropped (programs, scripts, URLs, cloud, devices, streams, ..)", CleanEntries);
         yield return ("recent files: Jump List first, then the app's own list; duplicates and missing files skipped, at most 8, later lists read only if needed", PickOrder);
         yield return ("recent files: Revit.ini's [Recent File List] by number, in UTF-16, for the very Revit version the shortcut starts", RevitIni);
@@ -166,6 +167,56 @@ internal static class LauncherRecentsTests
     }
 
     // ================= Reading =================
+
+    private static void OldFileUnchanged()
+    {
+        // What 1.6.1 writes (the same serializer, without recentFiles): a shortcut, a group, empty positions.
+        string nl = Environment.NewLine;
+        string[] lines =
+        [
+            "{",
+            "  \"version\": 1,",
+            "  \"enabled\": true,",
+            "  \"reduceMotion\": false,",
+            "  \"slots\": [",
+            "    {",
+            "      \"id\": \"revit2024\",",
+            "      \"label\": \"Revit 2024\",",
+            "      \"kind\": \"app\",",
+            "      \"target\": \"C:\\\\Program Files\\\\Autodesk\\\\Revit 2024\\\\Revit.exe\",",
+            "      \"launch\": \"normal\"",
+            "    },",
+            "    null,",
+            "    {",
+            "      \"id\": \"projects\",",
+            "      \"label\": \"Projects\",",
+            "      \"kind\": \"group\",",
+            "      \"target\": \"\",",
+            "      \"launch\": \"normal\",",
+            "      \"children\": [",
+            "        {",
+            "          \"id\": \"models\",",
+            "          \"label\": \"Models\",",
+            "          \"kind\": \"folder\",",
+            "          \"target\": \"D:\\\\Projects\\\\Models\",",
+            "          \"launch\": \"normal\"",
+            "        }",
+            "      ]",
+            "    },",
+            "    null,",
+            "    null,",
+            "    null",
+            "  ]",
+            "}",
+        ];
+        byte[] written161 = Encoding.UTF8.GetBytes(string.Join(nl, lines));
+        var config = LauncherConfigFile.Parse(written161)!;
+        Check.True(!config.RecentFiles && config.Slots.Count(s => s != null) == 2, "read as 1.6.1 wrote it");
+        byte[] again = LauncherConfigFile.Serialize(config);
+        Check.True(again.AsSpan().SequenceEqual(written161), "written back byte for byte:\n" + Encoding.UTF8.GetString(again));
+        config.RecentFiles = true;
+        Check.True(Encoding.UTF8.GetString(LauncherConfigFile.Serialize(config)).Contains("\"recentFiles\": true"), "turned on, it's written");
+    }
 
     private static void OffByDefault()
     {

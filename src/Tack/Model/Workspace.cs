@@ -514,6 +514,13 @@ public sealed class Workspace : Observable, IImportTarget
     internal Func<string, bool>? HoldsLocalContent { get; set; }
 
     /// <summary>
+    /// This session started empty because tack.json was there but couldn't be read (<see cref="Services.StateStore.LoadFailed"/>).
+    /// Its sheets and tasks aren't the user's, so nothing kept beside tack.json is let go for want of them
+    /// (snippets of sheets it doesn't know, attachments of tasks it doesn't know), all session.
+    /// </summary>
+    internal bool LoadFailed { get; init; }
+
+    /// <summary>
     /// Joining a sync folder your other devices already use: the welcome tasks you never touched
     /// (not edited, ticked or moved, in the list or to a space: all their clocks are still the one
     /// they were made with, here, and none for a space) and a blank sheet never written on (or put
