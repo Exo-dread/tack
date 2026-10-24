@@ -472,15 +472,42 @@ internal static class SearchScreenTests
         });
     }
 
+    /// <summary>Settings' Shortcut card (SettingsView.xaml), with Settings' own styles and without its handlers, laid out on its own.</summary>
     private static void SettingsLists()
     {
-        string xaml = File.ReadAllText(Path.Combine(Program.Root, "src", "Tack", "Views", "SettingsView.xaml"));
-        int shortcut = xaml.IndexOf("Text=\"Shortcut\"", StringComparison.Ordinal);
-        int next = xaml.IndexOf("Style=\"{StaticResource SectionLabel}\"", shortcut + 40, StringComparison.Ordinal);
-        Check.True(shortcut >= 0 && next > shortcut, "Settings has its Shortcut card");
-        string card = xaml[shortcut..next];
-        Check.True(card.Contains("Text=\"Search tasks and notes\"", StringComparison.Ordinal) && card.Contains("Text=\"Ctrl+F\"", StringComparison.Ordinal),
-            "in the Shortcut card: Search tasks and notes, Ctrl+F");
+        Ui.Run(errors =>
+        {
+            string xaml = File.ReadAllText(Path.Combine(Program.Root, "src", "Tack", "Views", "SettingsView.xaml"));
+            string resources = Element(xaml, "<UserControl.Resources>", "UserControl.Resources");
+            resources = resources["<UserControl.Resources>".Length..^"</UserControl.Resources>".Length];
+            int shortcut = xaml.IndexOf("Text=\"Shortcut\"", StringComparison.Ordinal);
+            Check.True(shortcut >= 0, "Settings has its Shortcut card");
+            string card = Element(xaml[shortcut..], "<Border Style=\"{StaticResource Card}\">", "Border");
+            card = Regex.Replace(card, @"\sClick=""[^""]*""", "");
+            var root = (Grid)XamlReader.Parse(
+                "<Grid xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" " +
+                $"Width=\"{Settings.DefaultWidth - 28}\" HorizontalAlignment=\"Left\" VerticalAlignment=\"Top\"><Grid.Resources>{resources}</Grid.Resources>{card}</Grid>");
+            ((Button)root.FindName("HotkeyButton")).Content = "Ctrl+Alt+Space";
+            using var window = Ui.Host(root);
+            var label = Ui.Descendants<TextBlock>(root).Single(t => t.Text == "Search tasks and notes");
+            var key = (TextBlock)root.FindName("SearchKey");
+            Check.Equal("Ctrl+F", key.Text, "Search tasks and notes: Ctrl+F");
+            var pill = Bounds((FrameworkElement)root.FindName("HotkeyButton"), root);
+            var k = Bounds(key, root);
+            var l = Bounds(label, root);
+            Check.True(k.Top > pill.Bottom, "under the shortcut to show Tack");
+            Check.True(Math.Abs(k.Top + k.Height / 2 - (l.Top + l.Height / 2)) < 1, "on its row, level with its name");
+            Check.True(k.Right <= pill.Right && k.Right >= pill.Right - 16, $"its key lined up with the shortcut's ({k.Right:F0}, {pill.Right:F0})");
+            Check.True(l.Left + label.DesiredSize.Width < k.Left, "the name before it, clear of it");
+            string? folder = Environment.GetEnvironmentVariable("TACK_SHOTS");
+            if (!string.IsNullOrEmpty(folder))
+            {
+                root.SetResourceReference(Panel.BackgroundProperty, "SolidSurfaceBrush");
+                Ui.Pump();
+                Save(root, Path.Combine(folder, "settings-shortcuts-light.png"));
+            }
+            Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+        });
     }
 
     // ---------------------------------------------------------------- pictures
