@@ -13,17 +13,20 @@ let sheets = 0;
  * A small sheet that slides up from the bottom, within thumb reach (centred on wide screens),
  * as Settings does: a modal dialog with a title and Done, closed by Escape, a tap outside or a
  * swipe down. `onEscape` may keep it open (return false), e.g. to cancel a name being typed.
- * `onClosed` runs once it has gone, when the page can take the focus back.
+ * `onClosed` runs once it has gone, when the page can take the focus back. `head` takes the
+ * title's place (search's box, say), with `title` as the dialog's name; `className` is added to it.
  */
 export function presentSheet(
   title: string,
   body: Node[],
-  options: { onClose?: () => void; onEscape?: () => boolean; onClosed?: () => void } = {},
+  options: { onClose?: () => void; onEscape?: () => boolean; onClosed?: () => void; head?: Node[]; className?: string } = {},
 ): SheetHandle {
   const titleId = `sheet-title-${++sheets}`;
-  const head = h('div.sheet-head', {}, h('h2', { id: titleId, text: title }), h('button.text-button', { type: 'button', text: 'Done', onclick: () => handle.close() }));
+  const done = h('button.text-button', { type: 'button', text: 'Done', onclick: () => handle.close() });
+  const head = h('div.sheet-head', {}, ...(options.head ?? [h('h2', { id: titleId, text: title })]), done);
   const panel = h('div.sheet-panel', {}, h('div.sheet-grip', { 'aria-hidden': 'true' }), head, h('div.sheet-scroll', {}, ...body));
-  const dialog = h('dialog.sheet.picker', { 'aria-labelledby': titleId }, panel);
+  const dialog = h('dialog.sheet.picker', options.head ? { 'aria-label': title } : { 'aria-labelledby': titleId }, panel);
+  if (options.className) dialog.classList.add(options.className);
   let open = true;
   const handle: SheetHandle = {
     dialog,
@@ -66,7 +69,7 @@ function dragToDismiss(panel: HTMLElement, close: () => void): void {
   let start: { y: number; t: number; id: number } | null = null;
   let dy = 0;
   const begin = (e: PointerEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
+    if ((e.target as HTMLElement).closest('button, input')) return;
     start = { y: e.clientY, t: e.timeStamp, id: e.pointerId };
     dy = 0;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);

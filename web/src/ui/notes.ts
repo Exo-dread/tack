@@ -258,6 +258,31 @@ export class NotesView {
     }
   }
 
+  /**
+   * Search opened this sheet: it's on the paper with the caret in it, the match selected and
+   * scrolled to about a third of the way down (again once a phone's keyboard has come up).
+   */
+  reveal(id: string, match: [number, number] | null): void {
+    this.select(id);
+    const ta = this.editor;
+    ta.focus({ preventScroll: true });
+    if (!match) return;
+    const [start, end] = match;
+    ta.setSelectionRange(start, end);
+    const place = () => {
+      ta.scrollTop = Math.max(0, caretTop(ta, start) - ta.clientHeight / 3);
+    };
+    place();
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const again = () => {
+      vv.removeEventListener('resize', again);
+      requestAnimationFrame(place);
+    };
+    vv.addEventListener('resize', again);
+    setTimeout(() => vv.removeEventListener('resize', again), 1000);
+  }
+
   newSheet(): void {
     const current = this.ws.sheets.get(this.activeId);
     if ((current && !current.text.trim()) || !this.activeId) {
@@ -387,6 +412,31 @@ export class NotesView {
 }
 
 let inserting = false;
+
+/** How far down a textarea's text `index` is, as laid out: measured on a hidden copy of it. */
+function caretTop(ta: HTMLTextAreaElement, index: number): number {
+  const style = getComputedStyle(ta);
+  const copy = document.createElement('div');
+  for (const p of ['padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'font-family', 'font-size', 'font-weight', 'font-style', 'letter-spacing', 'line-height', 'text-transform', 'word-spacing', 'tab-size', 'text-indent', 'word-break']) {
+    copy.style.setProperty(p, style.getPropertyValue(p));
+  }
+  copy.style.setProperty('box-sizing', 'border-box');
+  copy.style.setProperty('width', `${ta.clientWidth}px`);
+  copy.style.setProperty('position', 'absolute');
+  copy.style.setProperty('visibility', 'hidden');
+  copy.style.setProperty('left', '-10000px');
+  copy.style.setProperty('top', '0');
+  copy.style.setProperty('white-space', 'pre-wrap');
+  copy.style.setProperty('overflow-wrap', 'break-word');
+  copy.textContent = ta.value.slice(0, index);
+  const mark = document.createElement('span');
+  mark.textContent = String.fromCharCode(0x200b); // a zero-width space: where the caret would be
+  copy.append(mark);
+  document.body.append(copy);
+  const top = mark.offsetTop;
+  copy.remove();
+  return top;
+}
 
 /** Inserts text at the caret, keeping the browser's own undo history where possible. */
 function insertText(ta: HTMLTextAreaElement, text: string): void {

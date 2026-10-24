@@ -13,6 +13,7 @@ using Tack.Interop;
 using Tack.Model;
 using Tack.Services;
 using Tack.Sync;
+using Tack.Views;
 
 namespace Tack.Windows;
 
@@ -28,6 +29,7 @@ public partial class PanelWindow : Window
 
     private const double HeaderHeight = 48;
     private const double SettingsMinHeight = 470; // settings never open in a cramped panel
+    private const double SearchMinHeight = 400; // nor search's results
 
     private readonly Workspace _ws;
     private readonly SpaceView _view;
@@ -43,6 +45,9 @@ public partial class PanelWindow : Window
     private int _stripLimit = SpaceView.MaxListed; // spaces the strip draws ("More spaces" draws as many again)
     private bool _syncingStrip; // the strip is being brought in line with the space on show, not clicked
     private double _heldHeight; // > 0: Tasks keeps this height after a space switch, until the panel next opens
+    private bool _searchOpen;
+    private double _searchHeight; // the panel's height while search is open (kept, so results never resize it)
+    private IInputElement? _beforeSearch; // where the caret was when search opened: Esc puts it back
 
     /// <summary>
     /// Set by the shell: the panel grows and shrinks upward from its bottom edge (the orb is in the
@@ -79,6 +84,11 @@ public partial class PanelWindow : Window
         TasksPage.RowFolding += ms => { if (IsTasksAutoSized) RequestPreferredSize(new GlideTiming(WindowBoundsAnimator.Clock, ms, EaseIn: true)); };
         NotesPage.Initialize(ws, view, this);
         SettingsPage.Initialize(ws, view, shell, this);
+        SearchPage.Initialize(ws, view);
+        SearchPage.Opened += JumpTo;
+        SearchPage.Counted += text => Announce(text, "Tack.Search");
+        SearchPage.Chosen += text => Announce(text, "Tack.Search");
+        SearchPage.CountChanged += text => SearchCount.Text = text;
 
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
         _toastTimer.Tick += (_, _) => HideToast();
@@ -99,13 +109,19 @@ public partial class PanelWindow : Window
         IsVisibleChanged += (_, _) =>
         {
             if (IsVisible) RevealShownSpace();
-            else _heldHeight = 0; // folded away: it fits its list again next time
+            else
+            {
+                _heldHeight = 0; // folded away: it fits its list again next time
+                CloseSearch(restoreFocus: false);
+            }
         };
     }
 
     public IntPtr Handle => _hwnd;
 
     public bool IsSettingsOpen => _settingsOpen;
+
+    public bool IsSearchOpen => _searchOpen;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -140,6 +156,7 @@ public partial class PanelWindow : Window
                 {
                     _heldHeight = 0;
                     RememberManualSize();
+                    if (_searchOpen) _searchHeight = ActualHeight; // search keeps the size you gave it
                 }
                 UserMovedOrResized?.Invoke();
                 break;
@@ -170,6 +187,7 @@ public partial class PanelWindow : Window
             ? new Size(s.NotesWidth, s.NotesHeight)
             : new Size(s.TasksWidth, s.TasksHeight ?? (_heldHeight > 0 ? Math.Min(_heldHeight, Math.Max(Settings.MinHeight, maxAutoHeight)) : FitTasksHeight(s.TasksWidth, maxAutoHeight)));
         if (_settingsOpen && size.Height < SettingsMinHeight) size.Height = SettingsMinHeight;
+        if (_searchOpen) size.Height = _searchHeight;
         return size;
     }
 
@@ -251,6 +269,11 @@ public partial class PanelWindow : Window
     public void FocusDefault()
     {
         if (IsSettingsOpen) return;
+        if (_searchOpen)
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, () => { if (_searchOpen) SearchBox.Focus(); });
+            return;
+        }
         Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
         {
             if (_ws.Settings.Tab == "notes") NotesPage.FocusEditor();
@@ -263,6 +286,7 @@ public partial class PanelWindow : Window
     public void SelectTab(string tab, bool animate = true)
     {
         CloseSettings(animate: false);
+        CloseSearch(restoreFocus: false);
         if (tab != _ws.Settings.Tab) _heldHeight = 0; // the panel takes the other tab's size anyway
         _ws.Settings.Tab = tab;
         bool notes = tab == "notes";
@@ -297,7 +321,7 @@ public partial class PanelWindow : Window
         UpdateLayout();
         var tab = _ws.Settings.Tab == "notes" ? NotesTab : TasksTab;
         double x = tab.TranslatePoint(new Point(tab.ActualWidth / 2 - TabIndicator.Width / 2, 0), Header).X;
-        TabIndicator.Opacity = IsSettingsOpen ? 0 : 1;
+        TabIndicator.Opacity = IsSettingsOpen || _searchOpen ? 0 : 1;
         if (animate) Anim.To(TabIndicator, Canvas.LeftProperty, x, 220);
         else Anim.Set(TabIndicator, Canvas.LeftProperty, x);
     }
@@ -322,6 +346,7 @@ public partial class PanelWindow : Window
     public void OpenSettings()
     {
         if (_settingsOpen) return;
+        CloseSearch(restoreFocus: false);
         _settingsOpen = true;
 
         // The panel is see-through, so the page underneath must step out of the way.
@@ -367,6 +392,117 @@ public partial class PanelWindow : Window
         if (animate) FocusDefault();
     }
 
+    // ---- Search (Ctrl+F) ----
+
+    /// <summary>
+    /// Opens search: its box over the tabs, its results over the page (the page steps out of the way,
+    /// as for Settings). The query from last time is kept, selected, so typing replaces it. Again
+    /// while it's open: the box takes the caret back.
+    /// </summary>
+    public void OpenSearch()
+    {
+        if (_searchOpen)
+        {
+            SearchBox.Focus();
+            SearchBox.SelectAll();
+            return;
+        }
+        var before = Keyboard.FocusedElement;
+        CloseSettings(animate: false);
+        _beforeSearch = before is DependencyObject d && IsAncestorOf(d) ? before : null;
+        _searchOpen = true;
+        _searchHeight = Math.Max(IsLoaded ? ActualHeight : Height, SearchMinHeight);
+
+        var page = CurrentPage;
+        Anim.Fade(page, 0, 90, () => { if (_searchOpen) page.Visibility = Visibility.Hidden; });
+        Tabs.Visibility = Visibility.Hidden;
+        TabIndicator.Opacity = 0;
+        SearchBar.Visibility = Visibility.Visible;
+        Anim.Fade(SearchBar, 1, 140, from: 0);
+        SearchPage.Visibility = Visibility.Visible;
+        Anim.Fade(SearchPage, 1, 160, from: 0);
+        Anim.Slide(SearchPage, 0, 10, 220);
+        UpdateStrip();
+        SearchBox.Focus();
+        SearchBox.SelectAll();
+        SearchPage.SetQuery(SearchBox.Text);
+        SearchPage.Flush();
+        RequestPreferredSize();
+    }
+
+    /// <summary>Closes search; with <paramref name="restoreFocus"/>, the caret goes back where it was (Esc).</summary>
+    public void CloseSearch(bool restoreFocus)
+    {
+        if (!_searchOpen) return;
+        _searchOpen = false;
+        SearchPage.Clear();
+        SearchPage.Visibility = Visibility.Collapsed;
+        SearchBar.Visibility = Visibility.Collapsed;
+        SearchCount.Text = "";
+        Tabs.Visibility = Visibility.Visible;
+        var page = CurrentPage;
+        page.Visibility = Visibility.Visible;
+        if (IsVisible) Anim.Fade(page, 1, 140, from: 0.4);
+        else Anim.Set(page, OpacityProperty, 1);
+        UpdateStrip();
+        MoveIndicator(animate: false);
+        RequestPreferredSize();
+        var back = _beforeSearch;
+        _beforeSearch = null;
+        if (!restoreFocus) return;
+        if (back is UIElement { IsVisible: true, Focusable: true } el) Dispatcher.BeginInvoke(DispatcherPriority.Input, () => el.Focus());
+        else FocusDefault();
+    }
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_searchOpen) SearchPage.SetQuery(SearchBox.Text);
+    }
+
+    private void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers is not (ModifierKeys.None or ModifierKeys.Shift)) return;
+        switch (e.Key)
+        {
+            case Key.Down: SearchPage.Move(1); break;
+            case Key.Up: SearchPage.Move(-1); break;
+            case Key.PageDown: SearchPage.Move(8); break;
+            case Key.PageUp: SearchPage.Move(-8); break;
+            case Key.Enter: SearchPage.OpenCurrent(); break;
+            case Key.Escape: CloseSearch(restoreFocus: true); break;
+            default: return;
+        }
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Opens what search found: its tab, and its space if the space on show doesn't show it (All
+    /// shows everything); then the task, scrolled to and lit up, or the sheet with the match selected.
+    /// </summary>
+    internal void JumpTo(SearchHit hit, string query)
+    {
+        CloseSearch(restoreFocus: false);
+        if (!SearchView.IsLive(_ws, hit.Item))
+        {
+            FocusDefault(); // gone since it was found (by another device, say)
+            return;
+        }
+        var (space, tab, openDone) = SearchView.Plan(_view, _ws.Settings, hit.Item);
+        if (space != null) ShowSpace(space);
+        if (_ws.Settings.Tab != tab) SelectTab(tab, animate: false);
+        if (openDone) _ws.Settings.DoneExpanded = true;
+        switch (hit.Item)
+        {
+            case TaskItem task:
+                TasksPage.Reveal(task);
+                break;
+            case NoteSheet sheet:
+                _view.ActiveSheet = sheet;
+                NotesPage.Reveal(sheet, Search.FindIn(sheet.Text, query));
+                break;
+        }
+    }
+
     // ---- Spaces strip ----
 
     /// <summary>
@@ -385,10 +521,10 @@ public partial class PanelWindow : Window
     }
 
     /// <summary>Tells screen readers something that changed out of their sight (a space switched by a key, a task moved).</summary>
-    internal void Announce(string text)
+    internal void Announce(string text, string activity = "Tack.Spaces")
     {
         if ((UIElementAutomationPeer.FromElement(this) ?? UIElementAutomationPeer.CreatePeerForElement(this)) is { } peer)
-            peer.RaiseNotificationEvent(AutomationNotificationKind.ActionCompleted, AutomationNotificationProcessing.ImportantMostRecent, text, "Tack.Spaces");
+            peer.RaiseNotificationEvent(AutomationNotificationKind.ActionCompleted, AutomationNotificationProcessing.ImportantMostRecent, text, activity);
     }
 
     private void OnViewChanged(object? sender, PropertyChangedEventArgs e)
@@ -467,7 +603,7 @@ public partial class PanelWindow : Window
     /// <summary>The strip shows once a second space exists (not over Settings): All, then each space, then +.</summary>
     private void UpdateStrip()
     {
-        var visibility = _view.HasSpaces && !_settingsOpen ? Visibility.Visible : Visibility.Collapsed;
+        var visibility = _view.HasSpaces && !_settingsOpen && !_searchOpen ? Visibility.Visible : Visibility.Collapsed;
         if (Strip.Visibility != visibility)
         {
             Strip.Visibility = visibility;
@@ -703,7 +839,7 @@ public partial class PanelWindow : Window
         // Alt+0 shows All, Alt+1..9 the first nine spaces, wherever the caret is (a draft stays as it is).
         // Only once there are spaces: until then Alt+digits do what they always did.
         if (Keyboard.Modifiers == ModifierKeys.Alt && e.Key == Key.System && e.SystemKey is >= Key.D0 and <= Key.D9
-            && _view.HasSpaces && !_settingsOpen)
+            && _view.HasSpaces && !_settingsOpen && !_searchOpen)
         {
             if (_view.SpaceForKey(e.SystemKey - Key.D0) is { } id) ShowSpace(id);
             e.Handled = true;
@@ -716,6 +852,7 @@ public partial class PanelWindow : Window
                 case Key.D1 or Key.NumPad1: SelectTab("tasks"); e.Handled = true; return;
                 case Key.D2 or Key.NumPad2: SelectTab("notes"); e.Handled = true; return;
                 case Key.OemComma: OpenSettings(); e.Handled = true; return;
+                case Key.F: OpenSearch(); e.Handled = true; return;
                 // Text boxes keep their own undo; once they have nothing left, Ctrl+Z undoes the last delete.
                 case Key.Z when (Keyboard.FocusedElement is not TextBox box || !box.CanUndo) && Undo(): e.Handled = true; return;
             }
@@ -727,7 +864,8 @@ public partial class PanelWindow : Window
     {
         if (e.Key == Key.Escape && !e.Handled)
         {
-            if (IsSettingsOpen) CloseSettings();
+            if (_searchOpen) CloseSearch(restoreFocus: true);
+            else if (IsSettingsOpen) CloseSettings();
             else _shell.Collapse();
             e.Handled = true;
         }

@@ -532,6 +532,70 @@ public partial class TasksView : UserControl
         }
     }
 
+    // ================= Search: going to a task =================
+
+    /// <summary>
+    /// Search opened this task: scrolled to once the list on show has it, lit up for a moment, and
+    /// the caret at the end of its text (a finished task's row has no text box: the caret goes to
+    /// the add box, as when the panel opens).
+    /// </summary>
+    internal void Reveal(TaskItem task)
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            if (ContainerFor(task) is not { } container)
+            {
+                FocusInput();
+                return;
+            }
+            if (container == NowCard) LightUp(NowCard, () =>
+            {
+                NowCard.SetResourceReference(Border.BackgroundProperty, "AccentFaintBrush");
+                NowCard.SetResourceReference(Border.BorderBrushProperty, "AccentSoftBrush");
+            });
+            else if (RowOf(container) is { } row) LightUp(row, () =>
+            {
+                row.ClearValue(Border.BackgroundProperty);
+                row.ClearValue(Border.BorderBrushProperty);
+            });
+            if (!task.IsDone && EditorFor(task) is { } editor) FocusTextBox(editor, atEnd: true);
+            else FocusInput();
+            // The whole row, with a little room around it (the caret's own scrolling shows only its text box).
+            container.UpdateLayout();
+            container.BringIntoView(new Rect(0, -12, container.ActualWidth, container.ActualHeight + 24));
+        });
+    }
+
+    /// <summary>How long a task search went to stays lit before it fades (in 260 ms) back to how it was.</summary>
+    internal static readonly TimeSpan LitFor = TimeSpan.FromMilliseconds(1100);
+
+    /// <summary>The row's own border in a list's container.</summary>
+    private static Border? RowOf(FrameworkElement container) =>
+        container is ContentPresenter cp && cp.ContentTemplate?.FindName("Row", cp) is Border row ? row : null;
+
+    /// <summary>Lights a row up in the accent for a moment, then fades it back (<paramref name="restore"/> puts its own look back).</summary>
+    private static void LightUp(Border row, Action restore)
+    {
+        var fill = ((SolidColorBrush)row.FindResource("AccentSoftBrush")).Clone();
+        var edge = ((SolidColorBrush)row.FindResource("AccentBorderBrush")).Clone();
+        row.Background = fill;
+        row.BorderBrush = edge;
+        var hold = new DispatcherTimer { Interval = LitFor };
+        hold.Tick += (_, _) =>
+        {
+            hold.Stop();
+            var fade = new DoubleAnimation(0, Anim.Ms(260)) { EasingFunction = Anim.EaseOut };
+            fade.Completed += (_, _) =>
+            {
+                // Unless something else has changed its look meanwhile (a drag lifting it, say).
+                if (ReferenceEquals(row.Background, fill) && ReferenceEquals(row.BorderBrush, edge)) restore();
+            };
+            fill.BeginAnimation(Brush.OpacityProperty, fade);
+            edge.BeginAnimation(Brush.OpacityProperty, fade);
+        };
+        hold.Start();
+    }
+
     // ================= Containers and entrance animations =================
 
     private FrameworkElement? ContainerAt(int index) =>

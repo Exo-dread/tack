@@ -298,12 +298,13 @@ test.describe('spaces', () => {
     await page.getByRole('textbox', { name: 'Note' }).pressSequentially('Clash list');
     await expect(page.locator('.sheet-pill')).toHaveText(['Clash list']);
     await button(page, 'Done').click();
-    // ⋯ alone beside Settings, holding Move and Delete: the title keeps the room of a button more
-    // than ⋯, Delete and Settings left it (140 px). Measured as room, since whether a name fits
-    // depends on the font (Linux's fallback is wider than Roboto or Segoe UI).
+    // ⋯ alone beside Search and Settings, holding Move and Delete: the title keeps well over the
+    // room ⋯, Delete and Settings left it (140 px), the buttons a little narrower on a narrow phone
+    // (search.spec.ts). Measured as room, since whether a name fits depends on the font (Linux's
+    // fallback is wider than Roboto or Segoe UI).
     await expect(page.locator('.sheet-delete')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'More for this sheet' })).toBeVisible();
-    expect(await page.locator('header h1').evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThanOrEqual(180);
+    expect(await page.locator('header h1').evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThanOrEqual(172);
     await page.getByRole('button', { name: 'More for this sheet' }).click();
     await expect(page.getByRole('menuitem')).toHaveText(['Move sheet to…', 'Delete sheet']);
     await page.getByRole('menuitem', { name: 'Delete sheet' }).click();

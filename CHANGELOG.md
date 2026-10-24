@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Search.** Press **Ctrl+F** in the panel and type: open tasks, finished tasks and notes from every
+  space are listed as you type, grouped Tasks, Done and Notes, each with its space while you have
+  spaces. Case and accents don't matter (so "cafe" finds "Café", and curly quotes or a non-breaking
+  space pasted from Outlook still match), and a note matches anywhere in it, not just its title.
+  ↑ ↓ and Enter (or a click) go there: its space and tab, the task scrolled to and lit up for a moment,
+  or the sheet with the match selected. Esc closes it and puts the caret back. Until you press
+  Ctrl+F nothing on screen changes; Settings → Shortcut lists it. Tack Focus finds exactly the same
+  things.
 - **Smoother panel resizing.** When the panel changes size (switching tabs, opening Settings, adding a
   task), it now glides all the way instead of jumping most of the way and then settling. When you tick,
   delete or move a task, the panel shrinks with the row as it folds away and stops when the row is gone,

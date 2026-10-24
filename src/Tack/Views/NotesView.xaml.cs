@@ -172,6 +172,31 @@ public partial class NotesView : UserControl
         _ws.ActiveSheet = sheets[((i + delta) % n + n) % n];
     }
 
+    // ---- Search: going to a sheet ----
+
+    /// <summary>
+    /// Search opened this sheet: the caret in it, with the match selected and scrolled to about a
+    /// third of the way down the paper (after the sheet switch has put its text and caret in).
+    /// </summary>
+    internal void Reveal(NoteSheet sheet, (int Start, int End)? match)
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            if (_view.ActiveSheet != sheet) return;
+            FocusEditor();
+            if (match is not { } m) return;
+            int start = Math.Min(m.Start, Editor.Text.Length), end = Math.Clamp(m.End, start, Editor.Text.Length);
+            Editor.Select(start, end - start);
+            int line = Editor.GetLineIndexFromCharacterIndex(start);
+            if (line < 0) return;
+            Editor.ScrollToLine(line);
+            Editor.UpdateLayout();
+            var at = Editor.GetRectFromCharacterIndex(start);
+            if (!at.IsEmpty && Editor.ViewportHeight > 0)
+                Editor.ScrollToVerticalOffset(Math.Max(0, Editor.VerticalOffset + at.Top - Editor.ViewportHeight / 3));
+        });
+    }
+
     // ---- Editor helpers ----
 
     private void Editor_PreviewKeyDown(object sender, KeyEventArgs e)

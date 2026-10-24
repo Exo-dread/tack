@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Search.** Tap the search button beside Settings (on a phone), or press **Ctrl+F** (⌘F), and type:
+  open tasks, finished tasks and notes from every space are listed as you type, grouped Tasks, Done
+  and Notes, each with its space while you have spaces. Case and accents don't matter, and a note
+  matches anywhere in it, not just its title. ↑ ↓ and Enter (or a tap) go there: its space and page,
+  the task scrolled to and lit up for a moment, or the sheet with the match selected. Esc closes it
+  and puts the focus back. On a narrow phone the header's buttons sit a little closer, so the space's
+  name keeps its room. Tack for Windows finds exactly the same things.
 - **Share to Tack (Android).** An installed Tack Focus now appears in Android's share sheet. Share a
   page, a link or some text from any app and it becomes a task in the space on show, with *Undo*:
   a page is its title with its link, and text of several lines is a task per line, as when you

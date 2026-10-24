@@ -33,7 +33,7 @@ through a folder on disk. The sync tests run
 with the service worker blocked: in WebKit, Playwright can't intercept requests from a page a
 worker controls, and they must never reach the real Microsoft.
 
-**Unit tests (261, including 40 runs of the sync simulation)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
+**Unit tests (345, including 40 runs of the sync simulation)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
 random inserts, clock monotonicity and skew, .NET date parsing, every workspace mutation and its
 undo, snapshot restore, two- and three-device merges with a randomised convergence test, concurrent
 note edits (conflict copies), and tack.json import/export against a file shaped exactly like
@@ -42,12 +42,15 @@ re-importing after edits on the desktop, on the phone, or both (newer wins; note
 storage (in an in-memory IndexedDB) merging every write so a stale tab can't undo a newer edit,
 and spaces: what each space shows (filtering in the one order, counts, a space that's gone showing
 Main), reordering inside a space without re-keying the others, adding into a space, and reordering
-spaces.
+spaces; and search (`search.test.ts`): what matches, case and accents folded, and where a match is
+in the text as typed, from `../tests/shared/search.json`, cases Tack for Windows' tests read too;
+every space searched in the lists' own order; where opening a result goes; and a speed guard (10,000
+tasks and 500 long notes).
 `vectors.test.ts` computes the shared test vectors that Tack for Windows' port of the model must
 reproduce exactly (`tests/Tack.Tests`), and reads back the file the desktop saved for its round-trip
 export to check nothing was lost on the way.
 
-**End-to-end tests (246 across three projects, 20 skipped where they don't apply)** run against `vite build` + `vite preview`, so the real
+**End-to-end tests (285 across three projects, 23 skipped where they don't apply)** run against `vite build` + `vite preview`, so the real
 service worker and bundle are tested:
 
 | Project | Engine | Emulates |
@@ -73,7 +76,13 @@ while typing), adding into the space on show, moving tasks and sheets with Undo,
 task's space, the "Now in …" line, Done and Clear per space, notes per space (blank paper until you
 write, and Undo there making no sheet), the sheet strip left as it always was with Main alone,
 deleting a space with Undo, renaming and reordering, the space on show surviving a reload,
-and axe scans with spaces on screen in light and dark; and updates of the app, against a server of
+and axe scans with spaces on screen in light and dark; search (Ctrl+F, or the button beside Settings
+on a phone): nothing new on screen until it's used, tasks, done and notes found whatever the case or
+accents, grouped, each with its space, arrows and Enter going to a task in another space (scrolled to,
+lit up, focused), a finished task opening Done, a note opening with the match selected and in sight,
+Esc putting the focus back, the 360 px phone header keeping room for a space's name, reduced motion,
+axe scans in light and dark, and a speed guard over 10,000 tasks and 500 long notes
+(`search-scale.spec.ts`, without traces); and updates of the app, against a server of
 the test's own that puts up a new version (visibility emulated: headless pages never hide): in at
 once when opened untouched, even if it took over while the app was still starting; held while you
 are using the app or are in the task box, then applied when you leave or come back; a draft in the

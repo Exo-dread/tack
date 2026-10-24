@@ -1858,3 +1858,149 @@ kbd {
 /* ---- toasts over an open sheet (Settings → Spaces: "Deleted Dev · Undo") */
 
 dialog.sheet > .toasts { bottom: max(18px, calc(var(--safe-b) + 10px)); z-index: 2; }
+
+/* ============================================================== search
+   Ctrl+F (⌘F) anywhere; on a phone, the button beside Settings. Nothing else changes until it's used. */
+
+.wide .search-open { display: none; }
+
+/* A narrow phone keeps room for the title (a space's name) beside ⋯, Search and Settings: the
+   buttons a little narrower (still as tall), closer together. */
+@media (max-width: 400px) {
+  header.top { gap: 8px; padding-right: max(6px, var(--safe-r)); }
+  .actions .icon-button { width: 36px; }
+}
+
+/* The sheet fills what's in sight above the keyboard (the dialog follows the visual viewport),
+   with the box at its top: on a phone it's within reach, and never under the keyboard. */
+dialog.sheet.search-sheet { top: var(--vv-top, 0px); bottom: auto; height: var(--vv-h, 100%); }
+.search-sheet .sheet-panel { height: calc(var(--vv-h, 100dvh) - var(--safe-t) - 12px); }
+
+/* On a wide screen: near the top, as tall as its results. */
+@media (min-width: 640px) and (min-height: 600px) {
+  dialog.sheet.search-sheet[open] { align-items: flex-start; padding-top: max(40px, 9vh); }
+  .search-sheet .sheet-panel { height: auto; max-height: min(640px, calc(100dvh - 18vh)); }
+}
+
+.search-sheet .sheet-head { gap: 6px; padding: 6px 8px 8px 14px; }
+
+.search-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  height: 46px;
+  border-radius: 14px;
+  background: var(--fill-2);
+  border: 1px solid var(--stroke);
+}
+
+.search-field:focus-within { box-shadow: 0 0 0 2px var(--accent); border-color: transparent; }
+.search-field > .icon { position: absolute; left: 12px; width: 20px; height: 20px; color: var(--text-3); pointer-events: none; }
+.search-field:focus-within > .icon { color: var(--accent); }
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 56px 0 40px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 17px;
+}
+
+.search-input:focus, .search-input:focus-visible { outline: none; }
+.search-input::placeholder { color: var(--text-3); }
+
+.search-count {
+  position: absolute;
+  right: 14px;
+  color: var(--text-3);
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.search-hint { margin: 30px 18px; text-align: center; }
+.search-hint-title { margin: 0; color: var(--text-2); font-weight: 650; overflow-wrap: anywhere; }
+.search-hint-text { margin: 6px 0 0; color: var(--text-3); font-size: 14px; line-height: 1.45; }
+
+.search-results { padding-bottom: 8px; }
+
+.search-group-title {
+  margin: 14px 10px 6px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.search-group:first-child .search-group-title { margin-top: 4px; }
+
+.search-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 48px;
+  padding: 11px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.search-option[aria-selected="true"] {
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+@media (hover: hover) {
+  .search-option:hover:not([aria-selected="true"]) { background: var(--fill-2); }
+}
+
+.search-option:active { background: var(--fill-3); }
+
+.search-icon { flex: none; display: grid; place-items: center; width: 22px; height: 24px; color: var(--text-3); }
+.search-icon .icon { width: 20px; height: 20px; }
+.search-option[data-kind="done"] .search-icon { color: var(--accent); }
+.search-more .search-icon { color: var(--accent); }
+
+.search-main { flex: 1; min-width: 0; }
+.search-line, .search-second { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-line { font-size: 16px; line-height: 24px; }
+.search-second { margin-top: 1px; color: var(--text-2); font-size: 14px; line-height: 20px; }
+.search-option[data-kind="done"] .search-line { color: var(--text-2); }
+.search-more .search-line { color: var(--accent); font-weight: 600; font-size: 15px; }
+
+.search-meta {
+  flex: none;
+  max-width: 34%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 24px;
+}
+
+.search-option mark {
+  padding: 0 1px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--text);
+  font-weight: 650;
+}
+
+/* A task search went to: lit for a moment, then faded (by script, so it stays put with reduced motion). */
+.found-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 65%, transparent);
+  pointer-events: none;
+}
