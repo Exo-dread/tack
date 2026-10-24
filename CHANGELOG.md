@@ -16,6 +16,14 @@
   drop on the model: it opens in Revit 2024, even where .rvt files open in another version. The files come from
   the app's Jump List, then Revit's, AutoCAD's and Navisworks' own recent lists, up to 8 that are still there,
   read each time the launcher opens and never stored. Dragging on past an app still chooses a display.
+- **Snippets in Notes.** Snip some instructions (Win+Shift+S) and press Ctrl+V in a sheet: the picture
+  sits above the sheet's text as a thumbnail while you follow it. Click it to see it full size on that
+  display (Esc or a click closes it), and × throws it away, with Undo. Image files copied in Explorer
+  paste the same way, and an image pasted on Tasks goes to the sheet in Notes. Snippets stay on this PC
+  (in a `snippets` folder beside tack.json), never synced, imported or exported: other devices show the
+  sheet's text. Up to 50 snippets (50 MB); very large images are scaled down, and deleting a sheet
+  deletes its snippets. Anything copied with text in it still pastes as text, and until you paste an
+  image nothing about Notes changes.
 - **Smoother panel resizing.** When the panel changes size (switching tabs, opening Settings, adding a
   task), it now glides all the way instead of jumping most of the way and then settling. When you tick,
   delete or move a task, the panel shrinks with the row as it folds away and stops when the row is gone,

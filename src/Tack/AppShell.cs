@@ -9,6 +9,7 @@ using Tack.Interop;
 using Tack.Launcher;
 using Tack.Model;
 using Tack.Services;
+using Tack.Snippets;
 using Tack.Windows;
 using static Tack.Interop.NativeMethods;
 
@@ -60,6 +61,10 @@ internal sealed class AppShell : IDisposable
         _orb = new OrbWindow();
         // The optional radial launcher (off by default). Created before the panel, whose Settings page shows it.
         _launcher = new LauncherModule(store.Folder, () => _orb.Center);
+        // Images pasted into Notes, kept beside tack.json on this PC only. Never pasted one: nothing on disk.
+        Snippets = new SnippetStore(store.Folder);
+        Snippets.Prune(id => ws.SheetById(id) is { IsDeleted: false });
+        ws.HoldsLocalContent = Snippets.Any;
         _peek = new PeekWindow();
         _panel = new PanelWindow(ws, _view, this);
         _hotkey = new HotkeyManager();
@@ -90,6 +95,8 @@ internal sealed class AppShell : IDisposable
         _panel.UserMovedOrResized += RememberAnchorFromPanel;
         _panel.SizeMoveStarted += () => _panelBounds?.Stop();
         _panel.PreferredSizeChanged += inStep => FitPanel(animate: true, inStep);
+        // Clicking elsewhere closes a snippet and, like any click away, folds an unpinned panel.
+        _panel.ViewerClosed += byClickAway => { if (byClickAway && _expanded && !_ws.Settings.Pinned) _collapseCheck.Start(); };
 
         _hotkey.Pressed += Toggle;
         _watcher.ForegroundChanged += OnForegroundChanged;
@@ -127,6 +134,8 @@ internal sealed class AppShell : IDisposable
     internal PanelWindow Panel => _panel;
 
     internal PeekWindow Peek => _peek;
+    /// <summary>Images pasted into Notes (on this PC only).</summary>
+    internal SnippetStore Snippets { get; }
 
     public string DataFolder => _store.Folder;
 
@@ -215,6 +224,7 @@ internal sealed class AppShell : IDisposable
 
     public void Dispose()
     {
+        _panel.EndToast(); // a discarded snippet's Undo lapses as Tack quits
         _launcher.Dispose();
         _hotkey.Dispose();
         _watcher.Dispose();
@@ -298,7 +308,7 @@ internal sealed class AppShell : IDisposable
 
     private void CollapseIfAbandoned()
     {
-        if (!_expanded || _ws.Settings.Pinned || _panel.IsActive || _dialogOpen) return;
+        if (!_expanded || _ws.Settings.Pinned || _panel.IsActive || _dialogOpen || _panel.IsViewerOpen) return;
         Collapse();
     }
 

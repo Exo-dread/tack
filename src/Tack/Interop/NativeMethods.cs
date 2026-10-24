@@ -243,6 +243,20 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool EmptyWorkingSet(IntPtr hProcess);
 
+    // ---- Clipboard memory (snippets): a pasted image's size and header are read before it's copied ----
+    [DllImport("kernel32.dll")]
+    public static extern UIntPtr GlobalSize(IntPtr hMem);
+
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GlobalLock(IntPtr hMem);
+
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GlobalUnlock(IntPtr hMem);
+
+    [DllImport("ole32.dll")]
+    public static extern void ReleaseStgMedium(ref System.Runtime.InteropServices.ComTypes.STGMEDIUM medium);
+
     // ================= Radial launcher (optional module; nothing below runs unless it's turned on) =================
 
     public const int VK_SHIFT = 0x10;

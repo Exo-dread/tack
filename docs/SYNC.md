@@ -67,6 +67,9 @@ Everything one device knows, written as one file, replaced whole (`web/src/sync/
 | `spaces` | Live spaces (Work, Dev...), only if there are any (on screen since Tack 1.5.0 and Tack Focus 0.4.0). |
 | `deleted` | Deleted records as `id → clock of the deletion`, about 45 bytes each, never their text (`spaces` only if a space was deleted). |
 
+Some things are never in a device file (nor in tack.json, an import or an export): images pasted into a
+note in Tack for Windows (snippets, kept beside its tack.json) and the launcher's shortcuts stay on that PC.
+
 With no spaces and nothing put in one, a file is byte for byte what Tack 1.3 and Tack Focus 0.2 write,
 and those versions read the new keys as unknown and skip them. A copy of a task from such a version
 has no clock for its space, so it never moves the task back.

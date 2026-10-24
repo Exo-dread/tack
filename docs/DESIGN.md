@@ -104,6 +104,35 @@ plain text, titled by their first line, switched with a pill strip. There's no f
 helpers make it pleasant: list continuation, F5 timestamps (a nod to Notepad), and Ctrl+Enter to promote
 a line to a task, which is the bridge between the two halves of the app.
 
+### Snippets: a screenshot to follow, then gone
+A lot of what people jot down is really a picture: a few steps of instructions snipped from a manual,
+an email or a dialog, to follow in another app and throw away. So **Ctrl+V with an image** puts it on
+the sheet as a *snippet*: a thumbnail strip above the text, a click to see it full size, × to discard.
+The rules keep it a scrap, not a gallery:
+
+- **Nothing until you paste one.** A sheet without snippets looks exactly as before; the strip, the
+  `snippets` folder and `snippets.json` only appear with the first. Text is always what text pastes
+  as: anything copied with text in it (cells from Excel, a slide) pastes its text, picture or not.
+- **On this PC only.** Images are big and these are temporary, so they never go in tack.json, a
+  device file, an import or an export. The sync format and every other device are untouched; there a
+  sheet shows its text. (That also keeps screenshots of work out of anyone's cloud folder.)
+- **Discarding is instant, with Undo.** × takes the snippet off the sheet at once and shows Undo; the
+  file is deleted when that Undo lapses (the toast goes or another takes its place), and if Tack quits
+  first, the next start clears it away. Deleting a sheet takes its snippets the same way, and a
+  snippet whose sheet was deleted on another device goes at the next start.
+- **Small and bounded.** Up to 50 snippets and 50 MB in all. A pasted image is checked from its
+  header before anything is decoded (40 million pixels at most), kept as it came when it fits, and
+  otherwise scaled to fit 8192 pixels a side (16.7 million in all) and saved as a plain PNG. Only
+  Windows' own PNG, BMP, JPEG, GIF and TIFF decoders are used, image files are read only from this
+  PC's own drives (never a network share or a cloud placeholder), and only the first thousand names
+  of a copied file list are looked at.
+- **Full size means real pixels.** The viewer is a plain window on the panel's display: a snip that
+  fits is shown one pixel to a pixel, so text in it is as sharp as it was; a bigger one is scaled to
+  nine tenths of the display. Esc, a click on it, or clicking anywhere else closes it (an unpinned
+  panel then folds away too, as it would have).
+- **Pasted on Tasks**, an image has nowhere to go but a sheet, so it goes to the sheet on show in
+  Notes, which comes forward with a toast saying so (Undo takes it back off).
+
 ### First run teaches by doing
 There's no tour. The first run opens the panel with five tasks that *are* the instructions ("Tick this
 circle…", "Drag the dots…", "Press ⟨shortcut⟩…"), so learning Tack means using it. If the default
@@ -181,6 +210,7 @@ src/Tack
 ├── Interop/               Win32/DWM: glass, monitors & DPI, global hotkey, shell watcher
 ├── Windows/               OrbWindow, PeekWindow, PanelWindow
 ├── Launcher/              The optional radial launcher: Core/ (platform-neutral, tested), its window, settings card, launching
+├── Snippets/              Images pasted into Notes: reading a paste safely, the store beside tack.json, the full-size viewer
 ├── Views/                 TasksView, NotesView, SettingsView, SearchView (UserControls inside the panel)
 ├── Controls/              OrbVisual (custom-drawn), animation helpers, converters
 └── Themes/                Theme.xaml (typography and every control style), Dark.xaml / Light.xaml (palettes)
@@ -307,6 +337,8 @@ at a few MB of working set and zero CPU.
 - **Localisation** isn't wired up; strings are in XAML and code.
 - **Keyboard access to row actions** goes through shortcuts (Ctrl+Enter, Ctrl+D, Backspace) and the context
   menu (Shift+F10), not Tab, because the hover toolbar isn't in the tab order.
+- **Snippets** stay on the PC they were pasted on, and the viewer has no zoom: a snip is shown at its own
+  pixels, or fitted to the display.
 - Deliberately **not** planned: reminders, due dates, priorities, tags, collaboration. Spaces (above) are as
   far as grouping goes: a name to keep work, development and personal apart, not projects with settings.
 - **Sync** with Tack Focus is opt-in and serverless: through a folder in your own OneDrive that the

@@ -42,7 +42,8 @@ and gets out of the way the moment you're done.
   Settings and a slim strip under the header switches between them (Alt+1 to Alt+9, Alt+0 for all).
   Until you make one, there's nothing extra on screen.
 - **Notes like scrap paper.** Plain-text sheets that save as you type. Lists continue themselves,
-  F5 stamps the time, and Ctrl+Enter turns a line into a task.
+  F5 stamps the time, and Ctrl+Enter turns a line into a task. Paste a screenshot to keep it on the
+  sheet while you follow it, then throw it away.
 - **Find anything.** Ctrl+F searches every task, finished task and note in every space as you type,
   whatever the case or accents, and takes you straight to what you pick.
 - **A launcher, if you want one.** Turn it on in Settings → Launcher, then Shift+click the orb for a ring
@@ -138,6 +139,13 @@ until there's a second one, Tack looks exactly as it always has.
 - Sheets are plain text; a sheet's title is its first line. **+** (or **Ctrl+N**) adds a sheet;
   right-click a sheet's name to delete it (or, with spaces, move it to another).
 - Start a line with `- `, `* `, `1. ` or `[ ] ` and Enter continues the list.
+- **Snippets.** Snip some instructions (Win+Shift+S), press **Ctrl+V** in a sheet, and the picture sits
+  above the sheet's text as a thumbnail. Click it to see it full size on that display (Esc or a click
+  closes it); **×** throws it away, with Undo. Image files copied in Explorer paste the same way, and an
+  image pasted on Tasks goes to the sheet in Notes. Anything copied with text in it (cells from Excel,
+  say) pastes as text, as before. Snippets stay on this PC: other devices show the sheet's text only.
+  Tack keeps up to 50 of them (50 MB), scales very large images down, and deleting a sheet deletes its
+  snippets.
 
 ### Search
 
@@ -187,6 +195,8 @@ shortcut and let go. Plain clicks and drags of the orb are untouched. More: [doc
 | Backspace | An empty task | Delete it |
 | Ctrl+Enter | Notes | Send the current line (or selection) to Tasks |
 | F5 | Notes | Insert the date and time |
+| Ctrl+V | Notes or Tasks | With an image copied (and no text): keep it on the sheet as a snippet |
+| Esc, Enter or a click | A snippet, full size | Close it |
 | Ctrl+N | Notes | New sheet |
 | Ctrl+Tab / Ctrl+Shift+Tab | Notes | Next / previous sheet |
 | Alt+1 … Alt+9 / Alt+0 | Panel | Show the 1st … 9th space / All (once there are spaces) |
@@ -201,6 +211,8 @@ sync with whatever you like. Saves are debounced, written atomically (temp file,
 previous version is kept as `tack.json.bak`, so a crash or power cut can't corrupt your list. If the file
 is ever unreadable, Tack recovers from the backup and keeps the damaged file aside. With the launcher
 on, its shortcuts are kept beside tack.json in `launcher.json` (never in tack.json, never synced).
+Images pasted into Notes are PNG files in the `snippets` folder beside it, listed in `snippets.json`;
+they too stay on this PC, out of tack.json, sync, imports and exports.
 
 The file also has a `tackFocus` section: a clock for every change, sort keys and recently deleted
 items, so Tack can merge edits made elsewhere. Older versions of Tack ignore it. **Settings → Import**
