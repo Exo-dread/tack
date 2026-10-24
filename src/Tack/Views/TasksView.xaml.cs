@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -22,8 +21,6 @@ public partial class TasksView : UserControl
 {
     /// <summary>Grace period after ticking a task, during which a second click undoes it.</summary>
     private static readonly TimeSpan CheckDelay = TimeSpan.FromMilliseconds(650);
-
-    private static readonly Regex ListMarker = new(@"^\s*(?:[-*+•·◦▪–]\s+|\d{1,3}[.)]\s+|\[[ xX]?\]\s*)", RegexOptions.Compiled);
 
     private readonly Dictionary<TaskItem, DispatcherTimer> _checking = new();
     private readonly HashSet<FrameworkElement> _folding = new(); // rows folding away right now
@@ -132,10 +129,7 @@ public partial class TasksView : UserControl
     private void OnAddBoxPaste(object sender, DataObjectPastingEventArgs e)
     {
         if (e.SourceDataObject.GetData(DataFormats.UnicodeText) is not string text) return;
-        var lines = text.Replace("\r", "").Split('\n')
-            .Select(l => ListMarker.Replace(ListMarker.Replace(l, ""), "").Trim())
-            .Where(l => l.Length > 0)
-            .ToList();
+        var lines = TaskLines.Split(text);
         if (lines.Count > DeviceFile.MaxPasteLines)
         {
             e.CancelCommand();
@@ -244,6 +238,19 @@ public partial class TasksView : UserControl
         _panel.FocusDefault();
     }
 
+    // ================= Attachments (what was dropped onto the orb) =================
+
+    private void Attachment_Click(object sender, RoutedEventArgs e)
+    {
+        if (ItemOf(sender) is { } task) OpenAttachment(task);
+        e.Handled = true;
+    }
+
+    private void OpenAttachment(TaskItem task)
+    {
+        if (task.AttachmentTip != null) _panel?.OpenAttachment(task);
+    }
+
     // ================= Deleting =================
 
     private void Delete_Click(object sender, RoutedEventArgs e)
@@ -274,6 +281,7 @@ public partial class TasksView : UserControl
         (((sender as MenuItem)?.Parent as ContextMenu)?.PlacementTarget as FrameworkElement)?.DataContext as TaskItem;
 
     private void MenuFocus_Click(object sender, RoutedEventArgs e) { if (MenuItemTask(sender) is { } t) MakeNow(t); }
+    private void MenuOpen_Click(object sender, RoutedEventArgs e) { if (MenuItemTask(sender) is { } t) OpenAttachment(t); }
     private void MenuDone_Click(object sender, RoutedEventArgs e) { if (MenuItemTask(sender) is { } t) ToggleCheck(t); }
     private void MenuDelete_Click(object sender, RoutedEventArgs e) { if (MenuItemTask(sender) is { } t) DeleteWithUndo(t); }
 
@@ -288,6 +296,12 @@ public partial class TasksView : UserControl
     private void TaskMenu_Opened(object sender, RoutedEventArgs e)
     {
         if (sender is not ContextMenu menu || (menu.PlacementTarget as FrameworkElement)?.DataContext is not TaskItem task) return;
+        // "Open Clash report L3.pdf" leads the menu of a task with something dropped onto the orb for it.
+        if (menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Tag is "Open") is { } open)
+        {
+            open.Header = task.AttachmentTip ?? "Open";
+            open.Visibility = task.AttachmentTip != null ? Visibility.Visible : Visibility.Collapsed;
+        }
         if (menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Tag is "MoveTo") is not { } moveTo) return;
         moveTo.Visibility = _view.HasSpaces ? Visibility.Visible : Visibility.Collapsed;
         moveTo.Items.Clear();
@@ -378,6 +392,11 @@ public partial class TasksView : UserControl
 
             case Key.D when mods == ModifierKeys.Control:
                 ToggleCheck(task);
+                e.Handled = true;
+                break;
+
+            case Key.O when mods == ModifierKeys.Control && task.AttachmentTip != null:
+                OpenAttachment(task);
                 e.Handled = true;
                 break;
 

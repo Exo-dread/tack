@@ -20,7 +20,7 @@ namespace Tack.Windows;
 /// The expanded state: a compact acrylic panel with Tasks and Notes.
 /// It knows nothing about the orb; AppShell decides where and when it appears.
 /// </summary>
-public partial class PanelWindow : Window
+public partial class PanelWindow : Window, Drop.IUndoToast
 {
     private const int WM_SIZING = 0x0214;
     private const int WM_ENTERSIZEMOVE = 0x0231;
@@ -385,7 +385,7 @@ public partial class PanelWindow : Window
     }
 
     /// <summary>Tells screen readers something that changed out of their sight (a space switched by a key, a task moved).</summary>
-    internal void Announce(string text)
+    public void Announce(string text)
     {
         if ((UIElementAutomationPeer.FromElement(this) ?? UIElementAutomationPeer.CreatePeerForElement(this)) is { } peer)
             peer.RaiseNotificationEvent(AutomationNotificationKind.ActionCompleted, AutomationNotificationProcessing.ImportantMostRecent, text, "Tack.Spaces");
@@ -654,9 +654,23 @@ public partial class PanelWindow : Window
 
     // ---- Toast + undo ----
 
+    /// <summary>The toast's Undo is still on offer (deleted tasks can come back).</summary>
+    public bool HasPendingUndo => _undo != null;
+
+    /// <summary>Whether <paramref name="undo"/> is the Undo on offer right now.</summary>
+    public bool Offers(Action undo) => _undo == undo;
+
+    /// <summary>
+    /// The Undo that was on offer no longer is: it lapsed, was used, or a toast without one took its place.
+    /// Raised before a used Undo runs; anything that depends on it waits for the dispatcher.
+    /// </summary>
+    public event Action? UndoSettled;
+
     public void ShowToast(string message, Action? undo = null)
     {
+        bool settled = _undo != null && undo == null;
         _undo = undo;
+        if (settled) UndoSettled?.Invoke();
         ToastText.Text = message;
         ToastUndo.Visibility = undo != null ? Visibility.Visible : Visibility.Collapsed;
         Toast.Visibility = Visibility.Visible;
@@ -669,7 +683,9 @@ public partial class PanelWindow : Window
     private void HideToast()
     {
         _toastTimer.Stop();
+        bool settled = _undo != null;
         _undo = null;
+        if (settled) UndoSettled?.Invoke();
         if (Toast.Visibility == Visibility.Visible)
             Anim.Fade(Toast, 0, 160, () => { if (_undo == null) Toast.Visibility = Visibility.Collapsed; });
     }
@@ -683,7 +699,13 @@ public partial class PanelWindow : Window
         return true;
     }
 
+    /// <summary>Undo, when <paramref name="undo"/> is still the one on offer (the bubble by the orb asks this way).</summary>
+    public bool UndoIf(Action undo) => _undo == undo && Undo();
+
     private void ToastUndo_Click(object sender, RoutedEventArgs e) => Undo();
+
+    /// <summary>A task's paperclip (or Ctrl+O): opens what was dropped onto the orb for it, or says why it can't.</summary>
+    internal void OpenAttachment(TaskItem task) => _shell.Drop.Open(task, message => ShowToast(message));
 
     /// <summary>Alt+F4 and friends fold the panel away instead of destroying it.</summary>
     protected override void OnClosing(CancelEventArgs e)

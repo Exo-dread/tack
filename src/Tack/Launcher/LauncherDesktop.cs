@@ -66,7 +66,8 @@ internal static class ShortcutLauncher
     /// <paramref name="done"/> runs back on the calling (UI) thread with the started process's id, when there is
     /// one, and null when it opened (or the user declined Windows' admin prompt), otherwise a message to show.
     /// </summary>
-    public static void Start(LaunchPlan plan, Action<int?, string?> done)
+    /// <param name="couldNot">What to say when Windows can't open it (an attachment isn't a shortcut).</param>
+    public static void Start(LaunchPlan plan, Action<int?, string?> done, string couldNot = "Windows couldn't open this shortcut.")
     {
         var dispatcher = Dispatcher.CurrentDispatcher;
         // Tack just received the click, so it may bring windows forward; pass that on so the app (or the
@@ -74,7 +75,7 @@ internal static class ShortcutLauncher
         AllowSetForegroundWindow(ASFW_ANY);
         var thread = new Thread(() =>
         {
-            var (pid, error) = Run(plan);
+            var (pid, error) = Run(plan, couldNot);
             try { dispatcher.BeginInvoke(() => done(pid, error)); }
             catch (Exception ex) { Log.Error("Launcher: couldn't report a launch", ex); }
         })
@@ -83,7 +84,7 @@ internal static class ShortcutLauncher
         thread.Start();
     }
 
-    private static (int? Pid, string? Error) Run(LaunchPlan plan)
+    private static (int? Pid, string? Error) Run(LaunchPlan plan, string couldNot)
     {
         try
         {
@@ -102,7 +103,7 @@ internal static class ShortcutLauncher
         catch (Exception ex)
         {
             Log.Error($"Launcher: couldn't open {plan.FileName}", ex);
-            return (null, ex is Win32Exception { NativeErrorCode: 2 or 3 } ? "Windows can't find this any more." : "Windows couldn't open this shortcut.");
+            return (null, ex is Win32Exception { NativeErrorCode: 2 or 3 } ? "Windows can't find this any more." : couldNot);
         }
     }
 }

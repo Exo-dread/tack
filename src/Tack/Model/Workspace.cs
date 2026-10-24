@@ -373,6 +373,9 @@ public sealed class Workspace : Observable, IImportTarget
     /// <summary>Every task, sheet and space held, deleted ones included (as a device file counts them).</summary>
     internal int RecordCount => _tasks.Count + _sheets.Count + _spaces.Count;
 
+    /// <summary>Every task held, deleted ones included.</summary>
+    internal int TaskCount => _tasks.Count;
+
     /// <summary>Adds a space after the last one.</summary>
     internal SpaceData AddSpace(string name)
     {

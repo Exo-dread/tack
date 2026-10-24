@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using Tack.Controls;
+using Tack.Drop;
 using Tack.Interop;
 using Tack.Launcher;
 using Tack.Model;
@@ -35,6 +36,7 @@ internal sealed class AppShell : IDisposable
     private readonly HotkeyManager _hotkey;
     private readonly ShellWatcher _watcher;
     private readonly LauncherModule _launcher;
+    private readonly DropModule _drop;
     private readonly DispatcherTimer _peekDelay;
     private readonly DispatcherTimer _collapseCheck;
     private readonly DispatcherTimer _trimDelay;
@@ -59,8 +61,12 @@ internal sealed class AppShell : IDisposable
         _orb = new OrbWindow();
         // The optional radial launcher (off by default). Created before the panel, whose Settings page shows it.
         _launcher = new LauncherModule(store.Folder, () => _orb.Center);
+        // Dropping onto the orb: attachments.json, if there is one, puts the paperclips back on their tasks.
+        _drop = new DropModule(store.Folder, ws, _view);
         _peek = new PeekWindow();
         _panel = new PanelWindow(ws, _view, this);
+        _drop.Attach(_orb.ShowDropTarget, _panel, () => new DropBubble { Orb = _orb });
+        _orb.DropTarget = _drop;
         _hotkey = new HotkeyManager();
         _watcher = new ShellWatcher();
 
@@ -74,7 +80,7 @@ internal sealed class AppShell : IDisposable
         _trimDelay.Tick += (_, _) => { _trimDelay.Stop(); TrimMemory(); };
 
         _midnight = new DispatcherTimer();
-        _midnight.Tick += (_, _) => { _ws.RefreshDay(); ScheduleMidnight(); };
+        _midnight.Tick += (_, _) => { _ws.RefreshDay(); _drop.Prune(); ScheduleMidnight(); };
 
         // Apps often go full-screen a moment after they take focus, so look again shortly after.
         _fullscreenRecheck = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
@@ -82,7 +88,7 @@ internal sealed class AppShell : IDisposable
 
         _orb.OpenRequested += Expand;
         _orb.HoverChanged += OnOrbHover;
-        _orb.DragStarted += () => { _peekDelay.Stop(); _peek.Dismiss(); };
+        _orb.DragStarted += () => { _peekDelay.Stop(); _peek.Dismiss(); _drop.Dismiss(); };
         _orb.DragFinished += RememberOrbPosition;
 
         _panel.Deactivated += (_, _) => { if (_expanded && !_ws.Settings.Pinned) _collapseCheck.Start(); };
@@ -105,6 +111,9 @@ internal sealed class AppShell : IDisposable
 
     /// <summary>The optional radial launcher (Settings → Launcher).</summary>
     internal LauncherModule Launcher => _launcher;
+
+    /// <summary>Dropping onto the orb, and the paperclips it leaves on tasks.</summary>
+    internal DropModule Drop => _drop;
 
     public string DataFolder => _store.Folder;
 
@@ -144,6 +153,12 @@ internal sealed class AppShell : IDisposable
 
         EvaluateFullscreen();
         _sync.Start();
+        // Attachments of tasks deleted for good while Tack was closed, and copies nothing points to.
+        _orb.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+        {
+            _drop.Prune();
+            _drop.SweepOrphans();
+        });
     }
 
     /// <summary>True once Tack is shutting down; windows may then really close.</summary>
@@ -212,6 +227,7 @@ internal sealed class AppShell : IDisposable
             return;
         }
         _launcher.ForceClose();
+        _drop.Dismiss();
         _expanded = true;
         _peekDelay.Stop();
         _peek.Dismiss();
@@ -377,7 +393,7 @@ internal sealed class AppShell : IDisposable
 
     private void OnOrbHover(bool hot)
     {
-        if (hot && !_expanded && !_orb.IsDragging && !_launcher.IsOpen) _peekDelay.Start();
+        if (hot && !_expanded && !_orb.IsDragging && !_launcher.IsOpen && !_drop.BubbleShown) _peekDelay.Start();
         else
         {
             _peekDelay.Stop();
@@ -387,7 +403,7 @@ internal sealed class AppShell : IDisposable
 
     private void ShowPeek()
     {
-        if (_expanded || !_orb.IsVisible || _orb.IsDragging || _launcher.IsOpen) return;
+        if (_expanded || !_orb.IsVisible || _orb.IsDragging || _launcher.IsOpen || _drop.BubbleShown) return;
         _ws.RefreshDay();
         _peek.ShowFor(_orb, _view, HotkeyActive ? _ws.Settings.Hotkey : "");
     }
@@ -416,6 +432,7 @@ internal sealed class AppShell : IDisposable
         if (hide)
         {
             _launcher.ForceClose();
+            _drop.Dismiss();
             _peek.Dismiss();
             _orb.Hide();
             if (_expanded && _ws.Settings.Pinned) _panel.Hide();

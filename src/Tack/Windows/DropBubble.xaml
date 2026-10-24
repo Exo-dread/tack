@@ -1,0 +1,31 @@
+<Window x:Class="Tack.Windows.DropBubble"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Tack drop"
+        SizeToContent="WidthAndHeight"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="False" ShowActivated="False" Topmost="True"
+        UseLayoutRounding="True" Focusable="False">
+    <!-- Beside the orb, like the peek: what a drop will do while something is dragged over it, then what it did,
+         with Undo. Margin leaves room for the shadow inside the layered window. -->
+    <Border x:Name="Bubble" Margin="12" Padding="12,7,6,8" CornerRadius="10" MaxWidth="300" MinHeight="38"
+            Background="{DynamicResource FlyoutBrush}" BorderBrush="{DynamicResource StrokeStrongBrush}" BorderThickness="1"
+            RenderTransformOrigin="0.5,0.5">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.45" Color="Black" />
+        </Border.Effect>
+        <DockPanel>
+            <!-- Undo first, so it keeps its room: a long note ends in an ellipsis instead. -->
+            <Button x:Name="UndoButton" DockPanel.Dock="Right" Style="{StaticResource TextButton}" Margin="10,0,0,0"
+                    VerticalAlignment="Center" Content="Undo" Visibility="Collapsed" Click="Undo_Click" />
+            <StackPanel VerticalAlignment="Center" Margin="0,0,6,0">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse x:Name="Dot" Width="6" Height="6" Fill="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="0,1,7,0" />
+                    <TextBlock x:Name="Heading" FontFamily="{StaticResource UiFont}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock x:Name="Caption" Margin="13,2,0,0" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
+            </StackPanel>
+        </DockPanel>
+    </Border>
+</Window>
