@@ -29,8 +29,13 @@ internal static class WindowEffects
     public static bool SupportsRoundedCorners => Build >= 22000;
 
     /// <summary>Applies light/dark frame, rounded corners and (optionally) the acrylic backdrop.</summary>
+    /// <param name="clear">
+    /// Nothing behind the panel at all (no acrylic, no frame): what's behind the window shows through its own
+    /// transparency, unblurred (with <see cref="SetClear"/>). For a see-through background without glass, and
+    /// a panel faded when idle.
+    /// </param>
     /// <returns>True when the acrylic backdrop is active.</returns>
-    public static bool ApplyPanelChrome(IntPtr hwnd, bool glass, bool dark)
+    public static bool ApplyPanelChrome(IntPtr hwnd, bool glass, bool dark, bool clear = false)
     {
         // Also decides whether DWM tints the acrylic dark or light.
         SetInt(hwnd, Build >= 18985 ? DWMWA_USE_IMMERSIVE_DARK_MODE : DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, dark ? 1 : 0);
@@ -41,11 +46,30 @@ internal static class WindowEffects
         if (!SupportsSystemBackdrop)
             return false;
 
-        // The glass frame must cover the whole client area for the backdrop to show through.
-        var margins = new MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 };
+        // The glass frame must cover the whole client area for the backdrop to show through. (Without glass
+        // DWM fills that frame with the theme's solid colour, so a clear panel has none.)
+        var margins = clear ? new MARGINS() : new MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 };
         DwmExtendFrameIntoClientArea(hwnd, ref margins);
 
+        glass &= !clear;
         return SetInt(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, glass ? DWMSBT_TRANSIENTWINDOW : DWMSBT_NONE) && glass;
+    }
+
+    /// <summary>
+    /// Has DWM show the window's own per-pixel transparency with nothing drawn behind it (blur-behind on an
+    /// empty region, which since Windows 8 blurs nothing), or stop. Goes with a clear panel chrome.
+    /// </summary>
+    public static void SetClear(IntPtr hwnd, bool clear)
+    {
+        IntPtr region = clear ? CreateRectRgn(0, 0, -1, -1) : IntPtr.Zero;
+        var blur = new DWM_BLURBEHIND
+        {
+            dwFlags = DWM_BB_ENABLE | (clear ? DWM_BB_BLURREGION : 0),
+            fEnable = clear,
+            hRgnBlur = region,
+        };
+        DwmEnableBlurBehindWindow(hwnd, ref blur);
+        if (region != IntPtr.Zero) DeleteObject(region);
     }
 
     /// <summary>Sets the 1px DWM border colour (Windows 11). Pass null for the system default.</summary>

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Tack.Controls;
 using Tack.Interop;
@@ -52,8 +53,19 @@ public partial class PeekWindow : Window
     {
         _wanted = false;
         if (!IsVisible) return;
-        Anim.Fade(this, 0, 90, () => { if (!_wanted) Hide(); });
+        StandIn.Stand();
+        Anim.Fade(this, 0, 90, () =>
+        {
+            if (_wanted) return;
+            Hide();
+            StandIn.Live(keep: false);
+        });
     }
+
+    /// <summary>The bubble's picture, which stands in for it while it slides and fades (see <see cref="Controls.StandIn"/>).</summary>
+    internal StandIn StandIn => _standIn ??= new StandIn(Bubble, Root, Picture);
+
+    private StandIn? _standIn;
 
     private void Place(OrbWindow orb)
     {
@@ -71,8 +83,15 @@ public partial class PeekWindow : Window
         var r = ScreenGeometry.Clamp(new Int32Rect(x, y, me.Width, me.Height), mon.Work, -inset);
         ScreenGeometry.Place(_hwnd, r.X, r.Y);
 
+        StandIn.Take(); // what it says may have changed since it last showed
+        StandIn.Stand();
         Anim.Fade(this, 1, 140);
-        Anim.Slide(Bubble, toLeft ? 8 : -8, 0, 180);
+        var (_, slide) = Anim.Transforms(Picture);
+        Anim.To(slide, TranslateTransform.XProperty, 0, 180, from: toLeft ? 8 : -8, completed: () =>
+        {
+            // Still showing: the live bubble takes over (the picture is kept for the fade out).
+            if (_wanted && StandIn.IsStanding) StandIn.Live(keep: true);
+        });
     }
 
     /// <summary>What's on show: a space's (or everything's) focus task and counts, and, once there are spaces, which one.</summary>

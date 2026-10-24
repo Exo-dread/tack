@@ -143,7 +143,7 @@
                     </StackPanel>
                 </Border>
 
-                <TextBlock Text="Appearance" Style="{StaticResource SectionLabel}" />
+                <TextBlock Text="Look" Style="{StaticResource SectionLabel}" />
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <Grid Margin="0,8">
@@ -165,10 +165,38 @@
                                   IsChecked="{Binding Settings.Glass}" />
                         <TextBlock x:Name="GlassHint" Style="{StaticResource Hint}" Text="Turn off for a solid, high-contrast panel." />
                         <Border Height="1" Background="{DynamicResource DividerBrush}" />
+                        <!-- How solid the panel's background is (only the background: text and controls stay as they are).
+                             One value with frosted glass and one without; the tick marks the default. -->
+                        <StackPanel Margin="0,9,0,8">
+                            <Grid>
+                                <TextBlock Text="Panel background" VerticalAlignment="Center" FontSize="13" />
+                                <Button x:Name="BackgroundReset" Style="{StaticResource TextButton}" HorizontalAlignment="Right" Margin="0,-4,-8,-4"
+                                        Content="Default" Click="BackgroundReset_Click" Visibility="Hidden"
+                                        ToolTip="Back to the theme's own background" AutomationProperties.Name="Panel background: back to the default" />
+                            </Grid>
+                            <Grid Margin="0,4,0,0">
+                                <Slider x:Name="BackgroundSlider" Style="{StaticResource SettingSlider}" Minimum="0" Maximum="0.75"
+                                        SmallChange="0.05" LargeChange="0.1" ValueChanged="BackgroundSlider_ValueChanged"
+                                        AutomationProperties.Name="Panel background, solid to see-through" />
+                                <Border x:Name="BackgroundTick" Width="2" Height="6" CornerRadius="1" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                        Margin="0,0,0,-3" Background="{DynamicResource TextTertiaryBrush}" IsHitTestVisible="False" />
+                            </Grid>
+                            <Grid Margin="0,3,0,0">
+                                <TextBlock Text="Solid" Style="{StaticResource Caption}" />
+                                <TextBlock Text="See-through" Style="{StaticResource Caption}" HorizontalAlignment="Right" />
+                            </Grid>
+                            <TextBlock x:Name="BackgroundHint" Style="{StaticResource Hint}" Margin="0,4,0,0" Visibility="Collapsed" />
+                        </StackPanel>
+                        <Border Height="1" Background="{DynamicResource DividerBrush}" />
                         <Grid Margin="0,8">
                             <TextBlock Text="Accent" VerticalAlignment="Center" FontSize="13" />
                             <StackPanel x:Name="Swatches" Orientation="Horizontal" HorizontalAlignment="Right" />
                         </Grid>
+                        <Border Height="1" Background="{DynamicResource DividerBrush}" />
+                        <CheckBox x:Name="FadeToggle" Style="{StaticResource ToggleSwitch}" Content="Fade when idle" Margin="0,9,0,8"
+                                  IsChecked="{Binding Settings.FadeWhenIdle}" />
+                        <TextBlock Style="{StaticResource Hint}"
+                                   Text="The orb and a pinned panel fade to half after a few seconds without the pointer, and come back as soon as you point at them." />
                     </StackPanel>
                 </Border>
                 <TextBlock Style="{StaticResource Hint}" Margin="2,8,8,0"

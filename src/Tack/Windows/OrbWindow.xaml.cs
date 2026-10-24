@@ -14,7 +14,7 @@ namespace Tack.Windows;
 /// The collapsed state: a 40 px bead that floats above everything, can be dragged anywhere,
 /// snaps neatly to screen edges, and never takes keyboard focus from the app you're in.
 /// </summary>
-public partial class OrbWindow : Window
+public partial class OrbWindow : Window, IFadingWindow
 {
     private const double SnapDistance = 28; // DIPs
     private const double EdgeGap = 10;      // DIPs
@@ -127,6 +127,18 @@ public partial class OrbWindow : Window
         Anim.Fade(Orb, 0, 110);
         Anim.Scale(Orb, 0.6, 120, Anim.EaseIn, completed: completed);
     }
+
+    /// <summary>Fade when idle: the whole window at half opacity (easing out unless <paramref name="animate"/> is false), or back at once.</summary>
+    public void SetFaded(bool faded, bool animate)
+    {
+        if (faded == IsFaded) return;
+        IsFaded = faded;
+        if (!faded) Anim.Set(this, OpacityProperty, 1);
+        else if (animate) Anim.Fade(this, PanelWindow.IdleOpacity, 320, from: 1);
+        else Anim.Set(this, OpacityProperty, PanelWindow.IdleOpacity);
+    }
+
+    public bool IsFaded { get; private set; }
 
     private void SetHot(bool hot)
     {

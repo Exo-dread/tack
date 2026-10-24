@@ -40,6 +40,7 @@ internal sealed class AppShell : IDisposable
     private readonly DispatcherTimer _trimDelay;
     private readonly DispatcherTimer _midnight;
     private readonly DispatcherTimer _fullscreenRecheck;
+    private readonly IdleFade _fade;
     private int _rechecksLeft;
 
     private WindowBoundsAnimator? _panelBounds;
@@ -101,10 +102,31 @@ internal sealed class AppShell : IDisposable
         _launcher.EnabledChanged += () => _orb.Launcher = _launcher.Enabled ? _launcher : null;
         _launcher.Opened += () => { _peekDelay.Stop(); _peek.Dismiss(); _trimDelay.Stop(); };
         _launcher.Closed += () => { if (!_expanded) _trimDelay.Start(); };
+
+        // Fade when idle (Settings → Look; off by default, and then none of this changes anything).
+        _fade = new IdleFade(ws.Settings, _orb, _panel,
+            orbBusy: () => _orb.IsDragging || _launcher.IsOpen || _orb.Orb.ContextMenu?.IsOpen == true,
+            panelBusy: () => !_expanded || !_ws.Settings.Pinned || _panel.IsActive || _panel.IsInSizeMove || _panel.IsToastShown || _dialogOpen || _hiddenForFullscreen);
+        _orb.HoverChanged += _fade.OrbPointer;
+        _orb.DragStarted += _fade.OrbAwake;
+        _launcher.Opened += _fade.OrbAwake;
+        _launcher.Closed += _fade.OrbIdle;
+        _panel.Activated += (_, _) => _fade.PanelAwake();
+        _panel.Deactivated += (_, _) => _fade.PanelIdle();
+        _panel.MouseEnter += (_, _) => _fade.PanelPointer(true);
+        _panel.MouseLeave += (_, _) => _fade.PanelPointer(false);
+        _panel.ToastChanged += () => { if (_panel.IsToastShown) _fade.PanelAwake(); else _fade.PanelIdle(); };
     }
 
     /// <summary>The optional radial launcher (Settings → Launcher).</summary>
     internal LauncherModule Launcher => _launcher;
+
+    /// <summary>The windows, for tests/Tack.Tests (which drives a copy of Tack in its own process).</summary>
+    internal OrbWindow Orb => _orb;
+
+    internal PanelWindow Panel => _panel;
+
+    internal PeekWindow Peek => _peek;
 
     public string DataFolder => _store.Folder;
 
@@ -140,6 +162,7 @@ internal sealed class AppShell : IDisposable
         {
             _orb.PlayAppear();
             _trimDelay.Start();
+            _fade.OrbIdle();
         }
 
         EvaluateFullscreen();
@@ -184,7 +207,9 @@ internal sealed class AppShell : IDisposable
             open.InputGestureText = HotkeyActive ? _ws.Settings.Hotkey : "";
             _peekDelay.Stop();
             _peek.Dismiss();
+            _fade.OrbAwake();
         };
+        menu.Closed += (_, _) => _fade.OrbIdle();
         return menu;
     }
 
@@ -230,7 +255,8 @@ internal sealed class AppShell : IDisposable
         _panel.Activate();
         _panel.PlayEntrance(_anchorRight, _anchorBottom);
 
-        if (_orb.IsVisible) _orb.PlayDisappear(() => { if (_expanded) _orb.Hide(); });
+        // A faded orb folds away as it is, and is whole again for when it comes back.
+        if (_orb.IsVisible) _orb.PlayDisappear(() => { if (_expanded) { _orb.Hide(); _fade.OrbAwake(); } });
     }
 
     public void Collapse()
@@ -246,6 +272,7 @@ internal sealed class AppShell : IDisposable
             if (_expanded) return; // re-opened mid-animation
             _panel.Hide();
             _panel.CloseSettings(animate: false);
+            _fade.PanelAwake(); // whole again for when it next opens
             _trimDelay.Start();
         });
 
@@ -257,6 +284,7 @@ internal sealed class AppShell : IDisposable
             _orb.MoveCenterTo(cx, cy);
             WindowEffects.BringToTopmost(_orb.Handle);
             _orb.PlayAppear();
+            _fade.OrbIdle();
         }
     }
 
@@ -464,6 +492,7 @@ internal sealed class AppShell : IDisposable
         switch (e.PropertyName)
         {
             case nameof(Settings.Glass): _panel.ApplyGlass(s.Glass); break;
+            case nameof(Settings.PanelBackgroundGlass) or nameof(Settings.PanelBackgroundSolid): _panel.BackgroundChanged(); break;
             case nameof(Settings.Theme): ApplyTheme(); break;
             case nameof(Settings.Accent): ApplyAccent(); break;
             case nameof(Settings.LaunchAtStartup): StartupRegistration.Set(s.LaunchAtStartup); break;
@@ -471,7 +500,9 @@ internal sealed class AppShell : IDisposable
             case nameof(Settings.Pinned):
                 if (s.Pinned) WindowEffects.BringToTopmost(_panel.Handle);
                 else if (_expanded && !_panel.IsActive) _collapseCheck.Start();
+                if (s.Pinned) _fade.PanelIdle(); else _fade.PanelAwake();
                 break;
+            case nameof(Settings.FadeWhenIdle): _fade.SettingChanged(); break;
         }
     }
 
