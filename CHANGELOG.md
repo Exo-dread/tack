@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Drop onto the orb.** Drag an email from Outlook (the new Outlook or classic), files or folders from
+- **Drop onto the orb.** Drag an email from Outlook, files or folders from
   Explorer, a link from your browser or a few lines of text onto the orb: it lights up and says what it will
   add, and letting go makes a task of each (up to 20), in the space on show, with Undo right beside the orb.
   An email becomes a task named by its subject, a file by its name, a page by its title.

@@ -111,7 +111,7 @@ small bubble beside the orb ("Added 3 tasks · Undo"). Up to 20 at a time.
 | You drop | The task is called | Its paperclip opens |
 |---|---|---|
 | A file or folder (Explorer, the desktop, most apps) | The file's name without its extension ("Clash report L3") | The file or folder, where it is |
-| An email from Outlook (new or classic) | The email's subject | Tack's own copy of the email, kept in `attachments` beside tack.json |
+| An email from Outlook | The email's subject | Tack's own copy of the email, kept in `attachments` beside tack.json |
 | A link from a browser | The page's title, else the address | The page, in your default browser (http and https only) |
 | Text | One task a line, as when you paste a list | (nothing) |
 
