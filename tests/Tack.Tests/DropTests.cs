@@ -245,6 +245,23 @@ internal static class DropTests
         Check.Equal(null, s.Store.For(o.Added[1].Id), "a program from a temporary folder is neither copied nor linked");
         Check.Equal(1, o.NotKept, "and the toast says one wasn't kept");
         try { Directory.Delete(temp, recursive: true); } catch { }
+
+        // Where this PC's apps keep files they clean away (only the path is looked at).
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        foreach (var (path, temporary) in new[]
+        {
+            (Path.Combine(Path.GetTempPath(), "chrome_drag1234", "Clash report.eml"), true),
+            (Path.Combine(local, "Packages", "Microsoft.OutlookForWindows_8wekyb3d8bbwe", "LocalCache", "x", "Clash report.eml"), true),
+            (Path.Combine(local, "Microsoft", "Olk", "Attachments", "Model review.pdf"), true),
+            (Path.Combine(local, "Microsoft", "Windows", "INetCache", "Content.Outlook", "AB12CD34", "Minutes.docx"), true),
+            (Path.Combine(local, "SomeApp", "cache", "Weekly.msg"), true),
+            (Path.Combine(local, "SomeApp", "Model review.pdf"), false),
+            (Path.Combine(documents, "Riverside", "Weekly.msg"), false),
+            (Path.Combine(documents, "Riverside", "Clash report L3.pdf"), false),
+            (@"\\fileserver\Projects\Weekly.msg", false),
+        })
+            Check.Equal(temporary, DesktopDrop.IsTemporary(path), $"temporary: {path}");
     }
 
     private static void Links()

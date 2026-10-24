@@ -48,8 +48,10 @@ internal static class DesktopDrop
     });
 
     /// <summary>
-    /// A folder whose files are cleaned away by whoever put them there: %TEMP%, Windows' Temp, the internet
-    /// cache (where Outlook opens attachments), and a Store app's temporary folders (the new Outlook's).
+    /// A folder whose files are cleaned away by whoever put them there, so a file dropped from one is copied
+    /// rather than linked: %TEMP%, Windows' Temp, the internet cache (where classic Outlook opens attachments),
+    /// a Store app's own folders (the new Outlook is one), the new Outlook's own cache (Microsoft\Olk), and
+    /// any email file inside an app's local data.
     /// </summary>
     public static bool IsTemporary(string path)
     {
@@ -57,11 +59,12 @@ internal static class DesktopDrop
         {
             string full = Path.GetFullPath(path);
             if (TemporaryRoots.Value.Any(r => full.StartsWith(r, StringComparison.OrdinalIgnoreCase))) return true;
-            string packages = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages") + "\\";
-            return full.StartsWith(packages, StringComparison.OrdinalIgnoreCase)
-                && (full.Contains(@"\AC\Temp\", StringComparison.OrdinalIgnoreCase)
-                    || full.Contains(@"\AC\INetCache\", StringComparison.OrdinalIgnoreCase)
-                    || full.Contains(@"\TempState\", StringComparison.OrdinalIgnoreCase));
+            string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData).TrimEnd('\\') + "\\";
+            if (local.Length <= 1 || !full.StartsWith(local, StringComparison.OrdinalIgnoreCase)) return false;
+            string inside = full[local.Length..];
+            return inside.StartsWith(@"Packages\", StringComparison.OrdinalIgnoreCase)
+                || inside.StartsWith(@"Microsoft\Olk\", StringComparison.OrdinalIgnoreCase)
+                || DropNames.IsEmail(full);
         }
         catch (Exception) { return false; }
     }
