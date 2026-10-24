@@ -1,5 +1,6 @@
 import { Hlc, ZERO, type Stamp } from './hlc';
 import { newId } from './ids';
+import { MAX_TASK_TEXT } from './limits';
 import { cloneSheet, cloneSpace, cloneTask, mergeFocus, mergeSheet, mergeSpace, mergeTask, type ConcurrentText } from './merge';
 import { keyAfter, keyBefore, keyBetween, keysAt } from './order';
 import { ALL, cleanSpaceName, isSpaceId, MAIN, normalSheet, normalTask, spaceLabel } from './spaces';
@@ -52,7 +53,7 @@ export class Workspace {
   private readonly listeners = new Set<(change: Change) => void>();
   private pending: Change | null = null;
   private depth = 0;
-  private views: { open?: Task[]; done?: Task[]; sheets?: Sheet[]; spaces?: Space[]; tabs?: SpaceTab[]; live?: Set<string> } = {};
+  private views: { open?: Task[]; done?: Task[]; sheets?: Sheet[]; spaces?: Space[]; tabs?: SpaceTab[]; labels?: Map<string, string>; live?: Set<string> } = {};
 
   constructor(
     readonly hlc: Hlc,
@@ -142,7 +143,9 @@ export class Workspace {
 
   /** How a space is shown ("Main" for Main until it's renamed). */
   labelOf(id: string): string {
-    return this.spaceTabs.find((s) => s.id === id)?.label ?? spaceLabel(MAIN, this.spaces.get(MAIN)?.name ?? '');
+    // Looked up, not searched for: All shows each task's space, and a crafted file may bring thousands.
+    this.views.labels ??= new Map(this.spaceTabs.map((s) => [s.id, s.label]));
+    return this.views.labels.get(id) ?? spaceLabel(MAIN, this.spaces.get(MAIN)?.name ?? '');
   }
 
   /**
@@ -215,7 +218,8 @@ export class Workspace {
    */
   addTask(rawText: string, options: { asNow?: boolean; space?: string } = {}): Task | null {
     const text = cleanTaskText(rawText);
-    if (!text) return null;
+    // Longer than any device reads from a sync file: it would stay on this one alone.
+    if (!text || text.length > MAX_TASK_TEXT) return null;
     return this.batch(() => {
       const top = this.open[0]?.order;
       const space = this.placeIn(options.space);
@@ -258,7 +262,7 @@ export class Workspace {
   editTask(id: string, rawText: string): void {
     const t = this.tasks.get(id);
     const text = cleanTaskText(rawText);
-    if (!t || !text || t.text === text) return;
+    if (!t || !text || text.length > MAX_TASK_TEXT || t.text === text) return;
     this.batch(() => this.setTaskField(t, 'text', text));
   }
 
@@ -747,7 +751,7 @@ export class Workspace {
     if (observe) this.hlc.observe(maxClock(space.clk));
     this.spaces.set(space.id, space);
     this.current().spaces.add(space.id);
-    this.views.spaces = this.views.tabs = this.views.live = undefined;
+    this.views.spaces = this.views.tabs = this.views.labels = this.views.live = undefined;
   }
 
   /** A new task's or sheet's space: `space` if it's a live space other than Main, else none (''). */

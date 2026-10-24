@@ -44,7 +44,8 @@ so both can run side by side (with its own `TackData` folder, as above).
 | `build.ps1` | Builds the release zips into `artifacts/` |
 | `web/` | Tack Focus, the web and mobile app (TypeScript, no runtime dependencies). See [web/README.md](web/README.md) |
 | `docs/` | `DESIGN.md` (why Tack is the way it is), `SYNC.md` (how sync works, live since 1.3.0 / 0.2.0), `LAUNCHER.md` (the radial launcher), `ONEDRIVE-SETUP.md` (the Microsoft app registration) |
-| `.github/workflows/` | `ci.yml` (build and tests), `release.yml` (Tack downloads on a tag), `web.yml` (Tack Focus tests and deploy to tackfocus.app) |
+| `.github/workflows/` | `ci.yml` (build and tests), `release.yml` (Tack downloads on a tag on `main`), `web.yml` (Tack Focus tests and deploy to tackfocus.app) |
+| `CLAUDE.md` | The security rules on top of these house rules (untrusted input, limits, calling Microsoft, CI/CD), for coding sessions and people alike |
 
 ## House rules
 
@@ -89,7 +90,10 @@ own sync code through a folder on disk; build `tests/Tack.Tests` first.
 Bump `<Version>` in `src/Tack/Tack.csproj`, add the version's section to `CHANGELOG.md` (as
 `## 1.2.0 (date)`), merge that pull request, then push a tag such as `v1.2.0` on `main`. The
 [release workflow](.github/workflows/release.yml) builds the downloads with `build.ps1` and publishes them
-to a GitHub Release whose text is that CHANGELOG section (`tools/release-notes.ps1`).
+to a GitHub Release whose text is that CHANGELOG section (`tools/release-notes.ps1`). It refuses a tag on
+any commit that isn't already on `main`, before building anything, so always tag after the merge.
+Until a version is released, its changes collect under `## Unreleased` at the top of `CHANGELOG.md`
+(and `web/CHANGELOG.md`); rename that heading to the version when you bump it.
 
 **Tack Focus** has no tags: bump `version` in `web/package.json`, add a section to `web/CHANGELOG.md`,
 and merging to `main` deploys it to tackfocus.app ([web/DEPLOY.md](web/DEPLOY.md)).

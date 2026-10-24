@@ -18,3 +18,11 @@ TackData/
 
 # Python cache from tools/
 __pycache__/
+
+# Claude Code's local settings and worktrees
+.claude/
+
+# Local environment files (never commit secrets); an example file may be committed
+.env
+.env.*
+!.env.example

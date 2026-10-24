@@ -279,6 +279,44 @@ test.describe('sync with OneDrive', () => {
     await expect.poll(() => [...ms.deviceFiles().values()].join(), { timeout: 15_000 }).toContain('Survives a dropped connection');
   });
 
+  // One file can be taken in by one device and be too much at once for another (they differ by
+  // what they haven't synced yet), which then sets aside everything the first one writes: Settings
+  // names it, and offers to take it in anyway, up to what this device's own file may carry.
+  test('a file too much to take in at once: Settings says so, and Take it in anyway takes it in', async ({ page, context }) => {
+    test.skip(test.info().project.name !== 'desktop-chromium', 'one browser is enough for a file this big');
+    test.setTimeout(120_000);
+    const ms = new FakeMicrosoft();
+    await useMicrosoft(context, ms);
+    await open(page);
+    await turnOn(page);
+    await syncNow(page);
+    // Within every limit, but more than a device takes in at once: 180,001 deletions and a task (8 MB).
+    const stamp = (dt: number) => `${(Date.now() - 60_000 + dt).toString(36).padStart(9, '0')}.0000.bigg0001`;
+    const deleted: Record<string, string> = {};
+    for (let i = 0; i <= 180_000; i++) deleted[`d${i}`] = stamp(0);
+    const at = stamp(1);
+    ms.putDeviceFile('bigg0001.json', JSON.stringify({
+      format: 'tack-sync-device',
+      version: 1,
+      device: 'bigg0001',
+      name: 'Tack Focus on a big tablet',
+      app: 'Tack Focus 0.4.2',
+      written: stamp(2),
+      seen: {},
+      focus: { id: null, clk: '000000000.0000.0' },
+      tasks: [{ id: 'bigtask1', text: 'From the big tablet', created: new Date().toISOString(), completed: null, order: 'V', deleted: false, clk: { text: at, completed: at, order: at, deleted: at } }],
+      sheets: [],
+      deleted: { tasks: deleted, sheets: {} },
+    }));
+    await syncNow(page);
+    const problems = settings(page).locator('.sync-problems');
+    await expect(problems).toHaveText(/Tack Focus on a big tablet holds more than this device can take in, so its changes aren’t arriving here\./);
+    await problems.getByRole('button', { name: 'Take it in anyway' }).click();
+    await expect(problems).toBeHidden({ timeout: 60_000 });
+    await closeSettings(page);
+    await expect(openTexts(page).filter({ hasText: 'From the big tablet' })).toHaveCount(1);
+  });
+
   test('renews the daily sign-in in a hidden frame where the browser allows it', async ({ page, context, browserName }) => {
     test.skip(browserName === 'webkit', 'Safari blocks the cookie a hidden frame needs; covered by the next test');
     const ms = new FakeMicrosoft();

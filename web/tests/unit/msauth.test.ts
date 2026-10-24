@@ -163,6 +163,18 @@ describe('signing in to Microsoft', () => {
     expect(options!.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it('waits when the sign-in service says "slow down", and doesn’t take it for a spent sign-in (second audit, L4)', async () => {
+    const tokens: Tokens = { accessToken: 'a', accessExpires: Date.now(), refreshToken: 'r', refreshExpires: Date.now() + 3600_000 };
+    const answering = (status: number, body: string, headers: Record<string, string> = {}) =>
+      new MicrosoftAuth(auth.config, async () => new Response(body, { status, headers }));
+    const kind = (e: unknown) => (e instanceof SyncError ? `${e.kind}:${e.retryAfter ?? ''}` : e instanceof AuthError ? `auth error ${e.kind}` : String(e));
+    expect(kind(await answering(429, 'Too Many Requests', { 'Retry-After': '60' }).refresh(tokens).catch((e) => e))).toBe('throttled:60000');
+    expect(kind(await answering(429, '{"error":"invalid_grant"}').refresh(tokens).catch((e) => e))).toBe('throttled:30000');
+    expect(kind(await answering(503, 'Service Unavailable', { 'Retry-After': '5' }).refresh(tokens).catch((e) => e))).toBe('throttled:5000');
+    // A spent refresh token is still that.
+    expect(kind(await answering(400, '{"error":"invalid_grant"}').refresh(tokens).catch((e) => e))).toBe('auth:');
+  });
+
   it('reads the ID token claims', () => {
     const jwt = `x.${Buffer.from(JSON.stringify({ name: 'Zoë', preferred_username: 'z@example.com' })).toString('base64url')}.`;
     expect(decodeJwt(jwt)).toEqual({ name: 'Zoë', preferred_username: 'z@example.com' });

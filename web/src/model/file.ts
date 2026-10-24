@@ -1,5 +1,6 @@
 import { decode, encode, isPlausibleStamp, ZERO, type Stamp } from './hlc';
 import { derivedId } from './ids';
+import { MAX_NOTE_TEXT, MAX_RECORDS, MAX_TAKEN, MAX_TASK_TEXT } from './limits';
 import { isOrderKey, keyAfter, keyBefore } from './order';
 import { cleanSpaceName, spaceField } from './spaces';
 import { cleanTaskText, noteText, wellFormedValues } from './text';
@@ -151,18 +152,37 @@ function parseFile(text: string, ws: Workspace, options: ReadOptions): { data: W
   if (!isObject(doc)) throw new FileError("This doesn't look like a Tack file.");
 
   const extra = doc.tackFocus;
+  const len = (v: unknown) => (Array.isArray(v) ? v.length : 0);
   if (isObject(extra) && Array.isArray(extra.tasks) && Array.isArray(extra.sheets)) {
-    const tasks = extra.tasks.map((r) => readTaskRecord(r)).filter((t): t is Task => t !== null);
-    const sheets = extra.sheets.map((r) => readSheetRecord(r)).filter((s): s is Sheet => s !== null);
+    // A file with more records than any device may hold is refused before reading them.
+    if (len(extra.tasks) + len(extra.sheets) + len(extra.spaces) > MAX_RECORDS) throw new FileError(TOO_MANY);
+    // Text longer than any device reads is skipped, as in device files.
+    const tasks = extra.tasks.map((r) => readTaskRecord(r)).filter((t): t is Task => t !== null && t.text.length <= MAX_TASK_TEXT);
+    const sheets = extra.sheets.map((r) => readSheetRecord(r)).filter((s): s is Sheet => s !== null && s.text.length <= MAX_NOTE_TEXT);
     const focus = readFocus(extra.focus);
     const spaces = Array.isArray(extra.spaces) ? extra.spaces.map((r) => readSpaceRecord(r)).filter((s): s is Space => s !== null) : [];
-    return { data: { tasks, sheets, focus, spaces }, withClocks: true };
+    return { data: withinLimits({ tasks, sheets, focus, spaces }, ws), withClocks: true };
   }
 
   if (!Array.isArray(doc.tasks) && !Array.isArray(doc.sheets)) {
     throw new FileError("This doesn't look like a Tack file.");
   }
-  return { data: readDesktop(doc, ws, options), withClocks: false };
+  if (len(doc.tasks) + len(doc.sheets) > MAX_RECORDS) throw new FileError(TOO_MANY);
+  return { data: withinLimits(readDesktop(doc, ws, options), ws), withClocks: false };
+}
+
+const TOO_MANY = 'This file holds more tasks and notes than Tack can keep in sync.';
+
+/**
+ * What an import would add, if this device can take it: no more records in all than it takes from
+ * elsewhere (MAX_TAKEN, deleted ones included), so its sync file stays one every device reads,
+ * Undo included (Undo keeps what it removes as deletions while syncing).
+ */
+function withinLimits(data: WorkspaceData, ws: Workspace): WorkspaceData {
+  const adds = (list: { id: string }[], have: ReadonlyMap<string, unknown>) => list.reduce((n, r) => n + (have.has(r.id) ? 0 : 1), 0);
+  const added = adds(data.tasks, ws.tasks) + adds(data.sheets, ws.sheets) + adds(data.spaces ?? [], ws.spaces);
+  if (added > 0 && ws.tasks.size + ws.sheets.size + ws.spaces.size + added > MAX_TAKEN) throw new FileError(TOO_MANY);
+  return data;
 }
 
 /** The device a clock came from; records read from desktop files use the empty device "". */
@@ -204,7 +224,8 @@ function readDesktop(doc: Record<string, unknown>, ws: Workspace, options: ReadO
   const usedIds = new Set<string>();
   for (const r of rawTasks) {
     const text = cleanTaskText(String(r.text ?? ''));
-    if (!text) continue;
+    // Text longer than any device reads is skipped, as in device files.
+    if (!text || text.length > MAX_TASK_TEXT) continue;
     const id = validId(r.id, usedIds, text);
     const created = parseDate(String(r.created ?? '')) ?? new Date(0);
     const completed = r.completed ? parseDate(String(r.completed)) : null;
@@ -214,9 +235,11 @@ function readDesktop(doc: Record<string, unknown>, ws: Workspace, options: ReadO
     tasks.push({
       id,
       text,
-      created: typeof r.created === 'string' && parseDate(r.created) ? r.created : isoLocal(created),
+      // Dates as written only if every device reads them so (isFileDate): any other a device
+      // reads as missing, which would reopen a finished task everywhere. Else the date they mean.
+      created: isFileDate(r.created) ? r.created : isoLocal(created),
       // Both finished: keep this device's completion time rather than flipping between them.
-      completed: completed ? (sameDone && existing?.completed ? existing.completed : String(r.completed)) : null,
+      completed: completed ? (sameDone && existing?.completed ? existing.completed : isFileDate(r.completed) ? r.completed : isoLocal(completed)) : null,
       order: keys.get(r) ?? existing?.order ?? 'V',
       deleted: existing?.deleted ?? false,
       // Tack for Windows' own lists know nothing of spaces: a task stays where it is here.
@@ -239,9 +262,10 @@ function readDesktop(doc: Record<string, unknown>, ws: Workspace, options: ReadO
   const sheets: Sheet[] = [];
   for (const r of rawSheets) {
     const text = noteText(String(r.text ?? ''));
+    if (text.length > MAX_NOTE_TEXT) continue;
     let id = validId(r.id, usedIds, text);
     const updatedAt = parseDate(String(r.updated ?? '')) ?? new Date(0);
-    const updated = typeof r.updated === 'string' && parseDate(r.updated) ? r.updated : isoLocal(updatedAt);
+    const updated = isFileDate(r.updated) ? r.updated : isoLocal(updatedAt);
     const existing = ws.sheets.get(id);
     if (existing && existing.text !== text && nodeOf(existing.clk.text) !== '') {
       // Written here and on the desktop: keep both, the desktop's as a copy beside this one.

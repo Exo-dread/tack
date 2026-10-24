@@ -33,7 +33,8 @@ internal sealed record DeviceFile(
     FocusData Focus,
     IReadOnlyList<TaskData> Tasks,
     IReadOnlyList<SheetData> Sheets,
-    IReadOnlyList<SpaceData> Spaces)
+    IReadOnlyList<SpaceData> Spaces,
+    bool SeenOver = false)
 {
     public const string Format = "tack-sync-device";
     public const int CurrentVersion = 1;
@@ -41,17 +42,50 @@ internal sealed record DeviceFile(
     public const int MaxBytes = 20 * 1024 * 1024;
 
     /// <summary>
-    /// Limits inside a device file (the same as devicefile.ts), far beyond any real use. A file over
-    /// them is refused whole and an over-long record is skipped, so a damaged or crafted file can't
-    /// swell every device's own file for good. (A space name is the one thing cut rather than
-    /// skipped: every device keeps names to <see cref="MaxSpaceName"/> wherever they come from, so
-    /// no device can hold a name its peers would refuse.)
+    /// Limits inside a device file (the same as devicefile.ts and limits.ts), far beyond any real
+    /// use. A file over them is refused whole and an over-long record is skipped, so a damaged or
+    /// crafted file can't swell every device's own file for good. (A space name is the one thing cut
+    /// rather than skipped: every device keeps names to <see cref="MaxSpaceName"/> wherever they come
+    /// from, so no device can hold a name its peers would refuse.) A file with more "seen" entries than
+    /// <see cref="MaxSeen"/> isn't refused: it's marked <see cref="SeenOver"/> (see <see cref="TrimSeen"/>).
     /// </summary>
     public const int MaxRecords = 200_000; // tasks + sheets + spaces + deletions
     public const int MaxSeen = 1_000;
     public const int MaxTaskText = 100_000;
     public const int MaxNoteText = 1_000_000;
     public const int MaxSpaceName = SpaceField.MaxName;
+
+    /// <summary>
+    /// Records a device holds before it takes no more in bulk from elsewhere (other devices' files,
+    /// imports): the rest is room for its own edits and deletions, so its own file stays within
+    /// <see cref="MaxRecords"/>. New records one device file may still bring past that (a peer's
+    /// everyday edits), up to <see cref="MaxRecords"/>: so devices that share a lot keep syncing, while
+    /// a file that would add more at once (a whole workspace, a flood) is held to <see cref="MaxTaken"/>.
+    /// Lines one paste (or one "Make task" from a note) turns into tasks. (limits.ts) Spaces are
+    /// records like any other here; how many a list draws is up to the screen (<see cref="Tack.Model.SpaceView.MaxListed"/>).
+    /// </summary>
+    public const int MaxTaken = MaxRecords - 20_000;
+    public const int MaxTrickle = 2_000;
+    public const int MaxPasteLines = 10_000;
+
+    /// <summary>
+    /// Keeps this device's "seen" (changed in place) within <see cref="MaxSeen"/> before it goes into
+    /// its file, so every reader takes the file: only a crafted file's made-up claims, passed on, ever
+    /// make it longer. Devices with a file in the folder (<paramref name="present"/>: file names) stay
+    /// first, then the latest claims. Dropping a claim costs little: at worst a note edited on both
+    /// sides is kept twice. Tack Focus trims the same way (trimSeen in devicefile.ts).
+    /// </summary>
+    public static void TrimSeen(Dictionary<string, string> seen, string me, IReadOnlySet<string> present)
+    {
+        var ids = seen.Keys.Where(d => d != me && IsDeviceId(d)).ToList();
+        if (ids.Count <= MaxSeen) return;
+        foreach (string d in ids.OrderByDescending(d => present.Contains(FileName(d)))
+                     .ThenByDescending(d => seen[d], StringComparer.Ordinal)
+                     .ThenBy(d => d, StringComparer.Ordinal)
+                     .Skip(MaxSeen)
+                     .ToList())
+            seen.Remove(d);
+    }
 
     private static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
@@ -225,8 +259,12 @@ internal sealed record DeviceFile(
             // Spaces are optional (Tack 1.3 writes none); anything but an array counts as none.
             int spaceCount = IsArray(doc, "spaces") ? doc.GetProperty("spaces").GetArrayLength() : 0;
             if (doc.GetProperty("tasks").GetArrayLength() + doc.GetProperty("sheets").GetArrayLength() + spaceCount
-                + Count(deletedMaps, "tasks") + Count(deletedMaps, "sheets") + Count(deletedMaps, "spaces") > MaxRecords || Count(doc, "seen") > MaxSeen)
+                + Count(deletedMaps, "tasks") + Count(deletedMaps, "sheets") + Count(deletedMaps, "spaces") > MaxRecords)
                 throw new DeviceFileException(DeviceFileProblem.Unreadable);
+            // More "seen" claims than any device writes: the file is still read, and only its claims
+            // about devices that matter count (SyncEngine). Versions before TrimSeen passed a crafted
+            // file's claims on, and refusing their files would stop sync between them for good.
+            bool seenOver = Count(doc, "seen") > MaxSeen;
 
             // Duplicate ids (only a hand edit makes them) merge rather than one silently replacing the other.
             var tasks = new Dictionary<string, TaskData>();
@@ -270,7 +308,8 @@ internal sealed record DeviceFile(
                 doc.TryGetProperty("focus", out var f) ? TackFile.ReadFocus(f, nowMs) : FocusData.None,
                 tasks.Values.ToList(),
                 sheets.Values.ToList(),
-                spaces.Values.ToList());
+                spaces.Values.ToList(),
+                seenOver);
         }
     }
 
@@ -299,12 +338,17 @@ internal sealed record DeviceFile(
         obj.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array;
 }
 
-internal enum DeviceFileProblem { Unreadable, Newer, Mismatch }
+/// <summary>
+/// Why a device file isn't used. <c>Full</c> is never thrown by the reader: the engine sets a file
+/// aside so when taking it in would leave this PC holding more than it takes from elsewhere.
+/// </summary>
+internal enum DeviceFileProblem { Unreadable, Newer, Mismatch, Full }
 
 internal sealed class DeviceFileException(DeviceFileProblem problem) : Exception(problem switch
 {
     DeviceFileProblem.Newer => "Written by a newer version of Tack",
     DeviceFileProblem.Mismatch => "Device id does not match the file name",
+    DeviceFileProblem.Full => "Holds more than this PC takes in",
     _ => "Not a readable Tack device file",
 })
 {

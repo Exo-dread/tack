@@ -183,7 +183,8 @@
                                   IsChecked="{Binding IsChecking, Mode=OneWay}" Checked="Check_Changed" Unchecked="Check_Changed" ToolTip="Done (Ctrl+D)"
                                   AutomationProperties.Name="Mark done" />
 
-                    <TextBox x:Name="Editor" Grid.Column="1" Style="{StaticResource GhostTextBox}" Margin="2,7,8,7"
+                    <!-- MaxLength: DeviceFile.MaxTaskText, the longest task any device reads from a sync file. -->
+                    <TextBox x:Name="Editor" Grid.Column="1" Style="{StaticResource GhostTextBox}" Margin="2,7,8,7" MaxLength="100000"
                              ContextMenu="{StaticResource TaskMenu}" AutomationProperties.Name="Task"
                              Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
                              PreviewKeyDown="Editor_PreviewKeyDown" GotKeyboardFocus="Editor_GotKeyboardFocus"
@@ -330,7 +331,7 @@
 
                 <ToggleButton x:Name="NowCheck" Grid.Row="1" Grid.Column="0" Style="{StaticResource CheckCircle}" VerticalAlignment="Top"
                               Margin="2,0,0,0" IsChecked="{Binding IsChecking, Mode=OneWay}" Checked="Check_Changed" Unchecked="Check_Changed" ToolTip="Done (Ctrl+D)" AutomationProperties.Name="Mark done" />
-                <TextBox x:Name="NowEditor" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource GhostTextBox}"
+                <TextBox x:Name="NowEditor" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource GhostTextBox}" MaxLength="100000"
                          Margin="2,4,6,6" FontSize="15" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}"
                          ContextMenu="{StaticResource NowMenu}" AutomationProperties.Name="Focus task"
                          Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
@@ -371,7 +372,7 @@
         </Button>
 
         <!-- ================= Quick add ================= -->
-        <TextBox x:Name="AddBox" Grid.Row="1" Style="{StaticResource InputBox}" Margin="2,0,2,6"
+        <TextBox x:Name="AddBox" Grid.Row="1" Style="{StaticResource InputBox}" Margin="2,0,2,6" MaxLength="100000"
                  Tag="{Binding AddPlaceholder}" PreviewKeyDown="AddBox_PreviewKeyDown" AutomationProperties.Name="{Binding AddName}"
                  ToolTip="Enter adds · Ctrl+Enter adds and focuses · paste a list to add many" />
 

@@ -1,7 +1,7 @@
 import { decode, stampTime, ZERO, type Stamp } from '../model/hlc';
 import type { Sheet } from '../model/types';
 import type { Workspace } from '../model/workspace';
-import { deviceOfFile, DeviceFileError, fileName, makeDeviceFile, MAX_FILE_BYTES, parseDeviceFile, serializeDeviceFile, stampOf, type DeviceFile } from './devicefile';
+import { deviceOfFile, DeviceFileError, fileName, makeDeviceFile, MAX_FILE_BYTES, MAX_RECORDS, MAX_TAKEN, MAX_TRICKLE, parseDeviceFile, serializeDeviceFile, stampOf, trimSeen, type DeviceFile } from './devicefile';
 
 /**
  * Sync through a shared folder that every device can read and write (OneDrive's app folder, or
@@ -47,8 +47,10 @@ export type SyncErrorKind =
   | 'denied'
   /** The service had a problem; try again later. */
   | 'server'
-  /** This device's own file would be over the size every device accepts, so it isn't written. */
-  | 'toolarge';
+  /** This device's own file would be over what every device accepts (records or size), so it isn't written. */
+  | 'toolarge'
+  /** The folder holds far more files than Tack keeps there (something else filled it): listing it all would hammer Microsoft. */
+  | 'crowded';
 
 export class SyncError extends Error {
   constructor(
@@ -58,6 +60,12 @@ export class SyncError extends Error {
   ) {
     super(message);
   }
+}
+
+/** A Retry-After header (in seconds) as ms, if it's there and sensible. */
+export function retryAfterMs(response: Response): number | undefined {
+  const seconds = Number(response.headers.get('Retry-After'));
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
 }
 
 /** What a device remembers about another device's file. */
@@ -98,6 +106,12 @@ export interface SyncMeta {
   seen: Record<string, Stamp>;
   /** Other devices' files, by file name, as last read. */
   files: Record<string, FileSummary>;
+  /**
+   * Files set aside as 'full' that you asked to take in anyway (Settings), by file name: the tag
+   * of the version you saw. Taken in as long as this device then holds no more than its own file
+   * may carry; a new version of the file is judged afresh. See takeIn.
+   */
+  take?: Record<string, string>;
   own: {
     tag: string | null;
     written: Stamp | null;
@@ -116,6 +130,26 @@ export interface SyncMeta {
 export function emptyMeta(folder: string): SyncMeta {
   return { folder, seen: {}, files: {}, own: { tag: null, written: null, pending: null }, lastSync: 0 };
 }
+
+/**
+ * You asked to take in `device`'s file though this device set it aside as 'full' (Settings → Take
+ * it in anyway): the next cycle takes that version in, held only to what this device's own file
+ * may carry (MAX_RECORDS), not to what it takes in at once (MAX_TAKEN). The way out when a file
+ * sized between two devices' totals was taken by one and set aside by the other, which then sets
+ * aside that device's whole file too, for good. False if that file isn't set aside as 'full'.
+ * Tack for Windows: SyncEngine.TakeIn.
+ */
+export function takeIn(meta: SyncMeta, device: string): boolean {
+  const name = fileName(device);
+  const known = Object.hasOwn(meta.files, name) ? meta.files[name] : undefined;
+  if (known?.problem !== 'full') return false;
+  meta.take = { ...meta.take, [name]: known.tag };
+  return true;
+}
+
+/** Is this version of the file (by its tag) one you asked to take in anyway? */
+const takeAsked = (meta: SyncMeta, name: string, tag: string | undefined): boolean =>
+  !!meta.take && Object.hasOwn(meta.take, name) && meta.take[name] === tag;
 
 export interface PeerInfo {
   device: string;
@@ -220,8 +254,9 @@ export class SyncEngine {
       if (!device || device === me) continue;
       present.add(entry.name);
       const known = Object.hasOwn(meta.files, entry.name) ? meta.files[entry.name] : undefined;
-      // Unchanged since this reader read it (one before it may have dropped what it couldn't read).
-      if (known?.tag === entry.tag && known.reader === READER) {
+      // Unchanged since this reader read it (one before it may have dropped what it couldn't read),
+      // unless it was set aside as too much and you asked to take it in anyway.
+      if (known?.tag === entry.tag && known.reader === READER && !(known.problem === 'full' && takeAsked(meta, entry.name, entry.tag))) {
         if (known.problem) result.problems.push({ device, reason: known.problem });
         continue;
       }
@@ -247,6 +282,15 @@ export class SyncEngine {
       }
     }
     for (const name of Object.keys(meta.files)) if (!present.has(name)) delete meta.files[name];
+    // A request to take a file in anyway is for the version you saw: once it's gone or changed, so is the request.
+    if (meta.take) {
+      for (const name of Object.keys(meta.take)) if (!takeAsked(meta, name, Object.hasOwn(meta.files, name) ? meta.files[name]!.tag : undefined)) delete meta.take[name];
+      if (Object.keys(meta.take).length === 0) delete meta.take;
+    }
+    // More claims than any device writes (a version before trimSeen passing on a crafted file's):
+    // those about this device and the devices in the folder still count, so a note that device
+    // edited after seeing another's isn't kept twice. The rest are made up.
+    const claimsOf = (file: DeviceFile) => (file.seenOver ? Object.fromEntries(Object.entries(file.seen).filter(([d]) => d === me || present.has(fileName(d)))) : file.seen);
 
     // ---- merge what's new
     let news = false;
@@ -254,8 +298,31 @@ export class SyncEngine {
       if (c.origin === 'remote') news = true;
     });
     try {
-      if (adopted) this.ws.merge({ tasks: adopted.tasks, sheets: adopted.sheets, focus: adopted.focus, spaces: adopted.spaces }, 'remote');
+      if (adopted) {
+        this.ws.merge({ tasks: adopted.tasks, sheets: adopted.sheets, focus: adopted.focus, spaces: adopted.spaces }, 'remote');
+        // This device holds all its own file held again, so what that file says it had seen of
+        // the others holds too (as for any file, no further than its `written`). Without it, an
+        // older text of a note in an out-of-date device's file would look like an edit made at the
+        // same time as this device's, and be kept as a copy beside it.
+        for (const [d, w] of Object.entries(claimsOf(adopted))) {
+          if (d !== me) meta.seen[d] = later(stampOf(meta.seen, d), w < adopted.written ? w : adopted.written);
+        }
+      }
       for (const file of fresh.sort((a, b) => (a.device < b.device ? -1 : 1))) {
+        // Taking this file in would leave this device holding more than its own file may carry
+        // (each file is within the limits, but not several, or one on top of all this device
+        // has): it's set aside, noted until it changes, so this device's file stays one its
+        // peers take. One you asked to take in anyway is held to what that file may carry only.
+        const name = fileName(file.device);
+        const anyway = takeAsked(meta, name, meta.files[name]?.tag);
+        // Answered either way (taken, or still too much for this device's own file): not read again for it.
+        if (anyway) delete meta.take![name];
+        if (overBudget(this.ws, file, anyway)) {
+          meta.files[name] = { ...meta.files[name]!, problem: 'full' };
+          result.problems.push({ device: file.device, reason: 'full' });
+          continue;
+        }
+        file.seen = claimsOf(file);
         // Every changed file is merged, even one that seems already had through another device:
         // merges are idempotent, and skipping on another file's word would let one bad file
         // hide a device's changes from everyone.
@@ -274,6 +341,9 @@ export class SyncEngine {
     } finally {
       off();
     }
+    // Claims passed on stay within what every reader takes (a crafted file may make up a thousand).
+    trimSeen(meta.seen, me, present);
+    if (meta.take && Object.keys(meta.take).length === 0) delete meta.take;
 
     if (meta.own.written === null && meta.own.pending === null && present.size > 0) this.hooks.joined?.();
 
@@ -284,10 +354,17 @@ export class SyncEngine {
       // The clock and the records together, with no await between: the file holds exactly what
       // this device knew at `written`, and anything later is news for the next write.
       const written = this.ws.hlc.now();
-      const file = makeDeviceFile(this.ws.toData(), { device: me, ...this.hooks.label(), written, seen: meta.seen });
+      const data = this.ws.toData();
+      const file = makeDeviceFile(data, { device: me, ...this.hooks.label(), written, seen: meta.seen });
       const text = serializeDeviceFile(file);
       // Every device refuses a file this big, so writing it would only look like syncing.
-      if (new TextEncoder().encode(text).length > MAX_FILE_BYTES) throw new SyncError('toolarge', 'This device’s sync file would be over 20 MB');
+      if (data.tasks.length + data.sheets.length + (data.spaces?.length ?? 0) > MAX_RECORDS || new TextEncoder().encode(text).length > MAX_FILE_BYTES) {
+        // Noted as not written by this version, so the next cycle tries (and says so) again
+        // rather than finding nothing new and reporting all is well.
+        delete meta.own.writer;
+        await this.hooks.saveMeta(meta);
+        throw new SyncError('toolarge', 'This device holds more than sync can carry');
+      }
       meta.own.pending = written;
       meta.own.writer = WRITER;
       await this.hooks.saveMeta(meta);
@@ -301,6 +378,22 @@ export class SyncEngine {
     result.peers = Object.values(meta.files).map((s) => ({ device: s.device, name: s.name, app: s.app, written: stampTime(s.written) }));
     return result;
   }
+}
+
+/**
+ * Would taking `file` in leave this device holding more than it takes from elsewhere? Records
+ * (tasks, sheets and spaces, deleted ones included, as its own file counts them): a few more, as
+ * a peer's everyday edits bring, up to MAX_RECORDS; more at once (MAX_TRICKLE), up to MAX_TAKEN,
+ * unless you asked to take this one in `anyway`. Only a file that adds records can be over; one
+ * that changes what's here never is. Spaces count as records and no more: a limit on how many
+ * show would stop devices that differ by one space taking each other's files, for good, so the
+ * screen draws only so many at once instead (MAX_SPACES_LISTED). Tack for Windows: OverBudget.
+ */
+function overBudget(ws: Workspace, file: DeviceFile, anyway = false): boolean {
+  const adds = (list: { id: string }[], have: ReadonlyMap<string, unknown>) => list.reduce((n, r) => n + (have.has(r.id) ? 0 : 1), 0);
+  const added = adds(file.tasks, ws.tasks) + adds(file.sheets, ws.sheets) + adds(file.spaces, ws.spaces);
+  const total = ws.tasks.size + ws.sheets.size + ws.spaces.size + added;
+  return added > 0 && (total > MAX_RECORDS || (!anyway && added > MAX_TRICKLE && total > MAX_TAKEN));
 }
 
 /** A file the listing already shows to be too big to be Tack's. */

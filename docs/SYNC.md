@@ -15,7 +15,8 @@ The goal: write a task on your phone at night, see it on your PC in the morning,
   online, and every minute while it's open. Settings shows "Up to date · 2 min ago" and your other
   devices. A small dot on the Settings button appears only if sync needs you.
 - **Tack for Windows:** Settings → Sync → **Turn on sync**. It finds Tack Focus's folder in OneDrive
-  on the PC by itself (or **Choose folder…**). No sign-in: the OneDrive app carries the files, and
+  on the PC by itself (or **Choose folder…**, which a localised "Apps" folder needs; see
+  [The folder](#the-folder)). No sign-in: the OneDrive app carries the files, and
   **Tack itself still never connects to anything**.
 - **Offline is normal.** Both apps work fully without a connection; changes wait and sync later.
   Sync is off unless you turn it on, and turning it off keeps everything (on the device, and in
@@ -43,8 +44,12 @@ OneDrive/Apps/Tack Focus/          the app folder: the only place Tack Focus can
 ```
 
 The folder's name is the app registration's name. Microsoft creates it the first time Tack Focus
-asks for it, and the OneDrive app brings it to the PC like any other folder. Its name can be
-localised ("Apps" may be "Aplicaciones"), so Tack for Windows looks for the marker, not the name.
+asks for it, and the OneDrive app brings it to the PC like any other folder. Tack for Windows takes
+`OneDrive\Apps\Tack Focus` by itself, and only once it has the marker: that is the one folder Tack
+Focus can write. The "Apps" part can be localised ("Aplicaciones"); a marked folder anywhere else is
+then only suggested ("Found a Tack sync folder at …"), and you pick it with **Choose folder…**,
+because a marked folder elsewhere could also be another app's own folder or one someone shared
+with you.
 
 ### A device file
 
@@ -79,6 +84,8 @@ The same in both apps (`web/src/sync/engine.ts`, `src/Tack/Sync/SyncEngine.cs`):
 3. Merge each changed file into the workspace, field by field by clock. Every changed file is
    merged, even one this device seems to have had through another device's file already: merges
    are idempotent, so that costs nothing, and it means no file can hide another device's changes.
+   A file that would take this device past what it may hold is set aside instead and reported as
+   "full" (see [Damaged and hostile files](#damaged-and-hostile-files)).
 4. Write this device's file if it now knows anything its file doesn't say: its own edits, or news
    merged from others (so files keep up with what their devices know).
 
@@ -124,6 +131,11 @@ Without sync, deletions are still forgotten after 90 days, as before.
 - **Joining** a folder your other devices use: what's on the device and what's in the folder are
   combined, except a new device's untouched welcome tasks and blank sheet, which stay behind (one
   you moved to a space counts as touched).
+- **Sync state lost** (sync.json deleted, a different folder key) on a device that kept its id: it
+  finds its own file in the folder and takes it back rather than mistaking it for another device's.
+  It also takes back what that file says it had seen of the others (no further than the file's
+  `written`, as for any file), so an out-of-date device's older text of a note isn't taken for an
+  edit made at the same time, and kept as a copy.
 - **An older version writing under the same id** (an old Tack Focus tab left open in the same
   browser, or Tack downgraded and upgraded again) writes the device's file without what it doesn't
   know, such as spaces. The sync state notes the `writer` of each write (2 since spaces), and a file
@@ -133,15 +145,17 @@ Without sync, deletions are still forgotten after 90 days, as before.
 
 Anyone who can write the folder (your Microsoft account, or an app you gave your whole OneDrive)
 can edit your tasks, by design: every device in the folder is trusted, until end-to-end
-encryption arrives. What a bad file can't do is stop sync, swell everyone's files for good, or
-hide a device's changes after it's gone. Both apps apply the same rules (`devicefile.ts`,
-`DeviceFile.cs`), checked by `web/tests/unit/synchostile.test.ts` and `tests/Tack.Tests/HostileFileTests.cs`:
+encryption arrives. The aim is that a bad file can't stop sync, swell everyone's files past what
+every device reads, or hide a device's changes after it's gone; what remains is at the end of this
+list. Both apps apply the same rules (`devicefile.ts`, `engine.ts`, `DeviceFile.cs`,
+`SyncEngine.cs`), checked by `web/tests/unit/synchostile.test.ts` and `tests/Tack.Tests/HostileFileTests.cs`:
 
 - **Unreadable text** (invalid UTF-8, or half an emoji spelled `"\ud83d"`, which JSON allows):
   Tack Focus reads it as U+FFFD and never writes it out; Tack for Windows sets such a file aside.
   Either way the rest syncs.
-- **Limits** far beyond real use: 20 MB per file, checked from the listing before downloading;
-  200,000 records (tasks, sheets, spaces and deletions together) and 1,000 devices seen per file;
+- **Limits** far beyond real use: 20 MB per file, checked from the listing before downloading and
+  again while reading (a listing can be out of date, so neither app reads past 20 MB);
+  200,000 records (tasks, sheets, spaces and deletions together) per file;
   100,000 characters per task and 1,000,000 per note; clock device ids of at most 32 characters;
   order keys of at most 10,000. A file over a limit is set aside; an over-long record is skipped.
   Space names are the exception: both apps keep every name to 100 characters (UTF-16 units, never
@@ -149,15 +163,73 @@ hide a device's changes after it's gone. Both apps apply the same rules (`device
   imported or read, so a longer one is cut, not skipped, and no device holds a name its peers would
   refuse. A space record whose id is `all` (no app makes one) is kept and synced as it came, but
   neither app treats it as a space: `all` is the view of everything, so what's in it shows in Main.
+  The numbers live in `web/src/model/limits.ts` and `src/Tack/Sync/DeviceFile.cs`.
 - **Dates** must be ISO 8601 dates of at most 40 characters; anything else counts as missing (an
-  empty `completed` means not done, in both apps).
+  empty `completed` means not done, in both apps). An import keeps a date as written only if it is
+  one; any other date it understands (a day without a time, say) is written out in full, so a task
+  finished in an imported file stays finished on every device.
 - **Clocks** more than a year and a day ahead are refused in files and not adopted by clocks.
 - **Ids** such as `constructor` or `toString` are ordinary device ids (Tack Focus never reads
   them from what every JavaScript object inherits).
 - **"Seen" claims** are believed no further than the claiming file's own `written`, and never
-  stop a changed file from being merged.
-- **Its own file:** a device whose file would be over 20 MB doesn't write it (every device
-  would refuse it) and says so in Settings.
+  stop a changed file from being merged. No device writes more than 1,000 (`MAX_SEEN`): before
+  writing, devices with a file in the folder are kept first, then the latest claims. Dropping one
+  costs little (at worst a note edited on both sides is kept twice). A file with more (only an
+  earlier version passing on a crafted file's claims writes one) is still read, records and all,
+  but only its claims about this device and about devices with a file in the folder are used; the
+  rest are made up. Tack 1.3.1 to 1.6.0 and Tack Focus 0.2.1 to 0.4.2 refuse a file with more than
+  1,000, so keeping to the limit also keeps every file readable by them.
+- **Each device's own total.** Every file can be within the limits while several together, or one
+  on top of all a device already holds, are not. So a device takes in another device's file only
+  if what it would then hold stays within these (`limits.ts`, `DeviceFile.cs`):
+  - **Records** (tasks, sheets and spaces, deleted ones included, as its own file counts them): a
+    file adding up to 2,000 new ones (`MAX_TRICKLE`), as a peer's everyday edits do, is taken as
+    long as the device then holds at most 200,000 (`MAX_RECORDS`). A file adding more at once (a
+    whole workspace, say) is taken only up to 180,000 (`MAX_TAKEN`). The 20,000 between are room
+    for edits, so devices that share a lot keep taking each other's, while a file that adds a lot
+    at once can't fill a device.
+  - **Spaces** are records like any other here, however many would show. A limit on how many
+    show, applied as files come in, could split devices for good: once a file of junk spaces
+    brought them to it, a device that then added one space (or renamed Main, or undid a deletion)
+    had its whole file set aside by every peer. So the screen is protected instead: each list
+    (the switcher, *Move to*, Settings, the desktop's strip and menus) draws 1,000 spaces at a
+    time (`MAX_SPACES_LISTED`, `SpaceView.MaxListed`), the one on show always among them, and
+    *More spaces* draws as many again.
+
+  A file that adds no records is always taken. A file set aside for this is reported as "full",
+  and Settings names it: "Tack Focus on Android holds more than this device can take in, so its
+  changes aren't arriving here" (Tack for Windows says "this PC"), with **Take it in anyway**
+  beside it. That takes the version set aside in on the next cycle, held only to what this
+  device's own file may carry (200,000), not to what it takes in at once; a new version of the
+  file is judged afresh. Otherwise it's tried again when it changes, and the rest keeps syncing.
+  Imports keep to the same 180,000 (below).
+- **Its own file:** a device whose file would be over 20 MB or 200,000 records doesn't write it
+  (every device would refuse it) and says so in Settings ("There's more here than sync can
+  carry…"), on every cycle until it fits again.
+- **The folder listing:** Tack Focus reads at most 10 pages (2,000 entries) of the `devices`
+  folder. A folder holding more was filled by something else: sync pauses for 30 minutes at a
+  time and Settings asks you to remove what Tack didn't put there, rather than sending hundreds of
+  requests to Microsoft on every cycle. Tack for Windows lists the folder on disk, so it isn't
+  affected.
+- **Imports, pasting and typing** keep to the same limits, so a device never holds anything its
+  peers would skip: an import with more than 200,000 records, or one that would take the device
+  past 180,000, is refused with a message; an over-long task or note in it is skipped. A paste, or
+  *Make task* from a note, takes up to 10,000 lines at once (`MAX_PASTE_LINES`), and typing stops
+  at 100,000 characters in a task and 1,000,000 in a note.
+- **What remains.** Someone who can write the folder can still fill a device up to what its own
+  file can carry, as before: with many files that each add a little, say. That device then takes
+  no more in, and once its own file is full its own changes stop reaching your other devices;
+  Settings says so in both cases. And since whether a device takes a big file in at once depends
+  on what it already holds, while your devices differ by the edits they haven't synced yet, one
+  file sized between two devices' totals can be taken by one and set aside by the other, which
+  then sets aside the first one's whole file too (it now carries the same records): that device's
+  changes stop arriving, even on a device holding little, and removing the file doesn't undo it,
+  since the first device's own file passes it on. Settings names the device; **Take it in anyway**
+  on the device that set it aside heals it. Likewise, a file of a few notes near the 1,000,000-character
+  limit fits within every per-file cap, but once taken in it can push each device's own file past
+  20 MB, so they stop writing (Settings says so) until those notes are deleted. All of this takes the
+  same access that already lets someone edit or delete your tasks, which only end-to-end
+  encryption would change.
 
 ## OneDrive
 
@@ -177,22 +249,37 @@ accounts as best effort until tried.
 ### Tack Focus (browser) → Microsoft Graph
 
 `web/src/sync/onedrive.ts`: `GET /me/drive/special/approot` (creates the folder), the `devices`
-folder's children (paged), and simple uploads (`PUT …:/<id>.json:/content`). File contents come
-from OneDrive's pre-signed download links, fetched **without** the token (Graph's own `/content`
-answers with a redirect that browsers can't follow across origins with a token). Every failure is
-classified (offline, throttled with Retry-After, storage full, permission removed, folder deleted,
-server) and retried with backoff where that makes sense. The production CSP allows exactly these
-hosts: `login.microsoftonline.com`, `login.live.com` (frames only), `graph.microsoft.com`, and
-OneDrive's download hosts (`*.microsoftpersonalcontent.com`, `*.1drv.com`, `*.livefilestore.com`,
-`*.sharepoint.com`).
+folder's children (paged, at most 10 pages of 200), and simple uploads (`PUT …:/<id>.json:/content`).
+File contents come from OneDrive's pre-signed download links, fetched **without** the token (Graph's
+own `/content` answers with a redirect that browsers can't follow across origins with a token).
+Every failure is classified (offline, throttled with Retry-After, storage full, permission removed,
+folder deleted, folder crowded with files Tack didn't put there, server) and retried with backoff
+where that makes sense: from 5 seconds, doubling, up to 30 minutes. The production CSP allows
+exactly these hosts: `login.microsoftonline.com`, `login.live.com` (frames only),
+`graph.microsoft.com`, and OneDrive's download hosts (`*.microsoftpersonalcontent.com`, `*.1drv.com`,
+`*.livefilestore.com`, `*.sharepoint.com`).
+
+Tack Focus is a polite client. 429 and 503 (and 509 from Graph) mean "slow down", wherever they come
+from: Graph, the sign-in service's token endpoint (never taken for a spent sign-in) or OneDrive's
+download hosts (never taken for an expired link and asked again at once). Tack Focus then waits as
+long as `Retry-After` says (30 seconds if it says nothing), and longer each time it's asked again,
+but never more than six hours. While that wait, or the backoff after any other failure Microsoft
+answered, is running, nothing on the device brings the next sync forward: not an edit, not coming
+back to the app or online, not the last exchange as the app is hidden (a lost connection, or a
+spent sign-in, waits for the connection or the renewal instead). **Sync now** cuts Tack's own
+backoff short, but waits for what Microsoft asked: its `Retry-After` (or the 30 seconds), up to the
+same six hours, and no more.
 
 ### Tack for Windows → the folder on disk
 
 `src/Tack/Services/FolderSync.cs` and `LocalSyncFolder.cs`. No network code at all:
 
-- Finds the folder by its marker under `%OneDrive%` (and `%OneDriveConsumer%`,
-  `%OneDriveCommercial%`), "Apps" first, without downloading anything; or a folder you choose
-  (any folder works, e.g. to sync two PCs through another sync tool).
+- Takes `Apps\Tack Focus` under `%OneDrive%` (and `%OneDriveConsumer%`, `%OneDriveCommercial%`)
+  if it has the marker, without downloading anything. Any other first-level folder with the marker
+  (under a localised "Apps", say) is only suggested, for you to pick with **Choose folder…** (see
+  [The folder](#the-folder)). Or a folder you choose (any folder works, e.g. to sync two PCs
+  through another sync tool).
+- Never reads more than 20 MB of a file, whatever its size looked like when listed.
 - Writes its file to a `~$…tmp` file first (the OneDrive app never uploads those) and swaps it in
   in one step, so nobody ever reads half a file; reads share access so it never blocks OneDrive.
 - Asks OneDrive to keep the folder on the PC ("Always keep on this device") so the other devices'
@@ -236,18 +323,22 @@ authorization code + PKCE, no secret, no library) and this ladder:
 
 1. **Refresh token** (silent), for the first 24 hours.
 2. **Hidden frame** (silent), tried four hours before the deadline. Works in Chrome, Edge and on
-   Android, where third-party cookies are allowed. A frame that merely times out is tried again
-   later.
+   Android, where third-party cookies are allowed. A frame that times out (or whose answer fails
+   on the way) is not a refusal, and is counted apart from refusals: it's tried again after 15
+   minutes, then after 30, and three in a row make the visit below due, before the sign-in runs
+   out. Only timeouts since the last visit count, so frames are tried again after any visit; any
+   renewal that works clears the count.
 3. **A quick visit to Microsoft's page** (`prompt=none`: it either signs you straight back in or
-   comes back with an error, never a form), after Microsoft refused the hidden frame. Only at a quiet
-   moment: when the app starts, before anything shows (so nothing you type can be lost), or when you
-   come back to it after five minutes away; at most once every six hours (an hour, if the last visit
-   was cut short). If that visit works where the frame didn't, it's the browser (Safari and iPhone,
-   Firefox, Brave), and Tack visits from then on: expect about a second of Microsoft's page, roughly
-   once a day. After every full sign-in it tries the frame again. If the visit is slow, Tack shows
-   "Renewing your OneDrive sign-in…" instead of a blank page, offers *Open Tack now* after 8 seconds
-   and opens by itself after 25; when Microsoft can't be reached (Wi-Fi without internet) it stays put
-   rather than landing on the browser's error page.
+   comes back with an error, never a form), after Microsoft refused the hidden frame, or after
+   three frames in a row timed out. Only at a quiet moment: when the app starts, before anything
+   shows (so nothing you type can be lost), or when you come back to it after five minutes away; at
+   most once every six hours (an hour, if the last visit was cut short). If that visit works where
+   Microsoft refused the frame, it's the browser (Safari and iPhone, Firefox, Brave), and Tack
+   visits from then on: expect about a second of Microsoft's page, roughly once a day. After every
+   full sign-in it tries the frame again. If the visit is slow, Tack shows "Renewing your OneDrive
+   sign-in…" instead of a blank page, offers *Open Tack now* after 8 seconds and opens by itself
+   after 25; when Microsoft can't be reached (Wi-Fi without internet) it stays put rather than
+   landing on the browser's error page.
 4. **"Sign in again"** only if Microsoft says you're no longer signed in there (password changed,
    signed out, consent removed, the session expired) or a renewal comes back as a different
    account: a dot on Settings, one tap. A renewal that just failed on the way (no connection) is

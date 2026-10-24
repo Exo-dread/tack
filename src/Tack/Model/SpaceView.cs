@@ -27,6 +27,7 @@ public sealed class SpaceView : Observable
     private readonly ObservableCollection<NoteSheet> _sheets = new();
     private readonly Dictionary<string, string> _lastSheet = new(); // the sheet each space showed last, this session
     private IReadOnlyList<SpaceTab> _tabs = [];
+    private Dictionary<string, string> _names = new();
     private string _shown = SpaceField.Main;
     private bool _filtered;
     private NoteSheet? _activeSheet;
@@ -50,6 +51,27 @@ public sealed class SpaceView : Observable
 
     /// <summary>Main and every live space, in the order they're listed everywhere.</summary>
     public IReadOnlyList<SpaceTab> Tabs => _tabs;
+
+    /// <summary>
+    /// Spaces one list draws at once (the strip, the Move to menus, Settings): "More spaces" draws as
+    /// many again. Only a crafted file or import brings more than a few dozen, and every one is kept
+    /// and synced: a limit on what a device takes in would stop devices that differ by a single space
+    /// taking each other's files, so the screen is protected instead (MAX_SPACES_LISTED in Tack Focus).
+    /// </summary>
+    public const int MaxListed = 1_000;
+
+    /// <summary>
+    /// The spaces a list draws, with their places in <paramref name="tabs"/>: the first
+    /// <paramref name="limit"/>, and <paramref name="keep"/> (the space on show, say) wherever it is;
+    /// <c>More</c> is how many it leaves out (listed in Tack Focus).
+    /// </summary>
+    public static (IReadOnlyList<(SpaceTab Tab, int Index)> List, int More) Listed(IReadOnlyList<SpaceTab> tabs, int limit, string? keep = null)
+    {
+        var list = new List<(SpaceTab, int)>();
+        for (int i = 0; i < tabs.Count; i++)
+            if (i < limit || tabs[i].Id == keep) list.Add((tabs[i], i));
+        return (list, tabs.Count - list.Count);
+    }
 
     /// <summary>True once a second space exists: only then do the strip, the keys and the labels appear.</summary>
     public bool HasSpaces => _tabs.Count > 1;
@@ -78,11 +100,9 @@ public sealed class SpaceView : Observable
     public string SpaceOf(NoteSheet sheet) => Effective(sheet.Space);
 
     /// <summary>A space's name as it's shown: Main's own name if it has one, else "Main"; a space without a name is "Untitled".</summary>
-    public string NameOf(string id)
-    {
-        foreach (var tab in _tabs) if (tab.Id == id) return tab.Name;
-        return id == SpaceField.Main ? MainName : "Untitled";
-    }
+    public string NameOf(string id) =>
+        // Looked up, not searched for: All shows each task's space, and a crafted file may bring thousands.
+        _names.TryGetValue(id, out string? name) ? name : id == SpaceField.Main ? MainName : "Untitled";
 
     private string MainName => _ws.SpaceById(SpaceField.Main) is { Deleted: false, Name.Length: > 0 } main ? main.Name : "Main";
 
@@ -226,7 +246,12 @@ public sealed class SpaceView : Observable
     {
         var tabs = _ws.ShownSpaces.Select(s => new SpaceTab(s.Id, s.Id == SpaceField.Main ? MainName : s.Name.Length > 0 ? s.Name : "Untitled")).ToList();
         bool tabsChanged = !tabs.SequenceEqual(_tabs);
-        if (tabsChanged) _tabs = tabs;
+        if (tabsChanged)
+        {
+            _tabs = tabs;
+            _names = new Dictionary<string, string>();
+            foreach (var tab in tabs) _names.TryAdd(tab.Id, tab.Name);
+        }
         string? wanted = Settings.SpaceOnShow;
         string shown = wanted == All ? All : wanted != null && _ws.SpaceById(wanted) is { Deleted: false } ? wanted : SpaceField.Main;
         bool shownChanged = shown != _shown;

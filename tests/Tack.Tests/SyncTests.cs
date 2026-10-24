@@ -307,15 +307,25 @@ internal static class SyncTests
         {
             foreach (var n in names) Environment.SetEnvironmentVariable(n, temp.Path);
             Directory.CreateDirectory(Path.Combine(temp.Path, "Documents", "Taxes"));
-            Check.Equal(null, FolderSync.FindOneDriveFolder(), "nothing yet");
-            string localised = Path.Combine(temp.Path, "Aplicaciones", "Tack Focus");
-            Directory.CreateDirectory(localised);
-            File.WriteAllText(Path.Combine(localised, "tack-sync.json"), "{}");
-            Check.Equal(localised, FolderSync.FindOneDriveFolder(), "under a localised Apps folder");
-            string apps = Path.Combine(temp.Path, "Apps", "Tack Focus");
-            Directory.CreateDirectory(apps);
-            File.WriteAllText(Path.Combine(apps, "tack-sync.json"), "{}");
-            Check.Equal(apps, FolderSync.FindOneDriveFolder(), "Apps comes first");
+            Check.Equal((null, null), FolderSync.FindOneDriveFolder(), "nothing yet");
+            string Marked(params string[] parts)
+            {
+                string dir = Path.Combine([temp.Path, .. parts]);
+                Directory.CreateDirectory(dir);
+                File.WriteAllText(Path.Combine(dir, "tack-sync.json"), "{}");
+                return dir;
+            }
+            // Another app's own folder (it can write only there) with Tack's marker, sorting before
+            // Tack Focus; or a folder someone shared: only suggested, never taken by itself.
+            string notely = Marked("Apps", "Notely Sync");
+            Check.Equal<(string?, string?)>((null, notely), FolderSync.FindOneDriveFolder(), "another app's folder is only a suggestion");
+            string shared = Marked("Shared with Ada", "Tack Focus");
+            Check.Equal<(string?, string?)>((null, shared), FolderSync.FindOneDriveFolder(), "a shared folder too");
+            // Tack Focus's own folder under a localised Apps: suggested (first), for Choose folder.
+            string localised = Marked("Aplicaciones", "Tack Focus");
+            Check.Equal<(string?, string?)>((null, localised), FolderSync.FindOneDriveFolder(), "under a localised Apps folder");
+            string apps = Marked("Apps", "Tack Focus");
+            Check.Equal<(string?, string?)>((apps, null), FolderSync.FindOneDriveFolder(), "OneDrive\\Apps\\Tack Focus is the one taken by itself");
         }
         finally
         {

@@ -105,6 +105,14 @@ public partial class TasksView : UserControl
             .Select(l => ListMarker.Replace(ListMarker.Replace(l, ""), "").Trim())
             .Where(l => l.Length > 0)
             .ToList();
+        if (lines.Count > DeviceFile.MaxPasteLines)
+        {
+            e.CancelCommand();
+            _panel.ShowToast($"Paste up to {DeviceFile.MaxPasteLines:N0} lines at once");
+            return;
+        }
+        // A line longer than any device reads from a sync file would stay on this PC alone.
+        lines.RemoveAll(l => JsText.CleanTaskText(l).Length > DeviceFile.MaxTaskText);
         if (lines.Count <= 1)
         {
             if (text.Contains('\n'))
@@ -255,22 +263,8 @@ public partial class TasksView : UserControl
         if (_view.HasSpaces) FillMoveMenu(moveTo.Items, task);
     }
 
-    private void FillMoveMenu(ItemCollection items, TaskItem task)
-    {
-        string current = _view.SpaceOf(task);
-        foreach (var space in _view.Tabs)
-        {
-            var item = new MenuItem
-            {
-                // A TextBlock, so an underscore in a name stays an underscore.
-                Header = new TextBlock { Text = space.Name, MaxWidth = 220, TextTrimming = TextTrimming.CharacterEllipsis },
-                IsEnabled = space.Id != current,
-            };
-            System.Windows.Automation.AutomationProperties.SetName(item, space.Name);
-            item.Click += (_, _) => MoveToSpace(task, space.Id);
-            items.Add(item);
-        }
-    }
+    private void FillMoveMenu(ItemCollection items, TaskItem task) =>
+        SpaceMenu.Fill(items, _view.Tabs, _view.SpaceOf(task), space => MoveToSpace(task, space));
 
     /// <summary>Ctrl+M: the same list of spaces, under the task.</summary>
     private void OpenMoveMenu(TaskItem task, TextBox editor)

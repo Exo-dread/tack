@@ -74,8 +74,17 @@ internal sealed class LocalSyncFolder(string root) : ISyncFolder
             {
                 // Shared with everyone, so the OneDrive app is never locked out by Tack.
                 await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
+                // The listing's size may be out of date (the file grew since): never read more than a
+                // device file may hold. Every device refuses a file that big anyway.
+                if (stream.Length > DeviceFile.MaxBytes) throw new DeviceFileException(DeviceFileProblem.Unreadable);
                 using var buffer = new MemoryStream();
-                await stream.CopyToAsync(buffer);
+                var chunk = new byte[81920];
+                int n;
+                while ((n = await stream.ReadAsync(chunk)) > 0)
+                {
+                    if (buffer.Length + n > DeviceFile.MaxBytes) throw new DeviceFileException(DeviceFileProblem.Unreadable);
+                    buffer.Write(chunk, 0, n);
+                }
                 return buffer.ToArray();
             }
             catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)

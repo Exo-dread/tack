@@ -2,7 +2,7 @@ import { newDeviceId } from '../model/ids';
 import type { Workspace } from '../model/workspace';
 import type { Backend } from '../store/db';
 import type { Store } from '../store/persist';
-import { DeviceCollision, emptyMeta, SyncEngine, SyncError, type CycleResult, type PeerInfo, type SyncMeta } from './engine';
+import { DeviceCollision, emptyMeta, SyncEngine, SyncError, takeIn, type CycleResult, type PeerInfo, type SyncMeta } from './engine';
 import { AuthError, emptyAuth, isSignInReturn, MicrosoftAuth, SCOPES, type Account, type AuthRecord, type Tokens } from './msauth';
 import { OneDriveFolder } from './onedrive';
 
@@ -70,6 +70,18 @@ const AWAY = 5 * MINUTE;
 const LEAVE_WITHIN = 30_000;
 const POLL = MINUTE;
 const AFTER_EDIT = 3000;
+/** The longest wait a timer is given (Retry-After included): browsers fire longer ones at once. */
+const MAX_WAIT = 6 * HOUR;
+/** After a hidden frame timed out, the next waits this long, twice as long each time... */
+const FRAME_RETRY = 15 * MINUTE;
+/**
+ * ...and after this many in a row, a visit renews instead, before the sign-in runs out. That isn't
+ * a refusal: frames still count as working here, and are tried again once a visit has been made.
+ */
+const FRAME_TIMEOUTS = 3;
+
+/** Hidden frames that timed out in a row since the last renewal visit (earlier ones are history). */
+const frameTimeouts = (a: AuthRecord): number => ((a.frameTimedOut ?? 0) > a.lastRenewVisit ? (a.frameTimeouts ?? 0) : 0);
 
 /** Sync was turned off (perhaps in another tab) while something was under way. */
 class TurnedOff extends Error {}
@@ -96,6 +108,13 @@ export class SyncController {
   private running: Promise<void> | null = null;
   private again = false;
   private failures = 0;
+  /**
+   * No sync before this (ms): the wait after a failure Microsoft or OneDrive answered. Edits,
+   * coming back to the app and the last exchange on the way out bring a sync forward only to it.
+   */
+  private notBefore = 0;
+  /** ...and Microsoft's Retry-After (not Tack's own backoff on top), which even "Sync now" waits for. */
+  private throttledUntil = 0;
   private hiddenAt = 0;
   private renewing: Promise<void> | null = null;
   private readonly listeners = new Set<(s: SyncStatus) => void>();
@@ -171,13 +190,13 @@ export class SyncController {
         return 'failed';
       }
       // The frame was refused but this visit worked: it's the browser, so visit from now on.
-      await this.saveAuth({ tokens: result.tokens, needsSignIn: false, frameWorks: this.auth.frameRefused ? false : this.auth.frameWorks, frameRefused: 0, visitReturned: true });
+      await this.saveAuth({ tokens: result.tokens, needsSignIn: false, frameWorks: this.auth.frameRefused ? false : this.auth.frameWorks, frameRefused: 0, frameTimeouts: 0, visitReturned: true });
       return 'renewed';
     }
     const again = this.record.enabled;
     const switched = this.auth.account && (this.auth.account.id !== result.account.id || this.auth.account.tenant !== result.account.tenant);
     // A fresh sign-in: learn again whether frames work here.
-    await this.saveAuth({ account: result.account, tokens: result.tokens, needsSignIn: false, frameWorks: null, frameRefused: 0 });
+    await this.saveAuth({ account: result.account, tokens: result.tokens, needsSignIn: false, frameWorks: null, frameRefused: 0, frameTimeouts: 0 });
     if (switched) this.folderKey = null;
     if (!this.record.enabled) {
       this.record = { ...this.record, enabled: true };
@@ -259,29 +278,55 @@ export class SyncController {
     this.update({ phase: 'off', message: null, peers: [], problems: [] });
   }
 
-  /** Syncs now (e.g. from Settings). */
+  /**
+   * Settings → Take it in anyway, for a device whose file was set aside as more than this device
+   * takes in at once ('full'): that version is taken in next, up to what this device's own file
+   * may carry (see takeIn in engine.ts). Then syncs.
+   */
+  async takeIn(device: string): Promise<void> {
+    const mark = async () => {
+      await this.running;
+      const stored = (await this.backend.getMeta<SyncRecord>('sync')) ?? this.record;
+      if (!stored.enabled || !stored.meta) return;
+      const meta = structuredClone(stored.meta);
+      if (!takeIn(meta, device)) return;
+      this.record = { ...stored, meta };
+      await this.saveRecord();
+    };
+    // Between cycles (in any tab), so none saves its own copy of the state over this.
+    const locks = (navigator as Navigator & { locks?: LockManager }).locks;
+    if (locks) await locks.request('tack-sync', mark);
+    else await mark();
+    this.syncNow();
+  }
+
+  /** Syncs now (e.g. from Settings), or as soon as Microsoft allows. */
   syncNow(): void {
     this.failures = 0;
+    this.notBefore = this.throttledUntil;
     this.schedule(0);
   }
 
   // ------------------------------------------------------------------ scheduling
 
+  /** Syncs after `delay`, or once the wait after a failure is over if that's later. */
   private schedule(delay: number): void {
     if (!this.record.enabled || !this.auth.tokens) return;
     if (this.timer) clearTimeout(this.timer);
+    const wait = Math.min(MAX_WAIT, Math.max(delay, this.notBefore - Date.now()));
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.run();
-    }, delay);
+    }, wait);
   }
 
   private onVisibility(): void {
     if (!this.record.enabled) return;
     if (document.visibilityState === 'hidden') {
       this.hiddenAt = Date.now();
-      // A last exchange on the way out, so a change made just now reaches your other devices.
-      void this.store.flushAll().then(() => this.run());
+      // A last exchange on the way out, so a change made just now reaches your other devices
+      // (unless Microsoft asked Tack to wait: the change goes when the app is back).
+      void this.store.flushAll().then(() => (Date.now() >= this.notBefore ? this.run() : undefined));
       return;
     }
     const away = this.hiddenAt && Date.now() - this.hiddenAt > AWAY;
@@ -332,8 +377,8 @@ export class SyncController {
       !!a.account &&
       !!a.tokens &&
       !a.needsSignIn &&
-      // Frames don't work here, or one was refused since the last visit.
-      (a.frameWorks === false || a.frameRefused > a.lastRenewVisit) &&
+      // Frames don't work here, or one was refused (or a few timed out) since the last visit.
+      (a.frameWorks === false || a.frameRefused > a.lastRenewVisit || frameTimeouts(a) >= FRAME_TIMEOUTS) &&
       a.tokens.refreshExpires < deadline &&
       Date.now() - a.lastRenewVisit > (a.visitReturned ? VISIT_GAP : RETRY_GAP) &&
       navigator.onLine &&
@@ -423,8 +468,14 @@ export class SyncController {
       void this.renewSoon();
       await this.cycle();
       this.failures = 0;
+      this.notBefore = this.throttledUntil = 0;
     } catch (error) {
       next = this.onFailure(error);
+      // A failure Microsoft or OneDrive answered (or this device's own): nothing local cuts the
+      // wait short. Offline waits for the 'online' event; a spent sign-in for a renewal, perhaps
+      // in another tab.
+      if (error instanceof SyncError && error.kind !== 'offline' && error.kind !== 'auth') this.notBefore = Date.now() + Math.min(next, MAX_WAIT);
+      if (error instanceof SyncError && error.kind === 'throttled') this.throttledUntil = Date.now() + Math.min(error.retryAfter ?? 30_000, MAX_WAIT);
     }
     // Keep going only while on screen; coming back starts it again.
     if (document.visibilityState === 'visible' || next < POLL) this.schedule(next);
@@ -496,7 +547,11 @@ export class SyncController {
           return Math.min(backoff, 5 * MINUTE);
         case 'throttled':
           keepTrying('OneDrive is busy right now. Tack will keep trying.');
-          return Math.max(error.retryAfter ?? 30_000, 5000);
+          // As long as Microsoft asks, and longer each time it asks again.
+          return Math.max(error.retryAfter ?? 30_000, backoff);
+        case 'crowded':
+          this.update({ phase: 'error', message: 'Tack’s folder in OneDrive is full of files Tack didn’t put there, so sync is paused. Remove them from Apps › Tack Focus › devices.' });
+          return 30 * MINUTE;
         case 'full':
           this.update({ phase: 'error', message: 'Your OneDrive is full, so Tack can’t save its sync file there.' });
           return 30 * MINUTE;
@@ -504,7 +559,7 @@ export class SyncController {
           this.update({ phase: 'error', message: 'OneDrive refused Tack’s request. Turning sync off and on again may help.' });
           return 30 * MINUTE;
         case 'toolarge':
-          this.update({ phase: 'error', message: 'There’s more here than sync can carry (its file would be over 20 MB), so this device’s changes aren’t being shared.' });
+          this.update({ phase: 'error', message: 'There’s more here than sync can carry, so this device’s changes aren’t being shared.' });
           return 30 * MINUTE;
         case 'gone':
           this.folderKey = null; // the folder was removed: find or make it again
@@ -554,15 +609,23 @@ export class SyncController {
     this.renewing ??= (async () => {
       const a = this.auth;
       if (!a.account || !this.msal || a.frameWorks === false || a.frameRefused > a.lastRenewVisit) return;
+      // After a frame timed out, not again for a while (15 minutes, then 30...): each try loads
+      // Microsoft's sign-in page. After a few, a visit renews instead (visitDue).
+      const timeouts = frameTimeouts(a);
+      if (timeouts >= FRAME_TIMEOUTS) return;
+      if (timeouts > 0 && Date.now() - (a.frameTimedOut ?? 0) < FRAME_RETRY * 2 ** (timeouts - 1)) return;
       try {
         const { tokens } = await this.msal.renewInFrame(a.account);
         await this.mustBeOn();
-        await this.saveAuth({ tokens, frameWorks: true, frameRefused: 0 });
+        await this.saveAuth({ tokens, frameWorks: true, frameRefused: 0, frameTimeouts: 0 });
       } catch (error) {
         // Refused by Microsoft: visit at the next quiet moment (which also tells whether it's the
-        // browser or the session). A timeout or network failure just waits for next time.
-        if (error instanceof AuthError && error.kind === 'interaction') await this.saveAuth({ frameRefused: Date.now() });
-        else if (!(error instanceof AuthError)) throw error;
+        // browser or the session). A timeout or a failure on the way waits, longer each time, and
+        // after a few a visit renews before the sign-in runs out. A timeout is never a refusal:
+        // that visit would then stop frames here for good (handleReturn), for one slow evening.
+        if (error instanceof AuthError && error.kind === 'interaction') await this.saveAuth({ frameRefused: Date.now(), frameTimeouts: 0 });
+        else if (error instanceof AuthError) await this.saveAuth({ frameTimeouts: timeouts + 1, frameTimedOut: Date.now() });
+        else throw error;
       }
     })().finally(() => (this.renewing = null));
     return this.renewing;

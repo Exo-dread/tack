@@ -13,11 +13,19 @@ If port 4173 is taken (another project's preview server), `E2E_PORT=4183 npm run
 **Sync** (`tests/unit/sync*.test.ts`, `onedrive.test.ts`, `msauth.test.ts`, `tests/e2e/sync.spec.ts`,
 `interop.spec.ts`): scenario tests and a randomised months-long simulation of several devices with
 a flaky network, lagging PCs, long absences, damaged files and a wiped folder (everyone must agree,
-nothing lost, nothing deleted revived; `SIM_SEEDS=400 SIM_STEPS=1500` for a longer soak); the
+nothing lost, nothing deleted revived; `SIM_SEEDS=400 SIM_STEPS=1500` for a longer soak); damaged
+and hostile files (`synchostile.test.ts`: the limits; a file claiming to have seen too many
+devices, still read with only the claims that matter, and "seen" trimmed to the limit when
+written; each device's own total, with files that would fill a device set aside as "full", a
+peer's everyday edits still taken, and only spaces that would show counted; imports, pastes and
+edits within the same limits; imported dates every device reads alike); the
 OneDrive client and Microsoft sign-in against `tests/fakes/microsoft.ts`, a stand-in that enforces
 what the real services do (PKCE, 24-hour refresh tokens that don't extend, Graph paging, errors with
-Retry-After, download links that refuse tokens, CORS); browser tests of the whole flow in WebKit and
-Chromium (two devices, offline, a dropped upload, quiet renewal in a hidden frame or by a visit,
+Retry-After, download links that refuse tokens, CORS), including waiting out Retry-After whatever
+asks for a sync (and *Sync now* waiting no longer than that), downloads stopped at 20 MB, the
+folder listing's page limit, and a hidden frame that keeps timing out (a visit takes over, then
+frames again); browser
+tests of the whole flow in WebKit and Chromium (two devices, offline, a dropped upload, quiet renewal in a hidden frame or by a visit,
 what shows while that visit is slow or stuck on the way there or back and the ways out of it,
 staying put when Microsoft can't be reached, "Sign in again", turning off, the production CSP);
 and, on Windows, Tack Focus in a browser exchanging tasks with Tack for Windows' own sync code
@@ -25,7 +33,7 @@ through a folder on disk. The sync tests run
 with the service worker blocked: in WebKit, Playwright can't intercept requests from a page a
 worker controls, and they must never reach the real Microsoft.
 
-**Unit tests (236, including 40 runs of the sync simulation)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
+**Unit tests (261, including 40 runs of the sync simulation)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
 random inserts, clock monotonicity and skew, .NET date parsing, every workspace mutation and its
 undo, snapshot restore, two- and three-device merges with a randomised convergence test, concurrent
 note edits (conflict copies), and tack.json import/export against a file shaped exactly like

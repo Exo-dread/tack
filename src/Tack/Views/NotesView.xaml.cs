@@ -146,18 +146,7 @@ public partial class NotesView : UserControl
         moveTo.Visibility = _view.HasSpaces ? Visibility.Visible : Visibility.Collapsed;
         moveTo.Items.Clear();
         if (!_view.HasSpaces) return;
-        string current = _view.SpaceOf(sheet);
-        foreach (var space in _view.Tabs)
-        {
-            var item = new MenuItem
-            {
-                Header = new TextBlock { Text = space.Name, MaxWidth = 220, TextTrimming = TextTrimming.CharacterEllipsis },
-                IsEnabled = space.Id != current,
-            };
-            System.Windows.Automation.AutomationProperties.SetName(item, space.Name);
-            item.Click += (_, _) => MoveToSpace(sheet, space.Id);
-            moveTo.Items.Add(item);
-        }
+        SpaceMenu.Fill(moveTo.Items, _view.Tabs, _view.SpaceOf(sheet), space => MoveToSpace(sheet, space));
     }
 
     /// <summary>Puts a sheet in another space; only its space changes. Undo puts it back.</summary>
@@ -239,9 +228,14 @@ public partial class NotesView : UserControl
         string source = Editor.SelectionLength > 0 ? Editor.SelectedText : CurrentLine().Text;
         var lines = source.Replace("\r", "").Split('\n')
             .Select(l => ListPrefix.Replace(l, "").Trim())
-            .Where(l => l.Length > 0)
+            .Where(l => l.Length > 0 && JsText.CleanTaskText(l).Length <= DeviceFile.MaxTaskText)
             .ToList();
         if (lines.Count == 0) return;
+        if (lines.Count > DeviceFile.MaxPasteLines)
+        {
+            _panel.ShowToast($"Make up to {DeviceFile.MaxPasteLines:N0} tasks at once");
+            return;
+        }
 
         // The tasks go in the sheet's own space.
         string space = _view.ActiveSheet is { } sheet ? _view.SpaceOf(sheet) : _view.NewItemSpace;

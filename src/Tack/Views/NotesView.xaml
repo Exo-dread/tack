@@ -103,7 +103,8 @@
                 BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1">
             <Grid>
                 <!-- A space with no sheets shows blank paper: the first keystroke makes its sheet. -->
-                <TextBox x:Name="Editor" Style="{StaticResource NotesBox}" AutomationProperties.Name="Note"
+                <!-- MaxLength: DeviceFile.MaxNoteText, the longest note any device reads from a sync file. -->
+                <TextBox x:Name="Editor" Style="{StaticResource NotesBox}" AutomationProperties.Name="Note" MaxLength="1000000"
                          Text="{Binding ActiveSheet.Text, UpdateSourceTrigger=PropertyChanged}"
                          PreviewKeyDown="Editor_PreviewKeyDown" TextChanged="Editor_TextChanged" />
                 <TextBlock x:Name="Hint" Margin="16,12,16,12" IsHitTestVisible="False" TextWrapping="Wrap"

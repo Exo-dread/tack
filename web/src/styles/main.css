@@ -1802,6 +1802,8 @@ kbd {
 .group-body > .space-new .space-option { min-height: 48px; }
 .group-body > .space-new .space-new-form { padding-left: 12px; }
 .space-new + .note { margin-top: 4px; }
+/* "More spaces" (only a crafted file or import makes more than a list draws at once) */
+.space-rows > .space-more { width: auto; min-height: 48px; margin: 0 -12px; border-top: 1px solid var(--stroke); }
 
 /* ---- a space's blank paper: a quiet stand-in where its first sheet will be (no sheet yet) */
 

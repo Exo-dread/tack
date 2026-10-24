@@ -359,6 +359,20 @@ public sealed class Workspace : Observable, IImportTarget
     /// <summary>Any space with this id, deleted ones included.</summary>
     internal SpaceData? SpaceById(string id) => _spaces.GetValueOrDefault(id);
 
+    /// <summary>
+    /// How many records taking <paramref name="data"/> in would add (tasks, sheets and spaces this
+    /// workspace has no record of, deleted or not): what an import or another device's file would add
+    /// to this device's own sync file. Spaces are records like any other here: how many show is up to
+    /// the screen (<see cref="SpaceView.MaxListed"/>).
+    /// </summary>
+    internal int WouldAdd(WorkspaceData data) =>
+        data.Tasks.Select(t => t.Id).Distinct().Count(id => !_tasks.ContainsKey(id))
+        + data.Sheets.Select(s => s.Id).Distinct().Count(id => !_sheets.ContainsKey(id))
+        + data.Spaces.Select(s => s.Id).Distinct().Count(id => !_spaces.ContainsKey(id));
+
+    /// <summary>Every task, sheet and space held, deleted ones included (as a device file counts them).</summary>
+    internal int RecordCount => _tasks.Count + _sheets.Count + _spaces.Count;
+
     /// <summary>Adds a space after the last one.</summary>
     internal SpaceData AddSpace(string name)
     {
@@ -1037,4 +1051,8 @@ public sealed class Workspace : Observable, IImportTarget
     TaskData? IImportTarget.FindTask(string id) => _tasks.TryGetValue(id, out var t) ? t.ToData() : null;
 
     SheetData? IImportTarget.FindSheet(string id) => _sheets.TryGetValue(id, out var s) ? s.ToData() : null;
+
+    int IImportTarget.RecordCount => RecordCount;
+
+    int IImportTarget.WouldAdd(WorkspaceData data) => WouldAdd(data);
 }

@@ -31,6 +31,7 @@ internal static class SpaceViewTests
         yield return ("spaces on screen: with only Main the panel shows the workspace's own lists, as before", NoSpacesUnchanged);
         yield return ("spaces on screen: the space on show is kept per device; a space that's gone shows Main until it's back", ShownFallback);
         yield return ("spaces on screen: listed Main first while it has no record, then by order; names as shown", TabsAndNames);
+        yield return ("spaces on screen: a list draws a thousand spaces at a time, and always the one on show; names are found at once", ListedInPages);
         yield return ("spaces on screen: a record with All's id is never a space (only a hand-made file has one); what's in it is in Main", ReservedAllId);
         yield return ("spaces on screen: names are one line, control characters made spaces", NamesWithoutControls);
         yield return ("spaces on screen: a toast cuts a space's name at 24 characters, as Tack Focus does", ToastNames);
@@ -632,6 +633,30 @@ internal static class SpaceViewTests
         var doc = JsonSerializer.Deserialize(Encoding.UTF8.GetBytes(SettingsJson(ws)), StateJsonContext.Default.StateDocument)!;
         Check.Equal(SpaceView.All, doc.Settings.SpaceOnShow, "read back");
         Check.True(!TackFileJson(ws).Contains("spaceOnShow"), "never in what other devices get");
+    }
+
+    private static void ListedInPages()
+    {
+        var tabs = Enumerable.Range(0, SpaceView.MaxListed + 5).Select(i => new SpaceTab($"s{i}", $"space {i}")).ToList();
+        var (few, none) = SpaceView.Listed(tabs.Take(3).ToList(), SpaceView.MaxListed);
+        Check.Equal(3, few.Count, "a few: all of them");
+        Check.Equal(0, none, "and none left out");
+        var (first, more) = SpaceView.Listed(tabs, SpaceView.MaxListed);
+        Check.Equal(SpaceView.MaxListed, first.Count, "a thousand at a time");
+        Check.Equal(5, more, "the rest left out");
+        Check.True(first.Select((l, i) => l.Index == i && l.Tab == tabs[i]).All(b => b), "in order, with their places");
+        var (kept, fewer) = SpaceView.Listed(tabs, SpaceView.MaxListed, $"s{SpaceView.MaxListed + 3}");
+        Check.Equal((tabs[SpaceView.MaxListed + 3], SpaceView.MaxListed + 3), kept[^1], "the space on show is always drawn");
+        Check.Equal(4, fewer, "one fewer left out");
+        Check.Equal(0, SpaceView.Listed(tabs, 2 * SpaceView.MaxListed).More, "More spaces: as many again");
+
+        var ws = new Workspace(new Settings(), new Hlc("desk0001", () => Now), WorkspaceData.Empty);
+        for (int i = 0; i < SpaceView.MaxListed + 5; i++) ws.AddSpace($"space {i}");
+        var view = new SpaceView(ws);
+        string last = ws.SpaceList[^1].Id;
+        Check.Equal($"space {SpaceView.MaxListed + 4}", view.NameOf(last), "a name past the first thousand");
+        Check.Equal("Main", view.NameOf(SpaceField.Main), "Main");
+        Check.Equal("Untitled", view.NameOf("gone"), "a space that isn't there");
     }
 
     // ---------------------------------------------------------------- helpers

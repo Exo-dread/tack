@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Hlc } from '../../src/model/hlc';
 import { Workspace } from '../../src/model/workspace';
-import { emptyMeta, SyncEngine, SyncError, type SyncMeta } from '../../src/sync/engine';
+import { DeviceFileError, MAX_FILE_BYTES } from '../../src/sync/devicefile';
+import { emptyMeta, SyncEngine, SyncError, type FolderEntry, type SyncMeta } from '../../src/sync/engine';
 import { OneDriveFolder } from '../../src/sync/onedrive';
 import { FakeMicrosoft } from '../fakes/microsoft';
 
@@ -160,5 +161,76 @@ describe('the OneDrive folder', () => {
     await phone.sync();
     expect(phone.ws.open.map((t) => t.text).sort()).toEqual(['from the desk', 'from the phone']);
     expect([...ms.deviceFiles().keys()].sort()).toEqual(['desk0001.json', 'phone001.json']);
+  });
+});
+
+/*
+ * The second audit (24 October 2026): a polite client. A folder someone filled with files, a
+ * download host saying "slow down", or a file grown past what any device reads, never makes Tack
+ * hammer Microsoft or take in more than it can use.
+ */
+describe('the OneDrive folder, when something else is wrong', () => {
+  let ms: FakeMicrosoft;
+  beforeEach(() => {
+    ms = new FakeMicrosoft();
+  });
+
+  it('stops listing a folder that holds far more files than Tack keeps there (L3)', async () => {
+    const s = await session(ms);
+    const f = new OneDriveFolder(s.token, ms.fetch);
+    await f.open();
+    for (let i = 0; i < 100; i++) ms.putDeviceFile(`junk${String(i).padStart(3, '0')}.txt`, 'x');
+    const before = ms.log.length;
+    await expect(f.list()).rejects.toMatchObject({ kind: 'crowded' });
+    const pages = ms.log.slice(before).filter((r) => r.url.includes('/children'));
+    expect(pages.length).toBeLessThanOrEqual(10);
+  });
+
+  it('lists a folder of ordinary size in full', async () => {
+    const s = await session(ms);
+    const f = new OneDriveFolder(s.token, ms.fetch);
+    for (let i = 0; i < 20; i++) await f.write(`dev${String(i).padStart(2, '0')}aa.json`, `content ${i}`);
+    expect(await f.list()).toHaveLength(20); // the fake's pages hold three: seven of them
+  });
+
+  it('waits when a download link says "slow down", rather than asking for a new link and again (L4)', async () => {
+    const s = await session(ms);
+    const f = new OneDriveFolder(s.token, ms.fetch);
+    await f.write('abcd1234.json', 'hello');
+    const [entry] = await f.list();
+    ms.fail(/^https:\/\/dl\.files\.1drv\.com\//, { status: 429, retryAfter: 120 });
+    const before = ms.log.length;
+    await expect(f.read(entry!)).rejects.toMatchObject({ kind: 'throttled', retryAfter: 120_000 });
+    expect(ms.log.length - before).toBe(1); // one download, no new link
+    ms.fail(/^https:\/\/dl\.files\.1drv\.com\//, { status: 503 });
+    await expect(f.read(entry!)).rejects.toMatchObject({ kind: 'throttled', retryAfter: 30_000 });
+    expect(await f.read(entry!)).toBe('hello');
+  });
+
+  it('never takes in more than a device file may hold, whatever the listing said (M2)', async () => {
+    const chunk = new Uint8Array(1024 * 1024).fill(0x20);
+    let pulled = 0;
+    const big: typeof fetch = async (input, init) => {
+      if (!String(input).startsWith('https://dl.files.1drv.com/')) return ms.fetch(input, init);
+      let left = 25;
+      const body = new ReadableStream<Uint8Array>({
+        pull(c) {
+          if (left-- === 0) return c.close();
+          pulled += chunk.length;
+          c.enqueue(chunk);
+        },
+      });
+      return new Response(body, { status: 200 });
+    };
+    const entry = { name: 'abcd1234.json', tag: 't', id: 'x', url: 'https://dl.files.1drv.com/fake/x' } as FolderEntry;
+    const error = await new OneDriveFolder(async () => 't', big).read(entry).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DeviceFileError);
+    expect(pulled).toBeLessThan(MAX_FILE_BYTES + 3 * chunk.length);
+    // Said up front: not read at all.
+    const said: typeof fetch = async () => new Response('{}', { status: 200, headers: { 'Content-Length': String(MAX_FILE_BYTES + 1) } });
+    await expect(new OneDriveFolder(async () => 't', said).read(entry)).rejects.toBeInstanceOf(DeviceFileError);
+    // And an ordinary file reads as before, BOM and all.
+    const fine: typeof fetch = async () => new Response('﻿{"a":"é"}', { status: 200 });
+    expect(await new OneDriveFolder(async () => 't', fine).read(entry)).toBe('{"a":"é"}');
   });
 });

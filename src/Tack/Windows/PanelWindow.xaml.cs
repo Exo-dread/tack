@@ -39,6 +39,7 @@ public partial class PanelWindow : Window
     private bool _userResized;
     private bool _sizeChangePending;
     private IReadOnlyList<SpaceTab> _stripTabs = [];
+    private int _stripLimit = SpaceView.MaxListed; // spaces the strip draws ("More spaces" draws as many again)
     private bool _syncingStrip; // the strip is being brought in line with the space on show, not clicked
     private double _heldHeight; // > 0: Tasks keeps this height after a space switch, until the panel next opens
 
@@ -472,7 +473,9 @@ public partial class PanelWindow : Window
 
         StripTabs.Children.Clear();
         var entries = new List<SpaceTab> { new(SpaceView.All, "All") };
-        entries.AddRange(_view.Tabs);
+        // So many at a time (only a crafted file or import makes more), and always the one on show.
+        var (listed, more) = SpaceView.Listed(_view.Tabs, _stripLimit, _view.Shown);
+        entries.AddRange(listed.Select(l => l.Tab));
         for (int i = 0; i < entries.Count; i++)
         {
             var (id, name) = entries[i];
@@ -498,7 +501,29 @@ public partial class PanelWindow : Window
             tab.Click += SpaceTab_Click;
             StripTabs.Children.Add(tab);
         }
+        if (more > 0)
+        {
+            string left = $"{more:N0} more";
+            var button = new Button { Style = (Style)FindResource("TextButton"), Content = "More spaces…", FontSize = 12, Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(2, 0, 0, 0), ToolTip = left };
+            AutomationProperties.SetName(button, $"More spaces, {left}");
+            button.Click += MoreSpaces_Click;
+            StripTabs.Children.Add(button);
+        }
         RevealShownSpace();
+    }
+
+    /// <summary>"More spaces" at the end of the strip: as many again, and the first of them takes the focus.</summary>
+    private void MoreSpaces_Click(object sender, RoutedEventArgs e)
+    {
+        int first = _stripLimit;
+        _stripLimit += SpaceView.MaxListed;
+        _stripTabs = [];
+        UpdateStrip();
+        if (first < _view.Tabs.Count && StripTabs.Children.OfType<RadioButton>().FirstOrDefault(t => (string)t.Tag == _view.Tabs[first].Id) is { } tab)
+        {
+            tab.Focus();
+            tab.BringIntoView();
+        }
     }
 
     private void SpaceTab_Checked(object sender, RoutedEventArgs e)

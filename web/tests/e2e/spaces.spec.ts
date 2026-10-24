@@ -584,6 +584,43 @@ test.describe('spaces', () => {
     await expect(row(page, 'Kept in Work').locator('.row-space')).toHaveText('Work');
   });
 
+  // Only a crafted file or import makes this many: every one is kept and synced, and each list
+  // draws a thousand at a time, so the screen stays usable.
+  test('more spaces than a list draws: a thousand at a time, and More spaces for the rest', async ({ page }) => {
+    await open(page);
+    const at = `${Date.now().toString(36).padStart(9, '0')}.0000.aaaa1111`;
+    const spaces = Array.from({ length: 1002 }, (_, i) => ({ id: `junk${String(i).padStart(4, '0')}`, name: `junk ${i}`, order: 'W', deleted: false, clk: { name: at, order: at, deleted: '000000000.0000.0' } }));
+    await button(page, 'Settings').click();
+    await page.locator('dialog input[type=file]').setInputFiles({
+      name: 'tack.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify({ version: 1, tasks: [], sheets: [], tackFocus: { tasks: [], sheets: [], spaces } })),
+    });
+    await expect(page.locator('dialog[open]')).toHaveCount(0);
+    // Main and the 1,002: a thousand drawn, then More spaces.
+    await title(page).click();
+    const options = sheet(page).locator('.space-option[data-space]');
+    await expect(options).toHaveCount(1 + 1000);
+    const more = sheet(page).getByRole('button', { name: 'More spaces, 3 more' });
+    await more.click();
+    await expect(options).toHaveCount(1 + 1003);
+    await expect(more).toHaveCount(0);
+    await expect(sheet(page).locator('[data-space="junk0999"]')).toBeFocused();
+    // The last one can be shown, and stays drawn the next time.
+    await sheet(page).locator('[data-space="junk1001"]').click();
+    await expect(title(page)).toHaveText('junk 1001');
+    await title(page).click();
+    await expect(options).toHaveCount(1 + 1001);
+    await expect(sheet(page).locator('[data-space="junk1001"]')).toHaveAttribute('aria-current', 'true');
+    await closeSheet(page);
+    // Settings → Spaces likewise.
+    await openSettings(page);
+    await expect(sheet(page).locator('.space-row')).toHaveCount(1000);
+    await sheet(page).getByRole('button', { name: 'More spaces, 3 more' }).click();
+    await expect(sheet(page).locator('.space-row')).toHaveCount(1003);
+    await expect(sheet(page).getByRole('textbox', { name: 'Name of junk 999' })).toBeFocused();
+  });
+
   test('works with reduced motion', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await open(page);

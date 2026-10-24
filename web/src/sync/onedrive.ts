@@ -1,4 +1,5 @@
-import { SyncError, type FolderEntry, type SyncFolder } from './engine';
+import { DeviceFileError, MAX_FILE_BYTES } from './devicefile';
+import { retryAfterMs, SyncError, type FolderEntry, type SyncFolder } from './engine';
 
 /**
  * The sync folder in OneDrive, through Microsoft Graph. With the Files.ReadWrite.AppFolder
@@ -18,6 +19,12 @@ const TIMEOUT = 30_000;
 const DEVICES = 'devices';
 const MARKER = 'tack-sync.json';
 const README = 'README.txt';
+/**
+ * Pages of a folder listing read at most (200 items each, as asked). Tack keeps one file per
+ * device there; a folder with thousands was filled by something else, and listing it all on every
+ * cycle would be hundreds of requests to Microsoft each time.
+ */
+const MAX_PAGES = 10;
 
 const MARKER_TEXT = `${JSON.stringify({ format: 'tack-sync', version: 1 }, null, 2)}\n`;
 const README_TEXT = [
@@ -110,8 +117,12 @@ export class OneDriveFolder implements SyncFolder {
       } catch (error) {
         throw new SyncError('offline', `Couldn't download from OneDrive (${String(error)})`);
       }
-      if (response.ok) return response.text();
+      if (response.ok) return textAtMost(response, MAX_FILE_BYTES);
       if (response.status === 404) throw new SyncError('gone');
+      // Asked to slow down: this cycle stops and waits, rather than fetching a new link and asking again.
+      if (response.status === 429 || response.status === 503) {
+        throw new SyncError('throttled', `OneDrive is busy (${response.status})`, retryAfterMs(response) ?? 30_000);
+      }
       url = undefined; // the link expired: ask for a fresh one
     }
     throw new SyncError('server', 'OneDrive download failed');
@@ -143,7 +154,8 @@ export class OneDriveFolder implements SyncFolder {
   private async children(id: string): Promise<DriveItem[]> {
     const out: DriveItem[] = [];
     let url: string | undefined = `${GRAPH}/me/drive/items/${id}/children?$top=200`;
-    while (url) {
+    for (let pages = 0; url; pages++) {
+      if (pages === MAX_PAGES) throw new SyncError('crowded', 'Tack’s folder in OneDrive holds far more files than Tack keeps there');
       const page: { value: DriveItem[]; '@odata.nextLink'?: string } = await this.json(url);
       out.push(...page.value);
       url = page['@odata.nextLink'];
@@ -187,6 +199,39 @@ export class OneDriveFolder implements SyncFolder {
   }
 }
 
+/**
+ * A download's text, refusing (unread) anything over `max` bytes: the listing's size may be out of
+ * date, and every device refuses a file that big anyway. Decoded as response.text() does.
+ */
+async function textAtMost(response: Response, max: number): Promise<string> {
+  const body = response.body;
+  if (Number(response.headers.get('Content-Length')) > max) {
+    await body?.cancel().catch(() => {});
+    throw new DeviceFileError('unreadable');
+  }
+  if (!body) return response.text();
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.length;
+    if (length > max) {
+      await reader.cancel().catch(() => {});
+      throw new DeviceFileError('unreadable');
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(length);
+  let at = 0;
+  for (const c of chunks) {
+    bytes.set(c, at);
+    at += c.length;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 /** A failed Graph request, with its HTTP status. */
 export class GraphError extends SyncError {
   constructor(
@@ -209,8 +254,7 @@ async function graphError(response: Response): Promise<GraphError> {
   } catch {
     /* no JSON body */
   }
-  const retry = Number(response.headers.get('Retry-After'));
-  const retryAfter = Number.isFinite(retry) && retry > 0 ? retry * 1000 : undefined;
+  const retryAfter = retryAfterMs(response);
   const s = response.status;
   if (s === 401) return new GraphError('auth', message, s);
   if (s === 404) return new GraphError('gone', message, s);

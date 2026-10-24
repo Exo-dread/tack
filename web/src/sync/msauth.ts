@@ -1,4 +1,4 @@
-import { SyncError } from './engine';
+import { retryAfterMs, SyncError } from './engine';
 
 /**
  * Signing in to a Microsoft account (personal, work or school) from the browser: OAuth 2.0
@@ -67,6 +67,14 @@ export interface AuthRecord {
   visitReturned: boolean;
   /** Microsoft wants you to sign in again (password changed, session ended, consent removed...). */
   needsSignIn: boolean;
+  /**
+   * Hidden-frame renewals that timed out (or failed on the way) in a row, and when the last one
+   * did (ms). Each waits longer before the next; after a few a visit renews instead, and frames are
+   * tried again once one has been made (only those since the last visit count). Not a refusal:
+   * frameWorks stays as it was. Missing (in records earlier versions saved): none.
+   */
+  frameTimeouts?: number;
+  frameTimedOut?: number;
 }
 
 export const emptyAuth = (): AuthRecord => ({ account: null, tokens: null, frameWorks: null, frameRefused: 0, lastRenewVisit: 0, visitReturned: true, needsSignIn: false });
@@ -252,6 +260,10 @@ export class MicrosoftAuth {
       });
     } catch (e) {
       throw new SyncError('offline', `Couldn't reach Microsoft (${String(e)})`);
+    }
+    // Asked to slow down, whatever the body says: not a spent sign-in, and not one to ask again at once.
+    if (response.status === 429 || response.status === 503) {
+      throw new SyncError('throttled', `Microsoft’s sign-in service is busy (${response.status})`, retryAfterMs(response) ?? 30_000);
     }
     let json: TokenResponse & { error?: string; error_description?: string };
     try {

@@ -34,6 +34,7 @@ internal sealed class FolderSync : IDisposable
     private bool _again;
     private int _failures;
     private bool _disposed;
+    private readonly HashSet<string> _takeIn = new(); // devices whose file you asked to take in anyway
 
     public FolderSync(Workspace ws, StateStore store)
     {
@@ -79,12 +80,17 @@ internal sealed class FolderSync : IDisposable
         if (folder == null)
         {
             SetStatus(SyncStatus.Off with { Message = "Looking for Tack Focus’s folder in OneDrive…" });
-            folder = await Task.Run(FindOneDriveFolder);
+            var (own, other) = await Task.Run(FindOneDriveFolder);
+            folder = own;
             if (folder == null)
             {
                 SetStatus(SyncStatus.Off with
                 {
-                    Message = "Couldn’t find Tack Focus’s folder in OneDrive on this PC. Turn on sync in Tack Focus first (it makes the folder), wait for the OneDrive app to bring it here, then try again. Or choose a folder.",
+                    // Any other folder with Tack's marker may be another app's, or someone else's
+                    // shared folder: only you can say it's yours, by choosing it.
+                    Message = other != null
+                        ? $"Found a Tack sync folder at {other}, but it isn’t OneDrive\\Apps\\{AppFolderName}. If it’s yours, pick it with Choose folder…"
+                        : "Couldn’t find Tack Focus’s folder in OneDrive on this PC. Turn on sync in Tack Focus first (it makes the folder), wait for the OneDrive app to bring it here, then try again. Or choose a folder.",
                 });
                 return Status.Message;
             }
@@ -119,6 +125,18 @@ internal sealed class FolderSync : IDisposable
         SetStatus(SyncStatus.Off);
     }
 
+    /// <summary>
+    /// Settings → Take it in anyway, for a device whose file was set aside as more than this PC takes
+    /// in at once ("full"): that version is taken in next, up to what this PC's own file may carry
+    /// (<see cref="SyncEngine.TakeIn"/>). Then syncs.
+    /// </summary>
+    public void TakeIn(string device)
+    {
+        if (!Enabled) return;
+        _takeIn.Add(device);
+        SyncNow();
+    }
+
     /// <summary>Syncs now (Settings, or when the panel opens).</summary>
     public void SyncNow()
     {
@@ -130,17 +148,31 @@ internal sealed class FolderSync : IDisposable
 
     // ---------------------------------------------------------------- finding the folder
 
+    /// <summary>The app registration's name, and so its OneDrive app folder's: OneDrive\Apps\Tack Focus.</summary>
+    private const string AppFolderName = "Tack Focus";
+
     /// <summary>
-    /// Tack Focus's folder in OneDrive on this PC: the one with Tack's marker, usually
-    /// "OneDrive\Apps\Tack Focus" (the "Apps" name can be localised, so any first-level folder counts).
+    /// Tack Focus's folder in OneDrive on this PC, "OneDrive\Apps\Tack Focus", if it has Tack's marker
+    /// (<c>Own</c>): the only folder Tack Focus can write, so the only one taken without asking.
+    /// Otherwise any other first-level sub-folder with the marker (<c>Other</c>), only to suggest: it
+    /// may be Tack Focus's under a localised "Apps", but also another app's own folder (an app given
+    /// only its own folder can put a marker there) or a folder someone shared with you.
     /// </summary>
-    public static string? FindOneDriveFolder()
+    public static (string? Own, string? Other) FindOneDriveFolder()
     {
         var roots = new[] { "OneDriveConsumer", "OneDrive", "OneDriveCommercial" }
             .Select(Environment.GetEnvironmentVariable)
             .OfType<string>()
             .Where(r => r.Length > 0 && Directory.Exists(r))
-            .Distinct(StringComparer.OrdinalIgnoreCase);
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        foreach (string root in roots)
+        {
+            string own = Path.Combine(root, "Apps", AppFolderName);
+            if (LocalSyncFolder.IsSyncFolder(own)) return (own, null);
+        }
+        // Not there: the folder to suggest, one named like Tack Focus's first (under a localised "Apps").
+        string? named = null, other = null;
         foreach (string root in roots)
         {
             int looked = 0;
@@ -155,12 +187,16 @@ internal sealed class FolderSync : IDisposable
             {
                 foreach (string sub in Dirs(top))
                 {
-                    if (LocalSyncFolder.IsSyncFolder(sub)) return sub;
+                    if (LocalSyncFolder.IsSyncFolder(sub))
+                    {
+                        if (named == null && string.Equals(Path.GetFileName(sub), AppFolderName, StringComparison.OrdinalIgnoreCase)) named = sub;
+                        other ??= sub;
+                    }
                     if (++looked > 5000) break;
                 }
             }
         }
-        return null;
+        return (null, named ?? other);
     }
 
     // ---------------------------------------------------------------- running
@@ -272,7 +308,7 @@ internal sealed class FolderSync : IDisposable
                 {
                     SyncErrorKind.Full => "The disk is full, so Tack can’t save its sync file.",
                     SyncErrorKind.Denied => "Tack isn’t allowed to write in the sync folder.",
-                    SyncErrorKind.TooLarge => "There’s more here than sync can carry (its file would be over 20 MB), so this PC’s changes aren’t being shared.",
+                    SyncErrorKind.TooLarge => "There’s more here than sync can carry, so this PC’s changes aren’t being shared.",
                     SyncErrorKind.Gone => "The sync folder went away (is OneDrive running?). Tack will keep trying.",
                     _ => "The OneDrive app is busy with the sync folder. Tack will keep trying.",
                 };
@@ -307,6 +343,9 @@ internal sealed class FolderSync : IDisposable
     {
         string key = Path.GetFullPath(root).TrimEnd('\\').ToLowerInvariant();
         var meta = LoadMeta() is { } m && m.Folder == key ? m : SyncMeta.Empty(key);
+        // Asked for since the last cycle (one that fails forgets nothing: they're asked for again next time).
+        var asked = _takeIn.ToList();
+        foreach (string device in asked) SyncEngine.TakeIn(meta, device);
         var version = Assembly.GetExecutingAssembly().GetName().Version;
         var engine = new SyncEngine(_ws, folder, new SyncHooks
         {
@@ -325,6 +364,7 @@ internal sealed class FolderSync : IDisposable
         {
             var result = await engine.CycleAsync(meta, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             await SaveMetaAsync(meta);
+            _takeIn.ExceptWith(asked);
             return (meta.LastSync, result.Peers, result.Problems);
         }
         catch (DeviceCollisionException) when (!collisionRetried)

@@ -1,4 +1,5 @@
-import { ALL, cleanSpaceName, MAIN } from '../model/spaces';
+import { MAX_SPACES_LISTED } from '../model/limits';
+import { ALL, cleanSpaceName, listed, MAIN } from '../model/spaces';
 import { shorten } from '../model/text';
 import type { Workspace } from '../model/workspace';
 import { prefs, setPrefs } from '../store/prefs';
@@ -84,7 +85,6 @@ export class SpaceUi {
         h('span.space-option-count', { 'aria-hidden': 'true', text: String(n) }),
       );
     };
-    const list = h('div.space-list', {}, option(ALL), ...this.ws.spaceTabs.map((s) => option(s.id)));
     // Enter (or Add) makes the space and shows it; a name left typed is made without switching, as on the desktop.
     const entry = newSpaceEntry((name, confirmed) => {
       const id = this.create(name);
@@ -92,7 +92,8 @@ export class SpaceUi {
       if (confirmed) this.pickShow(id);
       return true;
     });
-    list.append(entry.el);
+    const list = h('div.space-list');
+    listInPages(list, this.ws.spaceTabs, show, (s) => option(s.id), [option(ALL)], [entry.el]);
     this.sheet = presentSheet('Spaces', [list], {
       onClose: () => {
         // Done (or a tap outside, or a swipe) with a name typed: that's a new space, though not the one on show.
@@ -119,28 +120,25 @@ export class SpaceUi {
    */
   pick(title: string, current: string, then: (id: string) => void, options: { disableCurrent?: boolean; closed?: () => void } = {}): void {
     if (this.sheet) return;
-    const list = h(
-      'div.space-list',
-      {},
-      ...this.ws.spaceTabs.map((s) => {
-        const isCurrent = s.id === current;
-        return h(
-          'button.space-option',
-          {
-            type: 'button',
-            'data-space': s.id,
-            'aria-current': isCurrent ? 'true' : null,
-            disabled: isCurrent && options.disableCurrent,
-            onclick: () => {
-              this.sheet?.close();
-              then(s.id);
-            },
+    const list = h('div.space-list');
+    listInPages(list, this.ws.spaceTabs, current, (s) => {
+      const isCurrent = s.id === current;
+      return h(
+        'button.space-option',
+        {
+          type: 'button',
+          'data-space': s.id,
+          'aria-current': isCurrent ? 'true' : null,
+          disabled: isCurrent && options.disableCurrent,
+          onclick: () => {
+            this.sheet?.close();
+            then(s.id);
           },
-          h('span.space-mark', {}, isCurrent ? svg(icons.tick) : null),
-          h('span.space-option-name', { text: s.label }),
-        );
-      }),
-    );
+        },
+        h('span.space-mark', {}, isCurrent ? svg(icons.tick) : null),
+        h('span.space-option-name', { text: s.label }),
+      );
+    });
     this.sheet = presentSheet(title, [list], { onClose: () => (this.sheet = null), onClosed: options.closed });
     this.sheet.dialog.querySelector<HTMLElement>('.space-option:not(:disabled)')?.focus();
   }
@@ -171,6 +169,41 @@ export class SpaceUi {
       this.toasts.show(`Moved to ${shorten(this.label(to), 24)}`, () => this.ws.moveSheetToSpace(id, before));
     }, { disableCurrent: true, closed });
   }
+}
+
+/**
+ * Fills `el` with a row per space (`row`) between `before` and `after`, drawing MAX_SPACES_LISTED
+ * spaces at a time: past that, a "More spaces" button draws as many again. `keep` (the space on
+ * show) is always drawn. Only a crafted file or import makes that many.
+ */
+export function listInPages<T extends { id: string }>(el: HTMLElement, tabs: readonly T[], keep: string | undefined, row: (tab: T) => HTMLElement, before: Node[] = [], after: Node[] = []): void {
+  let limit = MAX_SPACES_LISTED;
+  const fill = () => {
+    const { list, more } = listed(tabs, limit, keep);
+    const button = more > 0
+      ? moreSpaces(more, () => {
+          // As many again; the first of them takes the focus (the button goes, or moves down).
+          const first = limit;
+          limit += MAX_SPACES_LISTED;
+          fill();
+          (el.children[before.length + first] as HTMLElement | undefined)?.focus();
+        })
+      : null;
+    el.replaceChildren(...before, ...list.map(({ tab }) => row(tab)), ...(button ? [button] : []), ...after);
+  };
+  fill();
+}
+
+/** "More spaces", with how many aren't drawn yet. */
+export function moreSpaces(more: number, run: () => void): HTMLElement {
+  const label = `${more.toLocaleString()} more`;
+  return h(
+    'button.space-option.space-add.space-more',
+    { type: 'button', 'aria-label': `More spaces, ${label}`, onclick: run },
+    h('span.space-mark', {}, svg(icons.more)),
+    h('span.space-option-name', { text: 'More spaces' }),
+    h('span.space-option-count', { 'aria-hidden': 'true', text: label }),
+  );
 }
 
 /**
