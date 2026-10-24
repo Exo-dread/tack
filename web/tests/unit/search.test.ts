@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { Hlc } from '../../src/model/hlc';
-import { findIn, fold, foldQuery, originalRange, SearchIndex } from '../../src/model/search';
+import { findIn, fold, foldQuery, originalRange, planJump, SearchIndex } from '../../src/model/search';
+import { ALL, MAIN } from '../../src/model/spaces';
 import { Workspace } from '../../src/model/workspace';
 
 /**
@@ -102,6 +103,30 @@ describe('search: the rest', () => {
     wall += 1000;
     ws.deleteTask(t.id);
     expect(index.find(ws, 'memo').total).toBe(0);
+  });
+
+  it('opens what it found in its space (unless All shows it), on its page, and Done for a finished task', () => {
+    let wall = START;
+    const ws = new Workspace(new Hlc('search04', () => wall), () => new Date(wall));
+    const plain = ws.addTask("Main's own")!;
+    expect(planJump(ws, plain, false, ALL, false)).toEqual({ space: null, mode: 'tasks', openDone: false });
+    const work = ws.addSpace('Work').id;
+    const dev = ws.addSpace('Dev').id;
+    const inDev = ws.addTask('Fix the build', { space: dev })!;
+    const inWork = ws.addTask('Send the model', { space: work })!;
+    const finished = ws.addTask('Old one', { space: dev })!;
+    wall += 1000;
+    ws.complete(finished.id);
+    const sheet = ws.addSheet('Dev notes', dev);
+    const done = ws.tasks.get(finished.id)!;
+    expect(planJump(ws, inDev, false, work, false)).toEqual({ space: dev, mode: 'tasks', openDone: false });
+    expect(planJump(ws, inWork, false, work, false)).toEqual({ space: null, mode: 'tasks', openDone: false });
+    expect(planJump(ws, plain, false, work, false)).toEqual({ space: MAIN, mode: 'tasks', openDone: false });
+    expect(planJump(ws, done, false, work, false)).toEqual({ space: dev, mode: 'tasks', openDone: true });
+    expect(planJump(ws, done, false, work, true)).toEqual({ space: dev, mode: 'tasks', openDone: false });
+    expect(planJump(ws, sheet, true, work, false)).toEqual({ space: dev, mode: 'notes', openDone: false });
+    expect(planJump(ws, inDev, false, ALL, false)).toEqual({ space: null, mode: 'tasks', openDone: false });
+    expect(planJump(ws, sheet, true, ALL, false)).toEqual({ space: null, mode: 'notes', openDone: false });
   });
 
   it('stays quick on 10,000 tasks and 500 long notes', () => {

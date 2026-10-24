@@ -15,6 +15,7 @@ import { installKind, onInstallChange, promptInstall, watchInstall } from './ins
 import { animate, EASE_OUT, POP } from './motion';
 import { NotesView } from './notes';
 import { Orb } from './orb';
+import { SearchUi } from './search';
 import { Settings } from './settings';
 import { openMenu, type MenuItem } from './sheet';
 import { SpaceUi } from './spaces';
@@ -50,6 +51,9 @@ export class App {
   private readonly tabs: Record<Mode, HTMLButtonElement>;
   private readonly glow: HTMLElement;
   private readonly gear = h('button.icon-button.settings-open', { type: 'button', 'aria-label': 'Settings', title: 'Settings (,)', onclick: () => this.settings.open() }, svg(icons.gear));
+  /** Search, beside Settings on a phone (wide screens have Ctrl+F). */
+  private readonly searchButton = h('button.icon-button.search-open', { type: 'button', 'aria-label': 'Search', title: 'Search (Ctrl+F)', 'aria-haspopup': 'dialog', onclick: () => this.search.open() }, svg(icons.search));
+  private readonly search: SearchUi;
   private readonly spaces: SpaceUi;
   /** Once there's a space besides Main: the title shows the space on show and switches it. */
   private readonly spaceTitle: HTMLButtonElement;
@@ -82,6 +86,7 @@ export class App {
       activeChanged: () => this.renderSheetActions(),
     });
     this.settings = new Settings(ws, store, this.toasts, sync, this.spaces);
+    this.search = new SearchUi(ws, { spaces: this.spaces, tasks: this.tasks, notes: this.notes, setMode: (mode) => this.setMode(mode) });
 
     // ---- composer: the fastest way into Tack
     this.input = h('input.composer-input', {
@@ -162,7 +167,7 @@ export class App {
         h('h1.title', {}, h('span.t-tasks', { text: 'Tasks' }), h('span.t-notes', { text: 'Notes' }), h('span.t-wide', { text: 'Tack' })),
         this.subtitle,
       ),
-      h('div.actions', {}, this.sheetDelete, this.gear),
+      h('div.actions', {}, this.sheetDelete, this.searchButton, this.gear),
     );
     // A small dot on Settings when sync needs you (and only then: syncing itself is silent).
     const attention = () => {
@@ -559,7 +564,16 @@ export class App {
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
-    if (e.defaultPrevented || document.querySelector('dialog[open]')) return;
+    if (e.defaultPrevented) return;
+    // Ctrl+F (⌘F): Tack's own search, even while typing. Over Settings and the other sheets,
+    // the browser's own find, as before.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+      if (document.querySelector('dialog[open]:not(.search-sheet)')) return;
+      e.preventDefault();
+      this.search.open();
+      return;
+    }
+    if (document.querySelector('dialog[open]')) return;
     const typing = isEditable(document.activeElement);
     const mod = e.ctrlKey || e.metaKey;
     // Alt+0: All; Alt+1…9: the spaces in order. Even while typing (the draft stays). Only the

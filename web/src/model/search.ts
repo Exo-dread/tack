@@ -1,3 +1,4 @@
+import { ALL } from './spaces';
 import type { Sheet, Task } from './types';
 import type { Workspace } from './workspace';
 
@@ -194,4 +195,22 @@ export class SearchIndex {
     results.total = results.tasks.length + results.done.length + results.notes.length;
     return results;
   }
+}
+
+/**
+ * Where opening something search found goes: the space to show (null when the one on show shows
+ * it already: All, or its own; and with no spaces besides Main), its page, and whether Done
+ * unfolds (for a finished task). The same as Tack for Windows (SearchView.Plan).
+ */
+export function planJump(
+  ws: Workspace,
+  item: Task | Sheet,
+  isSheet: boolean,
+  show: string,
+  doneExpanded: boolean,
+): { space: string | null; mode: 'tasks' | 'notes'; openDone: boolean } {
+  const space = ws.spaceOf(item);
+  const to = ws.hasSpaces && show !== ALL && show !== space ? space : null;
+  if (isSheet) return { space: to, mode: 'notes', openDone: false };
+  return { space: to, mode: 'tasks', openDone: !!(item as Task).completed && !doneExpanded };
 }
