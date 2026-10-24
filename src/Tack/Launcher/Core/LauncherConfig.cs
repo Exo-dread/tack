@@ -60,6 +60,13 @@ internal sealed class Shortcut
     /// <summary>Group only: up to <see cref="LauncherConfig.MaxChildren"/> shortcuts (never groups).</summary>
     public List<Shortcut>? Children { get; set; }
 
+    /// <summary>
+    /// Never saved: set only on the stand-in for one of an app's recent files while the launcher is open. The app
+    /// then opens this file (see <see cref="ShortcutRules.Plan"/>).
+    /// </summary>
+    [JsonIgnore]
+    public string? Document { get; set; }
+
     [JsonIgnore]
     public ShortcutKind KindValue => ParseKind(Kind) ?? ShortcutKind.App;
 
@@ -107,6 +114,7 @@ internal sealed class Shortcut
         Id = Id, Label = Label, Kind = Kind, Target = Target, Arguments = Arguments, Launch = Launch,
         Monitor = Monitor?.Clone(),
         Children = Children?.Select(c => c.Clone()).ToList(),
+        Document = Document,
     };
 }
 
@@ -127,6 +135,12 @@ internal sealed class LauncherConfig
 
     /// <summary>No expand/collapse motion (Windows' own "Animation effects" setting is respected as well).</summary>
     public bool ReduceMotion { get; set; }
+
+    /// <summary>
+    /// Resting on an app shows the files it opened last (its Jump List, or the app's own list). Off by default, so
+    /// the launcher behaves exactly as before until it's turned on: resting then shows the display picker.
+    /// </summary>
+    public bool RecentFiles { get; set; }
 
     /// <summary>Exactly <see cref="SlotCount"/> fixed positions, clockwise from the top. Null is an empty position:
     /// removing a shortcut never moves the others, so muscle memory keeps working.</summary>
@@ -242,7 +256,7 @@ internal sealed class LauncherConfig
 
     public LauncherConfig Clone() => new()
     {
-        Version = Version, Enabled = Enabled, ReduceMotion = ReduceMotion,
+        Version = Version, Enabled = Enabled, ReduceMotion = ReduceMotion, RecentFiles = RecentFiles,
         Slots = Slots.Select(s => s?.Clone()).ToList(),
     };
 }

@@ -35,6 +35,10 @@ internal sealed class RadialWindow : Window
     private TextBlock? _caption;
     private NodeRef? _selectorFor;
     private readonly List<Border> _tiles = new();
+    private Border? _recents;
+    private TextBlock? _recentsCaption;
+    private NodeRef? _recentsFor;
+    private readonly List<Border> _rows = new();
     private Hit _shownHighlight = Hit.Nothing;
     private int? _shownGroup;
     private string? _announced;
@@ -188,9 +192,11 @@ internal sealed class RadialWindow : Window
     {
         ShortcutKind.Group => LauncherConfig.CountOf(e.Children?.Count ?? 0),
         ShortcutKind.Url => e.Target,
-        _ => _scene.MultipleDisplays && e.CanTargetDisplay
-            ? $"{e.Target}\nRight-click or keep dragging outward to choose a display."
-            : e.Target,
+        _ => (_scene.MultipleDisplays && e.CanTargetDisplay
+                ? $"{e.Target}\nRight-click or keep dragging outward to choose a display."
+                : e.Target) +
+            (_scene.RecentFilesOn && e.KindValue == ShortcutKind.App && WinPath.Extension(e.Target.Trim().Trim('"')) == ".exe"
+                ? "\nRest on it, or press R, for its recent files." : ""),
     };
 
     // ================= Showing state =================
@@ -231,6 +237,7 @@ internal sealed class RadialWindow : Window
         {
             HitKind.Item when _nodes.TryGetValue(h.Node, out var v) => v,
             HitKind.Display when h.Display >= 0 && h.Display < _tiles.Count => _tiles[h.Display],
+            HitKind.File when h.Node.File < _rows.Count => _rows[h.Node.File],
             _ => null,
         };
         if (target != null) { if (!target.IsKeyboardFocused) target.Focus(); }
@@ -245,6 +252,17 @@ internal sealed class RadialWindow : Window
             if (_shownGroup is { } old) foreach (var c in _scene.ChildrenOf(old)) SetVisible(c, false);
             if (_session.OpenGroup is { } open) foreach (var c in _scene.ChildrenOf(open)) SetVisible(c, true, from: new NodeRef(open));
             _shownGroup = _session.OpenGroup;
+        }
+
+        if (_recentsFor != _session.Recents)
+        {
+            if (_recents != null) _canvas.Children.Remove(_recents);
+            _recents = null;
+            _recentsCaption = null;
+            _rows.Clear();
+            _recentsFor = _session.Recents;
+            if (_recentsFor is { } owner) BuildRecents(owner);
+            if (_shownHighlight.Kind == HitKind.File) _shownHighlight = Hit.Nothing; // its row went with the card
         }
 
         if (_selectorFor != _session.Selector)
@@ -264,9 +282,19 @@ internal sealed class RadialWindow : Window
             SetHot(h, true);
             _shownHighlight = h;
         }
+        // The app whose recent files are out keeps an accent ring, so it's clear whose files they are.
+        if (_ownerShown != _session.Recents && _ownerShown is { } was && h != new Hit(HitKind.Item, was)) SetHot(new Hit(HitKind.Item, was), false);
+        _ownerShown = _session.Recents;
+        if (_ownerShown is { } app && h != new Hit(HitKind.Item, app) && _nodes.TryGetValue(app, out var v) && v is Grid g && g.Children[0] is Ellipse body)
+        {
+            body.SetResourceReference(Shape.StrokeProperty, "AccentBrush");
+            body.StrokeThickness = 1.5;
+        }
         ShowLabel();
         FollowHighlight();
     }
+
+    private NodeRef? _ownerShown;
 
     private void SetVisible(NodeRef node, bool visible, NodeRef? from = null)
     {
@@ -300,6 +328,9 @@ internal sealed class RadialWindow : Window
             case HitKind.Display when hit.Display >= 0 && hit.Display < _tiles.Count:
                 StyleTile(hit.Display, hot);
                 break;
+            case HitKind.File when hit.Node.Owner == _recentsFor && hit.Node.File < _rows.Count:
+                StyleRow(hit.Node.File, hot);
+                break;
         }
     }
 
@@ -320,12 +351,21 @@ internal sealed class RadialWindow : Window
                 ? $"Open {what} on Display {MonitorMatch.Numbers(_scene.Displays)[h.Display]}{(_scene.Displays[h.Display].Primary ? " (main)" : "")}"
                 : $"Open {what} on";
         }
+        // The recent files' caption says which app's they are, or the folder of the one highlighted (its row has the name).
+        if (_recentsCaption != null && _session.Recents is { } app)
+        {
+            var files = _scene.RecentsOf(app);
+            _recentsCaption.Text = h.Kind == HitKind.File && h.Node.Owner == app && files != null && h.Node.File < files.Count
+                ? RecentFiles.ShortFolder(files[h.Node.File].Folder)
+                : $"Recent in {_scene.Entry(app)?.Label}";
+        }
         if (!message && h.Kind == HitKind.Item && _session.Selector != h.Node && _scene.Entry(h.Node) is { } e)
         {
             text = e.Label;
             anchor = _scene.CenterOf(h.Node);
         }
         else if (message && h.Kind is HitKind.Item or HitKind.EmptySlot) anchor = _scene.CenterOf(h.Node);
+        else if (message && h.Kind == HitKind.File) anchor = _scene.CenterOf(h.Node.Owner);
 
         if (string.IsNullOrEmpty(text))
         {
@@ -353,6 +393,7 @@ internal sealed class RadialWindow : Window
         foreach (var v in _nodes.Values)
             if (v.Visibility == Visibility.Visible) keepClear.Add(new PxRect(Canvas.GetLeft(v), Canvas.GetTop(v), v.Width, v.Height));
         if (_selector != null) keepClear.Add(new PxRect(Canvas.GetLeft(_selector), Canvas.GetTop(_selector), _selector.Width, _selector.Height));
+        if (_recents != null) keepClear.Add(new PxRect(Canvas.GetLeft(_recents), Canvas.GetTop(_recents), _recents.Width, _recents.Height));
         double gap = anchor == _scene.Orb ? orbR + 6 : LauncherMetrics.ItemDiameter / 2 + 4;
         var box = RadialLayout.LabelBox(new PxPoint(a.X, a.Y), new PxPoint(o.X, o.Y), size.Width, size.Height, gap, new PxRect(0, 0, Width, Height), keepClear);
         Canvas.SetLeft(_label, box.X);
@@ -429,6 +470,90 @@ internal sealed class RadialWindow : Window
         if (_session.Highlight.Kind == HitKind.Display) { _shownHighlight = Hit.Nothing; }
     }
 
+    // ================= Recent files =================
+
+    /// <summary>An app's recent files: a card of rows (icon, name, extension) beyond it, like the display picker.</summary>
+    private void BuildRecents(NodeRef owner)
+    {
+        var files = _scene.RecentsOf(owner);
+        if (files is not { Count: > 0 }) return;
+        var box = Dip(_scene.RecentsBox(owner));
+        var rows = _scene.RecentRows(owner);
+        string app = _scene.Entry(owner)?.Label ?? "";
+
+        var frame = new Canvas { Width = box.Width, Height = box.Height };
+        var caption = new TextBlock { Text = $"Recent in {app}", FontSize = 11, MaxWidth = box.Width - 20, TextTrimming = TextTrimming.CharacterEllipsis };
+        caption.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        _recentsCaption = caption;
+        Canvas.SetLeft(caption, 10);
+        Canvas.SetTop(caption, 5);
+        frame.Children.Add(caption);
+
+        for (int i = 0; i < files.Count && i < rows.Count; i++)
+        {
+            var file = files[i];
+            var r = Dip(rows[i]);
+            var line = new Grid { Margin = new Thickness(6, 0, 8, 0) };
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            if (LauncherIcons.ForExtension(file.Extension) is { } icon)
+                line.Children.Add(new Image { Source = icon, Width = 16, Height = 16, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false });
+            var name = new TextBlock { Text = file.Stem, FontSize = 12.5, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
+            name.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
+            Grid.SetColumn(name, 1);
+            line.Children.Add(name);
+            var ext = new TextBlock { Text = file.Extension.ToLowerInvariant(), FontSize = 11, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
+            ext.SetResourceReference(TextBlock.ForegroundProperty, "TextTertiaryBrush");
+            Grid.SetColumn(ext, 2);
+            line.Children.Add(ext);
+
+            var node = owner.WithFile(i);
+            var row = new RowVisual(() => _owner.OnInvoke(this, node))
+            {
+                Width = r.Width, Height = r.Height, CornerRadius = new CornerRadius(5), BorderThickness = new Thickness(1), Child = line,
+                Focusable = true, FocusVisualStyle = null, ToolTip = file.Path,
+            };
+            ToolTipService.SetInitialShowDelay(row, 700);
+            AutomationProperties.SetName(row, file.Name);
+            AutomationProperties.SetHelpText(row, $"Opens with {app}. {file.Folder}");
+            Canvas.SetLeft(row, r.X - box.X);
+            Canvas.SetTop(row, r.Y - box.Y);
+            _rows.Add(row);
+            StyleRow(i, false);
+            frame.Children.Add(row);
+        }
+
+        _recents = new Border
+        {
+            Width = box.Width, Height = box.Height, CornerRadius = new CornerRadius(10), BorderThickness = new Thickness(1), Child = frame,
+        };
+        _recents.SetResourceReference(Border.BackgroundProperty, "FlyoutBrush");
+        _recents.SetResourceReference(Border.BorderBrushProperty, "StrokeStrongBrush");
+        AutomationProperties.SetName(_recents, $"Recent files for {app}");
+        Canvas.SetLeft(_recents, box.X);
+        Canvas.SetTop(_recents, box.Y);
+        Panel.SetZIndex(_recents, 18); // under a display picker (20) and the label (30)
+        _canvas.Children.Add(_recents);
+        if (_animate)
+        {
+            // Out of its app, like a group's shortcuts: a short fade and a little travel.
+            var from = Dip(_scene.CenterOf(owner));
+            var center = new Point(box.X + box.Width / 2, box.Y + box.Height / 2);
+            Anim.Fade(_recents, 1, 120, from: 0);
+            Anim.Slide(_recents, (from.X - center.X) * 0.15, (from.Y - center.Y) * 0.15, 160, Anim.EaseOut);
+        }
+    }
+
+    private void StyleRow(int i, bool hot)
+    {
+        var row = _rows[i];
+        if (hot) row.SetResourceReference(Border.BackgroundProperty, "AccentSoftBrush");
+        else row.Background = Brushes.Transparent; // still hit-testable, so the whole row is the target
+        row.SetResourceReference(Border.BorderBrushProperty, "AccentBrush");
+        row.BorderThickness = new Thickness(hot ? 1 : 0);
+    }
+
     private void StyleTile(int i, bool hot)
     {
         var tile = _tiles[i];
@@ -488,6 +613,7 @@ internal sealed class RadialWindow : Window
             Key.Enter when shift => (LauncherKey.PickDisplay, 0),
             Key.Enter or Key.Space => (LauncherKey.Activate, 0),
             Key.M or Key.Apps => (LauncherKey.PickDisplay, 0),
+            Key.R => (LauncherKey.Recents, 0),
             >= Key.D1 and <= Key.D6 => (LauncherKey.Digit, key - Key.D0),
             >= Key.NumPad1 and <= Key.NumPad6 => (LauncherKey.Digit, key - Key.NumPad0),
             _ => null,
@@ -538,5 +664,10 @@ internal sealed class RadialWindow : Window
     private sealed class TileVisual(Action invoke) : Border
     {
         protected override AutomationPeer OnCreateAutomationPeer() => new PartPeer(this, "LauncherDisplay", invoke);
+    }
+
+    private sealed class RowVisual(Action invoke) : Border
+    {
+        protected override AutomationPeer OnCreateAutomationPeer() => new PartPeer(this, "LauncherRecentFile", invoke);
     }
 }

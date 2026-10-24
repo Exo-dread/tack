@@ -150,6 +150,14 @@ internal sealed class LauncherSettingsView : UserControl
         }
         _body.Children.Add(Hint("Positions 1–6 run clockwise from the top (top to bottom at a screen edge) and never move on their own.", UnderList));
         _body.Children.Add(Divider());
+        var recents = new CheckBox { Content = "Recent files", Margin = new Thickness(0, 9, 0, 8), IsChecked = _module.Config.RecentFiles };
+        recents.SetResourceReference(StyleProperty, "ToggleSwitch");
+        recents.Checked += (_, _) => _module.Update(c => c.RecentFiles = true);
+        recents.Unchecked += (_, _) => _module.Update(c => c.RecentFiles = false);
+        _body.Children.Add(Part(recents, "recents", null, 0, "toggle"));
+        _body.Children.Add(Hint("Rest on an app to see the files it opened last, and open one with that app (R with the keyboard).", UnderSwitch));
+        if (_module.Config.RecentFiles && !new WindowsRecentSystem().TrackingAllowed)
+            _body.Children.Add(Hint("Windows is set not to keep recently opened items (Settings → Personalization → Start), so there are none to show.", UnderSwitch));
         var motion = new CheckBox { Content = "Reduce motion", Margin = new Thickness(0, 9, 0, 8), IsChecked = _module.Config.ReduceMotion };
         motion.SetResourceReference(StyleProperty, "ToggleSwitch");
         motion.Checked += (_, _) => _module.Update(c => c.ReduceMotion = true);

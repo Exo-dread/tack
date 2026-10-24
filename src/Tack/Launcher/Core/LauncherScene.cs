@@ -1,11 +1,25 @@
 namespace Tack.Launcher.Core;
 
-/// <summary>A shortcut's position in the launcher: a primary slot, or one of a group's shortcuts.</summary>
-internal readonly record struct NodeRef(int Slot, int Child = -1)
+/// <summary>
+/// A shortcut's position in the launcher: a primary slot, or one of a group's shortcuts; or, with
+/// <see cref="File"/>, one of that shortcut's recent files.
+/// </summary>
+internal readonly record struct NodeRef(int Slot, int Child = -1, int File = -1)
 {
     public bool IsChild => Child >= 0;
+    public bool IsFile => File >= 0;
     public NodeRef Parent => new(Slot);
-    public override string ToString() => IsChild ? $"{Slot}.{Child}" : Slot.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>The shortcut itself (for a recent file, the app it belongs to).</summary>
+    public NodeRef Owner => new(Slot, Child);
+
+    public NodeRef WithFile(int file) => new(Slot, Child, file);
+
+    public override string ToString()
+    {
+        string shortcut = IsChild ? $"{Slot}.{Child}" : Slot.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return IsFile ? $"{shortcut}#{File}" : shortcut;
+    }
 }
 
 /// <summary>
@@ -17,6 +31,9 @@ internal sealed class LauncherScene
     private readonly Dictionary<NodeRef, PxRect> _selectors = new();
     private readonly Dictionary<NodeRef, IReadOnlyList<PxRect>> _tiles = new();
     private readonly Dictionary<NodeRef, string?> _problems = new();
+    private readonly Dictionary<NodeRef, IReadOnlyList<RecentFile>> _recents = new();
+    private readonly Dictionary<NodeRef, PxRect> _recentBoxes = new();
+    private readonly Dictionary<NodeRef, Shortcut> _fileEntries = new();
     private readonly Func<Shortcut, string?> _problem;
 
     private LauncherScene(LauncherConfig config, PxPoint orb, PxRect work, double scale, IReadOnlyList<Display> displays,
@@ -39,14 +56,19 @@ internal sealed class LauncherScene
         }
         Children = children;
         Aspect = RadialLayout.Aspect(displays);
+        RecentFilesOn = config.RecentFiles;
 
-        // The window covers everything that can appear, so it never has to move or grow mid-gesture.
+        // The window covers everything that can appear, so it never has to move or grow mid-gesture. How many recent
+        // files an app has isn't known yet (they're read as it opens), and near an edge a shorter card can sit
+        // somewhere else than a full one: room is kept for each.
         double r = ItemRadius + LauncherMetrics.LabelAllowance * scale;
         var extent = PxRect.Around(orb, OrbRadius + 4 * scale, OrbRadius + 4 * scale);
         foreach (var node in AllNodes())
         {
             extent = extent.Union(PxRect.Around(CenterOf(node), r, r));
             if (CanPickDisplay(node)) extent = extent.Union(SelectorFor(node));
+            if (MayHaveRecents(node))
+                for (int rows = 1; rows <= RecentFiles.Max; rows++) extent = extent.Union(Card(node, rows));
         }
         Extent = extent.Intersect(work);
     }
@@ -74,6 +96,7 @@ internal sealed class LauncherScene
     public Shortcut? Entry(NodeRef n)
     {
         if (n.Slot < 0 || n.Slot >= Slots.Count) return null;
+        if (n.IsFile) return FileEntry(n);
         var s = Slots[n.Slot];
         if (!n.IsChild) return s;
         return s?.Children is { } c && n.Child < c.Count ? c[n.Child] : null;
@@ -81,6 +104,11 @@ internal sealed class LauncherScene
 
     public PxPoint CenterOf(NodeRef n)
     {
+        if (n.IsFile)
+        {
+            var rows = RecentRows(n.Owner);
+            return n.File < rows.Count ? rows[n.File].Center : CenterOf(n.Owner);
+        }
         if (!n.IsChild) return Primary[n.Slot];
         return Children.TryGetValue(n.Slot, out var c) && n.Child < c.Count ? c[n.Child] : Primary[n.Slot];
     }
@@ -121,11 +149,84 @@ internal sealed class LauncherScene
     {
         if (!_selectors.TryGetValue(n, out var box))
         {
-            // What's on show with it: the primary shortcuts and, for a group's shortcut, the rest of that group.
-            var others = AllNodes().Where(o => o != n && (!o.IsChild || o.Slot == n.Slot) && Entry(o) != null).Select(CenterOf).ToList();
-            _selectors[n] = box = RadialLayout.SelectorBox(Orb, CenterOf(n), Work, Scale, Aspect, others);
+            box = RadialLayout.SelectorBox(Orb, CenterOf(n), Work, Scale, Aspect, OthersOnShowWith(n));
+            // A recent file's picker: inside the window, which was sized before the files were known.
+            if (n.IsFile) box = box.ClampInside(Extent);
+            _selectors[n] = box;
         }
         return box;
+    }
+
+    /// <summary>What's on show with a shortcut: the primary shortcuts and, for a group's shortcut, the rest of that group.</summary>
+    private List<PxPoint> OthersOnShowWith(NodeRef n)
+    {
+        var self = n.Owner;
+        return AllNodes().Where(o => o != self && (!o.IsChild || o.Slot == n.Slot) && Entry(o) != null).Select(CenterOf).ToList();
+    }
+
+    // ================= Recent files =================
+
+    /// <summary>Resting on an app shows the files it opened last (Settings → Launcher → Recent files).</summary>
+    public bool RecentFilesOn { get; }
+
+    /// <summary>An app shortcut whose program (.exe) can be found, with recent files turned on.</summary>
+    public bool MayHaveRecents(NodeRef n) =>
+        RecentFilesOn && !n.IsFile && Entry(n) is { KindValue: ShortcutKind.App } e &&
+        WinPath.Extension(e.Target.Trim().Trim('"')) == ".exe" && ProblemOf(n) == null;
+
+    /// <summary>The app's recent files, most recent first; null while they're still being read.</summary>
+    public IReadOnlyList<RecentFile>? RecentsOf(NodeRef owner) => _recents.TryGetValue(owner.Owner, out var files) ? files : null;
+
+    /// <summary>The app's recent files have been read (at most <see cref="RecentFiles.Max"/>; none is an answer too).</summary>
+    public void SetRecents(NodeRef owner, IReadOnlyList<RecentFile> files)
+    {
+        owner = owner.Owner;
+        if (!MayHaveRecents(owner)) return;
+        _recents[owner] = files.Take(RecentFiles.Max).ToList();
+        _recentBoxes.Remove(owner);
+        bool Mine(NodeRef k) => k.IsFile && k.Owner == owner;
+        foreach (var k in _selectors.Keys.Where(Mine).ToList()) _selectors.Remove(k);
+        foreach (var k in _tiles.Keys.Where(Mine).ToList()) _tiles.Remove(k);
+        foreach (var k in _problems.Keys.Where(Mine).ToList()) _problems.Remove(k);
+        foreach (var k in _fileEntries.Keys.Where(Mine).ToList()) _fileEntries.Remove(k);
+    }
+
+    /// <summary>The card the app's recent files are shown in: beyond it, on screen, inside the window.</summary>
+    public PxRect RecentsBox(NodeRef owner)
+    {
+        owner = owner.Owner;
+        if (_recentBoxes.TryGetValue(owner, out var box)) return box;
+        box = Card(owner, Math.Max(1, RecentsOf(owner)?.Count ?? 0)).ClampInside(Extent);
+        _recentBoxes[owner] = box;
+        return box;
+    }
+
+    /// <summary>One row per recent file, top to bottom (none while they're being read).</summary>
+    public IReadOnlyList<PxRect> RecentRows(NodeRef owner) =>
+        RadialLayout.RecentRows(RecentsBox(owner), RecentsOf(owner)?.Count ?? 0, Scale);
+
+    /// <summary>The app's recent files as nodes, in order.</summary>
+    public IReadOnlyList<NodeRef> FilesOf(NodeRef owner) =>
+        Enumerable.Range(0, RecentsOf(owner)?.Count ?? 0).Select(i => owner.Owner.WithFile(i)).ToList();
+
+    private PxRect Card(NodeRef owner, int rows) => RadialLayout.RecentsBox(Orb, CenterOf(owner), Work, Scale, rows, OthersOnShowWith(owner));
+
+    /// <summary>
+    /// A recent file stands in as a copy of its app's shortcut that opens that file: same program, arguments and
+    /// display choice, so launching, the display picker and window placement work as they do for the app.
+    /// </summary>
+    private Shortcut? FileEntry(NodeRef n)
+    {
+        if (_fileEntries.TryGetValue(n, out var entry)) return entry;
+        if (Entry(n.Owner) is not { KindValue: ShortcutKind.App } app || RecentsOf(n.Owner) is not { } files || n.File >= files.Count) return null;
+        var file = files[n.File];
+        entry = new Shortcut
+        {
+            Id = app.Id, Label = file.Name, Kind = "app", Target = app.Target, Arguments = app.Arguments,
+            Launch = app.Launch, Monitor = app.Monitor, Document = file.Path,
+        };
+        _fileEntries[n] = entry;
+        return entry;
     }
 
     /// <summary>The selector's display tiles (same order as <see cref="Displays"/>), below its caption.</summary>

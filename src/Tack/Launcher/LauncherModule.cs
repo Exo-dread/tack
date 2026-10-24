@@ -81,10 +81,12 @@ internal sealed class LauncherModule : IOrbLauncher, IDisposable
                 ForceClose();
                 WindowPlacer.StopAll();
                 LauncherIcons.Clear();
+                AppsIndex.Clear();
             }
             Log.Info(next.Enabled ? "Launcher turned on." : "Launcher turned off.");
             EnabledChanged?.Invoke();
         }
+        if (!next.RecentFiles) AppsIndex.Clear();
         ConfigChanged?.Invoke();
     }
 
@@ -211,7 +213,23 @@ internal sealed class LauncherModule : IOrbLauncher, IDisposable
         _tick = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(40) };
         _tick.Tick += (_, _) => Guard(OnTick);
         _tick.Start();
+        if (scene.RecentFilesOn) ReadRecents(_session);
         Opened?.Invoke();
+    }
+
+    /// <summary>
+    /// With recent files on: the app shortcuts' recent files, read now (each time the launcher opens, never in
+    /// between) on a background thread. Each app's arrive on their own; resting on an app shows them once they're in.
+    /// </summary>
+    private void ReadRecents(LauncherSession session)
+    {
+        var scene = session.Scene;
+        var apps = scene.AllNodes().Where(scene.MayHaveRecents).Select(n => (n, scene.Entry(n)!)).ToList();
+        RecentsLoader.Start(apps, (node, files) => Guard(() =>
+        {
+            if (_session != session || _window == null) return; // closed (or opened again) meanwhile
+            Apply(session.SetRecents(node, files));
+        }));
     }
 
     private void OnTick()
@@ -246,7 +264,7 @@ internal sealed class LauncherModule : IOrbLauncher, IDisposable
     private void Launch(LaunchRequest request)
     {
         var scene = _session!.Scene;
-        var plan = ShortcutRules.Plan(request.Entry, RealFileProbe.Instance, out string? problem);
+        var plan = ShortcutRules.Plan(request.Entry, DesktopFileProbe.Instance, out string? problem);
         if (plan == null)
         {
             // Stay open and say why; nothing else happens.

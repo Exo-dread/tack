@@ -16,6 +16,10 @@ internal static class LauncherMetrics
     public const double SelectorGap = 10;
     public const double LabelAllowance = 26;  // room for the label under a shortcut near the window's edge
     public const double GestureThreshold = 7; // movement that turns a Shift+press into a gesture
+    public const double RecentsWidth = 260;   // an app's recent files: a card of rows beyond the shortcut
+    public const double RecentsCaption = 24;
+    public const double RecentsRow = 28;
+    public const double RecentsPad = 5;
 }
 
 /// <summary>
@@ -65,7 +69,30 @@ internal static class RadialLayout
         // Wide arrangements get a wider, flatter box (up to 1.5x), tall ones a narrower one.
         if (aspect > 2.2) { w *= 1.3; h *= 0.85; }
         else if (aspect < 1.0) { w *= 0.85; }
+        return Card(orb, item, work, scale, w, h, others);
+    }
 
+    /// <summary>
+    /// An app's recent files: a card of <paramref name="rows"/> rows under a caption, placed like the display picker
+    /// (beyond the shortcut, on screen, clear of the orb, the shortcut and the others on show).
+    /// </summary>
+    public static PxRect RecentsBox(PxPoint orb, PxPoint item, PxRect work, double scale, int rows, IReadOnlyList<PxPoint>? others = null)
+    {
+        double w = LauncherMetrics.RecentsWidth * scale;
+        double h = (LauncherMetrics.RecentsCaption + Math.Max(1, rows) * LauncherMetrics.RecentsRow + LauncherMetrics.RecentsPad) * scale;
+        return Card(orb, item, work, scale, w, h, others);
+    }
+
+    /// <summary>The rows of a recent-files card, top to bottom.</summary>
+    public static IReadOnlyList<PxRect> RecentRows(PxRect box, int rows, double scale)
+    {
+        double inset = 4 * scale, top = box.Y + LauncherMetrics.RecentsCaption * scale, row = LauncherMetrics.RecentsRow * scale;
+        return Enumerable.Range(0, Math.Max(0, rows)).Select(i => new PxRect(box.X + inset, top + i * row, box.Width - 2 * inset, row)).ToList();
+    }
+
+    /// <summary>A card of w × h beyond a shortcut: in its direction if it fits, else turned a little, always on screen.</summary>
+    private static PxRect Card(PxPoint orb, PxPoint item, PxRect work, double scale, double w, double h, IReadOnlyList<PxPoint>? others)
+    {
         var area = work.Deflate(LauncherMetrics.EdgeMargin * scale);
         double angle = orb.AngleTo(item);
         double itemR = LauncherMetrics.ItemDiameter / 2 * scale, gap = LauncherMetrics.SelectorGap * scale;

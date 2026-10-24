@@ -10,6 +10,12 @@
   or the sheet with the match selected. Esc closes it and puts the caret back. Until you press
   Ctrl+F nothing on screen changes; Settings → Shortcut lists it. Tack Focus finds exactly the same
   things.
+- **Recent files in the launcher** (optional, off by default: Settings → Launcher → Recent files). Rest on an
+  app in the launcher and the files it opened last fan out beside it; drag onto one and let go (or click it, or
+  press R and Enter) and it opens with that app, on the display the shortcut uses. Shift+drag to Revit 2024, rest,
+  drop on the model: it opens in Revit 2024, even where .rvt files open in another version. The files come from
+  the app's Jump List, then Revit's, AutoCAD's and Navisworks' own recent lists, up to 8 that are still there,
+  read each time the launcher opens and never stored. Dragging on past an app still chooses a display.
 - **Smoother panel resizing.** When the panel changes size (switching tabs, opening Settings, adding a
   task), it now glides all the way instead of jumping most of the way and then settling. When you tick,
   delete or move a task, the panel shrinks with the row as it folds away and stops when the row is gone,
