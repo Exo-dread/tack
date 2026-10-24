@@ -69,6 +69,11 @@ dotnet run --project tests/Tack.Tests -c Release            # sync model, tack.j
 cd web; npm test                                            # Tack Focus, including the shared vectors
 ```
 
+Two tools in the same project run a copy of Tack on your screen (its own temp data, `TACK_INSTANCE=uitestLook`,
+nothing typed or clicked): `-- --frames` times every animation frame by frame (see "Smooth enough, in
+software" in [docs/DESIGN.md](docs/DESIGN.md)), and `-- --screens` takes pictures of the panel's looks as the
+screen shows them. Run them before and after a change to motion or the glass.
+
 The two apps must merge and sync identically, so Tack for Windows' `Sync` code is checked against
 vectors computed by Tack Focus's own code. If you change `web/src/model` or `web/src/sync`, regenerate
 them and port the change: `npm run vectors` (in `web/`) rewrites `tests/vectors/sync.json` and

@@ -48,6 +48,8 @@ and gets out of the way the moment you're done.
   app to choose the display it opens on. It's off by default, and while it's off nothing changes.
 - **Windows 11 glass, light or dark.** Native acrylic, rounded corners, your accent colour, smooth and
   short animations. Follows Windows' light/dark mode, or pick one. Crisp on every monitor, at any scaling.
+  Make the background more solid or more see-through, and, if you like, have Tack fade back while you
+  aren't pointing at it.
 - **Sized to fit.** The Tasks panel grows and shrinks with your list (then scrolls), Notes keeps its own
   size, and any size you drag to is remembered per tab. Switching tabs never makes the panel jump.
 - **Polite.** Steps aside while a full-screen video, game or slideshow is in front.
@@ -80,7 +82,9 @@ home screen. What's new: [CHANGELOG.md](CHANGELOG.md) (Tack), [web/CHANGELOG.md]
 | **Open / fold** | Click the orb, or press **Ctrl+Alt+Space** anywhere. **Esc** folds it back. |
 | **Move** | Drag the orb, or drag the panel by its header. The orb follows the panel's nearest corner. |
 | **Resize** | Drag the panel's edges. Each tab remembers its own size; until you resize Tasks, it fits its list. Double-click the header to go back to automatic sizing. |
-| **Theme** | **Settings → Theme**: System (follows Windows), Light or Dark. |
+| **Theme** | **Settings → Look**: System (follows Windows), Light or Dark. |
+| **Background** | **Settings → Look → Panel background**: from solid to see-through (only the background; text stays crisp). The tick is the default. |
+| **Fade when idle** | **Settings → Look** (off by default): the orb and a pinned panel fade to half when the pointer's been away a few seconds, and come back when you point at them. |
 | **Sync** | **Settings → Sync → Turn on sync** keeps Tack in step with [Tack Focus](web/README.md) through your OneDrive (see below). |
 | **Import** | **Settings → Import** merges a tack.json from [Tack Focus](web/README.md) (its Settings → Export), another PC or a backup. Undo puts it back. |
 | **Pin** | 📌 keeps the panel open over other apps. Unpinned, it folds away when you click elsewhere. |
