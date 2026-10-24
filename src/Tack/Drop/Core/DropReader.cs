@@ -278,7 +278,8 @@ internal static class DropReader
         return AnsiEncoding.GetString(z >= 0 ? bytes[..z] : bytes);
     }
 
-    private static readonly Encoding AnsiEncoding = MakeAnsi();
+    /// <summary>The PC's ANSI code page, for the formats older apps put text in without Unicode.</summary>
+    internal static readonly Encoding AnsiEncoding = MakeAnsi();
 
     private static Encoding MakeAnsi()
     {

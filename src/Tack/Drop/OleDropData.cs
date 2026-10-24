@@ -86,7 +86,7 @@ internal sealed class OleDropData : IDropData
             if (end == at) break; // the extra NUL: the end of the list
             count++;
             if (count <= max)
-                list.Add(wide ? System.Text.Encoding.Unicode.GetString(block, at, end - at) : System.Text.Encoding.Default.GetString(block, at, end - at));
+                list.Add(wide ? System.Text.Encoding.Unicode.GetString(block, at, end - at) : DropReader.AnsiEncoding.GetString(block, at, end - at));
             at = end + unit;
         }
         return count > max ? null : list;

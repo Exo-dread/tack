@@ -73,7 +73,7 @@ internal sealed class DropIntake
             added[i].AttachmentTip = AttachmentRules.Tip(a);
             any = true;
         }
-        if (any) _store.Save();
+        if (any) Save();
 
         string message = added.Length == 1 ? "Added a task" : $"Added {added.Length} tasks";
         return new DropOutcome(added, message, Describe(notes), () => { foreach (var t in added) _ws.Delete(t); }, NotKept: notes.Count);
@@ -200,8 +200,15 @@ internal sealed class DropIntake
         var gone = _store.Prune(id => Keep(_ws, id, nowMs));
         foreach (string id in gone)
             if (_ws.TaskById(id) is { } t) t.AttachmentTip = null;
-        if (gone.Count > 0) _store.Save();
+        if (gone.Count > 0) Save();
         return gone.Count;
+    }
+
+    /// <summary>attachments.json, written now; if that fails, the attachments still work and the next write has them.</summary>
+    private void Save()
+    {
+        try { _store.Save(); }
+        catch (Exception ex) { Services.Log.Error("Drop: couldn't save attachments.json", ex); }
     }
 
     /// <summary>Puts each task's paperclip on (after loading).</summary>

@@ -138,6 +138,15 @@ internal static class DropTests
         Directory.CreateDirectory(sub);
         string gone = Path.Combine(models, "Moved away.dwg");
 
+        // An ANSI DROPFILES (fWide 0), as some older apps write it.
+        var narrow = new MemoryStream();
+        narrow.Write(BitConverter.GetBytes(20u));
+        narrow.Write(new byte[16]);
+        narrow.Write(Encoding.ASCII.GetBytes(report + "\0\0"));
+        Check.Sequence([report], OleDropData.ParseDropFiles(narrow.ToArray(), 20, out int narrowCount)!.ToList(), "an ANSI file list");
+        Check.Equal(1, narrowCount, "of one");
+        Check.Equal(null, OleDropData.ParseDropFiles(new byte[] { 200, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0 }, 20, out _), "a list that points past its end is no list");
+
         // Explorer's CF_HDROP, in this process (SetData) and from another (OLE).
         foreach (var data in new[]
         {
@@ -201,6 +210,15 @@ internal static class DropTests
         Check.Equal("Coordination meeting.eml", Path.GetFileName(emlCopy), "under the name it was dragged with");
         Check.Equal("RE: Clash report L3", DesktopDrop.MsgSubject(AttachmentRules.SavedPath(s.Store.Folder, s.Store.For(o.Added[0].Id)!.Target)!), "the .msg a real compound file");
 
+        // An older app's ANSI list of virtual files.
+        var ansi = new byte[4 + 332];
+        BitConverter.GetBytes(1u).CopyTo(ansi, 0);
+        BitConverter.GetBytes(0x04u).CopyTo(ansi, 4);
+        BitConverter.GetBytes(0x80u).CopyTo(ansi, 4 + 36);
+        Encoding.ASCII.GetBytes("Minutes.eml").CopyTo(ansi, 4 + 72);
+        var old = s.Take(new OleSource().Bytes(DropFormats.Descriptor, ansi).StreamOf(DropFormats.Contents, Eml("Minutes of the BIM meeting"), 0).ToData());
+        Check.Sequence(["Minutes of the BIM meeting"], Texts(old), "an ANSI descriptor too");
+
         // The same email in this process: one virtual file, as WPF holds it.
         var local = new DataObject();
         local.SetData(DropFormats.DescriptorW, new MemoryStream(OleSource.Descriptor(("Site visit.eml", null, false))));
@@ -250,6 +268,10 @@ internal static class DropTests
         var bare = new DataObject();
         bare.SetData(DropFormats.UrlW, new MemoryStream(Encoding.Unicode.GetBytes("http://intranet.local/wiki/Clash_rules\0")));
         Check.Sequence(["http://intranet.local/wiki/Clash_rules"], Texts(s.Take(bare)), "the address, when there's no title");
+
+        // An older browser's ANSI address.
+        var ansi = new OleSource().Bytes(DropFormats.Url, Encoding.ASCII.GetBytes("https://bim360.example/model\0")).ToData();
+        Check.Sequence(["https://bim360.example/model"], Texts(s.Take(ansi)), "the ANSI address too");
 
         // A title from the .url file's name when that's all there is.
         var named = new OleSource()
