@@ -108,18 +108,15 @@ public partial class NotesView : UserControl
         // blank paper cleared it).
         bool madeOnPaper = _makingFromPaper;
 
-        // A sheet switch replaces the text wholesale; it must not become an undo step.
-        if (!madeOnPaper)
-        {
-            Editor.IsUndoEnabled = false;
-            Editor.IsUndoEnabled = true;
-        }
-
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
-            // With spaces, a switch can land on blank paper, where Undo bringing back the text it
-            // replaced would make a sheet of it: clear again, now that the new text is in.
-            if (_view.HasSpaces && !madeOnPaper)
+            // A sheet switch replaces the text wholesale; it must not become an undo step (on blank
+            // paper, Undo bringing back the text it replaced would make a sheet of it). Cleared here,
+            // once the new text is in, and not as the switch happens: that can be inside one of the
+            // editor's own changes (a keystroke and whatever it sets off), where the TextBox throws
+            // rather than touch its history. WPF runs nothing queued until the change ends, and this
+            // still runs before the next keystroke.
+            if (!madeOnPaper)
             {
                 Editor.IsUndoEnabled = false;
                 Editor.IsUndoEnabled = true;
@@ -147,9 +144,9 @@ public partial class NotesView : UserControl
 
     /// <summary>
     /// The first keystroke on a space's blank paper makes its sheet, with what was typed. Not here
-    /// and now: the editor is still inside its change, where switching to the new sheet (which
-    /// resets the undo history) isn't allowed, so the sheet is made as soon as the change is done
-    /// (before the next keystroke is handled).
+    /// and now: the editor is still inside its change, where switching to the new sheet lost
+    /// keystrokes, so the sheet is made as soon as the change is done (before the next keystroke is
+    /// handled).
     /// </summary>
     private void Editor_TextChanged(object sender, TextChangedEventArgs e)
     {

@@ -58,6 +58,9 @@ turn it on or out of sight until you use it; until then Tack looks and behaves a
   own pace (on a 100 Hz display, from about 75 new frames a second to well over 100), and both it and
   the undo toast take about half the work, so they stay smooth when the PC is busy: while they move, a
   picture of them stands in, so their shadow isn't drawn again for every frame.
+- Notes: a sheet switch that comes in the middle of an edit (from a keystroke, say) waits for the
+  edit to end before clearing Undo, instead of being able to crash Tack. As before, the switch isn't
+  an undo step, and what's typed on blank paper stays undoable.
 
 ## 1.6.1 (2026-10-24)
 
