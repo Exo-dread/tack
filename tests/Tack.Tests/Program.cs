@@ -23,7 +23,7 @@ internal static class Program
         IsoTime.ZoneOverride = TimeZoneInfo.Utc;
 
         var tests = VectorTests.All().Concat(OrderTests.All()).Concat(StateFileTests.All()).Concat(SyncTests.All()).Concat(HostileFileTests.All())
-            .Concat(SpacesTests.All()).Concat(SpaceViewTests.All()).Concat(ScreenTests.All()).Concat(LauncherTests.All()).Concat(LauncherScreenTests.All()).ToList();
+            .Concat(SpacesTests.All()).Concat(SpaceViewTests.All()).Concat(ScreenTests.All()).Concat(LauncherTests.All()).Concat(LauncherScreenTests.All()).Concat(GlideTests.All()).ToList();
         string? only = args.FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal));
         if (only != null) tests = tests.Where(t => t.Name.Contains(only, StringComparison.OrdinalIgnoreCase)).ToList();
 

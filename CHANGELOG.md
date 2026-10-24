@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Smoother panel resizing.** When the panel changes size (switching tabs, opening Settings, adding a
+  task), it now glides all the way instead of jumping most of the way and then settling. When you tick,
+  delete or move a task, the panel shrinks with the row as it folds away and stops when the row is gone,
+  with no strip of empty glass trailing behind.
+
 ## 1.6.1 (2026-10-24)
 
 Sync stands up better to damaged and hostile files. From a second security review of Tack and

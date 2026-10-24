@@ -26,6 +26,7 @@ public partial class TasksView : UserControl
     private static readonly Regex ListMarker = new(@"^\s*(?:[-*+•·◦▪–]\s+|\d{1,3}[.)]\s+|\[[ xX]?\]\s*)", RegexOptions.Compiled);
 
     private readonly Dictionary<TaskItem, DispatcherTimer> _checking = new();
+    private readonly HashSet<FrameworkElement> _folding = new(); // rows folding away right now
     private Workspace _ws = null!;
     private SpaceView _view = null!;
     private PanelWindow _panel = null!;
@@ -39,6 +40,36 @@ public partial class TasksView : UserControl
 
     /// <summary>Raised whenever the list's natural height may have changed (rows added, removed, re-wrapped, folded).</summary>
     public event Action? ContentHeightChanged;
+
+    /// <summary>Raised as a row starts folding away (ticked, deleted, moved to another space), with how long it takes (ms).</summary>
+    public event Action<double>? RowFolding;
+
+    /// <summary>
+    /// How tall the page would like to be at <paramref name="width"/>, with nothing to scroll. A row that is
+    /// folding away is already left out, so a panel that fits its list knows its final height from the
+    /// first frame and shrinks once, in step with the row, instead of chasing it frame by frame.
+    /// </summary>
+    internal double FittedHeight(double width)
+    {
+        Measure(new Size(width, double.PositiveInfinity));
+        double height = DesiredSize.Height;
+        foreach (var row in _folding)
+            if (row.IsVisible) height -= row.DesiredSize.Height;
+        InvalidateMeasure(); // hand layout back to the window
+        return height;
+    }
+
+    /// <summary>Folds a row away (its height to nothing, eased in), then runs <paramref name="completed"/>.</summary>
+    private void Fold(FrameworkElement row, double ms, Action completed)
+    {
+        _folding.Add(row);
+        RowFolding?.Invoke(ms);
+        Anim.Collapse(row, ms, () =>
+        {
+            _folding.Remove(row);
+            completed();
+        });
+    }
 
     internal void Initialize(Workspace ws, SpaceView view, PanelWindow panel)
     {
@@ -160,7 +191,7 @@ public partial class TasksView : UserControl
             if (Keyboard.FocusedElement is TextBox tb && tb.DataContext == task) FocusInput();
             var container = ContainerFor(task);
             if (container == null) _ws.Complete(task);
-            else Anim.Collapse(container, 200, () => _ws.Complete(task));
+            else Fold(container, 200, () => _ws.Complete(task));
             Anim.Set(NowEditor, OpacityProperty, 1);
         };
         _checking[task] = timer;
@@ -234,7 +265,7 @@ public partial class TasksView : UserControl
 
         var container = animate ? ContainerFor(task) : null;
         if (container == null) Remove();
-        else Anim.Collapse(container, 180, Remove);
+        else Fold(container, 180, Remove);
     }
 
     // ================= Context menu =================
@@ -293,7 +324,7 @@ public partial class TasksView : UserControl
                 if (task == _ws.Now) AnimateNowCard(); else AnimateIn(task);
             });
         }
-        if (leaves && ContainerFor(task) is { } container) Anim.Collapse(container, 180, Move);
+        if (leaves && ContainerFor(task) is { } container) Fold(container, 180, Move);
         else Move();
     }
 

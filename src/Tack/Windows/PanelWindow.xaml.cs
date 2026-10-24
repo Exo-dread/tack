@@ -38,6 +38,7 @@ public partial class PanelWindow : Window
     private bool _settingsOpen;
     private bool _userResized;
     private bool _sizeChangePending;
+    private GlideTiming? _sizeChangeInStep; // the pending request is a row folding away: glide in step with it
     private IReadOnlyList<SpaceTab> _stripTabs = [];
     private int _stripLimit = SpaceView.MaxListed; // spaces the strip draws ("More spaces" draws as many again)
     private bool _syncingStrip; // the strip is being brought in line with the space on show, not clicked
@@ -55,8 +56,11 @@ public partial class PanelWindow : Window
     /// <summary>Raised after the user finishes dragging or resizing the panel.</summary>
     public event Action? UserMovedOrResized;
 
-    /// <summary>Raised when the panel would like a different size: tab switch, settings, or the task list grew or shrank.</summary>
-    public event Action? PreferredSizeChanged;
+    /// <summary>
+    /// Raised when the panel would like a different size: tab switch, settings, or the task list grew or
+    /// shrank. With a timing when the change is a row folding away: the panel's glide keeps in step with it.
+    /// </summary>
+    internal event Action<GlideTiming?>? PreferredSizeChanged;
 
     internal PanelWindow(Workspace ws, SpaceView view, AppShell shell)
     {
@@ -72,6 +76,7 @@ public partial class PanelWindow : Window
 
         TasksPage.Initialize(ws, view, this);
         TasksPage.ContentHeightChanged += () => { if (IsTasksAutoSized) RequestPreferredSize(); };
+        TasksPage.RowFolding += ms => { if (IsTasksAutoSized) RequestPreferredSize(new GlideTiming(WindowBoundsAnimator.Clock, ms, EaseIn: true)); };
         NotesPage.Initialize(ws, view, this);
         SettingsPage.Initialize(ws, view, shell, this);
 
@@ -171,10 +176,8 @@ public partial class PanelWindow : Window
     /// <summary>How tall the panel must be to show the whole task list at this width (clamped).</summary>
     private double FitTasksHeight(double width, double maxHeight)
     {
-        TasksPage.Measure(new Size(width, double.PositiveInfinity));
         double strip = Strip.Visibility == Visibility.Visible ? Strip.Height + Strip.Margin.Top + Strip.Margin.Bottom : 0;
-        double natural = Math.Ceiling(HeaderHeight + strip + TasksPage.DesiredSize.Height);
-        TasksPage.InvalidateMeasure(); // hand layout back to the window
+        double natural = Math.Ceiling(HeaderHeight + strip + TasksPage.FittedHeight(width));
         return Math.Clamp(natural, Settings.MinHeight, Math.Max(Settings.MinHeight, maxHeight));
     }
 
@@ -213,14 +216,17 @@ public partial class PanelWindow : Window
     }
 
     /// <summary>Coalesces bursts of changes (e.g. every frame of a row animation) into one request per layout pass.</summary>
-    private void RequestPreferredSize()
+    private void RequestPreferredSize(GlideTiming? inStep = null)
     {
+        if (inStep != null) _sizeChangeInStep = inStep;
         if (_sizeChangePending) return;
         _sizeChangePending = true;
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             _sizeChangePending = false;
-            PreferredSizeChanged?.Invoke();
+            var timing = _sizeChangeInStep;
+            _sizeChangeInStep = null;
+            PreferredSizeChanged?.Invoke(timing);
         });
     }
 

@@ -88,7 +88,7 @@ internal sealed class AppShell : IDisposable
         _panel.Deactivated += (_, _) => { if (_expanded && !_ws.Settings.Pinned) _collapseCheck.Start(); };
         _panel.UserMovedOrResized += RememberAnchorFromPanel;
         _panel.SizeMoveStarted += () => _panelBounds?.Stop();
-        _panel.PreferredSizeChanged += () => FitPanel(animate: true);
+        _panel.PreferredSizeChanged += inStep => FitPanel(animate: true, inStep);
 
         _hotkey.Pressed += Toggle;
         _watcher.ForegroundChanged += OnForegroundChanged;
@@ -329,9 +329,10 @@ internal sealed class AppShell : IDisposable
     /// Resizes the open panel to what the current tab wants (tab switch, settings, tasks added or
     /// finished). The corner nearest the orb stays put, so the panel grows and shrinks away from it
     /// instead of jumping, and it is nudged back inside the screen if it would spill over.
-    /// A size the user dragged to is respected: it *is* the tab's preferred size.
+    /// A size the user dragged to is respected: it *is* the tab's preferred size. A row folding away
+    /// comes with its timing, so the panel shrinks in step with it.
     /// </summary>
-    private void FitPanel(bool animate)
+    private void FitPanel(bool animate, GlideTiming? inStep = null)
     {
         if (!_expanded || _panelBounds == null || !_panel.IsVisible || _panel.IsInSizeMove) return;
 
@@ -342,7 +343,7 @@ internal sealed class AppShell : IDisposable
         int y = _anchorBottom ? basis.Y + basis.Height - h : basis.Y;
         var target = ScreenGeometry.Clamp(new Int32Rect(x, y, w, h), mon.Work, mon.Px(PanelInset));
 
-        if (animate) _panelBounds.AnimateTo(target);
+        if (animate) _panelBounds.AnimateTo(target, inStep);
         else _panelBounds.JumpTo(target);
     }
 

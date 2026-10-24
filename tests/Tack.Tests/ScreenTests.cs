@@ -374,6 +374,22 @@ internal static class Ui
         for (int i = 0; i < 3; i++) Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ContextIdle);
     }
 
+    /// <summary>Lets the dispatcher run, timers and the frames that drive animations too, until <paramref name="done"/> or <paramref name="timeoutMs"/>.</summary>
+    public static void WaitUntil(Func<bool> done, int timeoutMs)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var frame = new DispatcherFrame();
+        var poll = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(5) };
+        poll.Tick += (_, _) =>
+        {
+            if (!done() && clock.ElapsedMilliseconds < timeoutMs) return;
+            poll.Stop();
+            frame.Continue = false;
+        };
+        poll.Start();
+        Dispatcher.PushFrame(frame);
+    }
+
     /// <summary>Every element of type <typeparamref name="T"/> inside <paramref name="root"/>, in the visual tree.</summary>
     public static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
     {

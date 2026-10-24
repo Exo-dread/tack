@@ -175,8 +175,14 @@ exactly where the orb was. Move the panel and the orb's home moves to the panel'
 positions are clamped back onto a connected monitor at startup and whenever displays change.
 
 Resizing while open goes through `WindowBoundsAnimator`, which interpolates each edge separately, so the
-anchored edges don't move by even a pixel, and retargets smoothly if the size changes again mid-glide
-(as it does every frame while a finished task's row folds away). Auto-fit measures the Tasks view at the
+anchored edges don't move by even a pixel. It takes one step per frame: resizing a WPF window renders it
+inside `SetWindowPos`, and that render raises a frame of its own, which the animator ignores (otherwise each
+step would set off the next and the glide would run through in a burst). A glide's clock starts on its
+first frame, after a one-pixel step, so the wait for that frame doesn't eat the start of the curve. If the
+size changes again mid-glide, it carries on from where it is and keeps its end time (at least 120 ms more
+for a big change late on). A row folding away (a task ticked, deleted or moved to another space) is left out
+of the list's height from its first frame, so the panel glides once, in step with the row's own clock and
+ease-in, instead of chasing it. Auto-fit measures the Tasks view at the
 panel's width with unlimited height; a manual resize is recognised by `WM_SIZING` between
 `WM_ENTERSIZEMOVE` and `WM_EXITSIZEMOVE`, so Tack's own resizing never counts as yours.
 
