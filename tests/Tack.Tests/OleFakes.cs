@@ -205,16 +205,22 @@ internal sealed class OleSource : ComTypes.IDataObject
     }
 }
 
-/// <summary>A stream that never ends (a hostile or broken source).</summary>
+/// <summary>
+/// A stream that goes on and on (a hostile or broken source): to Tack, it never ends. So that a broken cap fails
+/// the test instead of filling the disk, it does stop, well past anything Tack should read.
+/// </summary>
 internal sealed class EndlessComStream : ComTypes.IStream
 {
+    private const long SafetyStop = Tack.Drop.Core.DropLimits.MaxSavedBytes + 16 * 1024 * 1024;
+
     public long Served { get; private set; }
 
     public void Read(byte[] pv, int cb, IntPtr pcbRead)
     {
-        Array.Fill(pv, (byte)'x', 0, cb);
-        Served += cb;
-        if (pcbRead != IntPtr.Zero) Marshal.WriteInt32(pcbRead, cb);
+        int n = (int)Math.Max(0, Math.Min(cb, SafetyStop - Served));
+        Array.Fill(pv, (byte)'x', 0, n);
+        Served += n;
+        if (pcbRead != IntPtr.Zero) Marshal.WriteInt32(pcbRead, n);
     }
 
     public void Seek(long dlibMove, int dwOrigin, IntPtr plibNewPosition) { }

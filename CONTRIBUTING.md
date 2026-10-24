@@ -34,6 +34,7 @@ so both can run side by side (with its own `TackData` folder, as above).
 | `src/Tack/Services/` | `StateStore` (JSON persistence), `StateFile` (tack.json and records), `FolderSync` and `LocalSyncFolder` (sync through a folder), Import, accent colour, startup registration, log, single instance |
 | `src/Tack/Interop/` | Win32 and DWM: glass, monitors/DPI, hotkey, shell watcher. All P/Invoke is in `NativeMethods.cs` |
 | `src/Tack/Windows/` | The three windows: orb, peek bubble, panel |
+| `src/Tack/Drop/` | Dropping onto the orb and the paperclips it leaves: `Core/` reads a drag into tasks (bounded, tested with real data objects and hostile ones) and keeps `attachments.json`; `OleDropData` reads another app's OLE data; `DropModule` ties the orb, its bubble and the panel's toast together |
 | `src/Tack/Launcher/` | The optional radial launcher (off by default): `Core/` is platform-neutral and unit-tested; the rest is its window, settings card and Windows launching/placement. See [docs/LAUNCHER.md](docs/LAUNCHER.md) |
 | `src/Tack/Views/` | Tasks, Notes and Settings pages shown inside the panel |
 | `src/Tack/Controls/` | Custom-drawn orb, animation helpers, converters |

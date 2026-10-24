@@ -73,6 +73,30 @@ to stricter rules than anything else: off by default, reached only with Shift (o
 the orb are untouched), settings in its own `launcher.json` that tack.json and sync never see, and, off,
 nothing loaded beyond checking that file. Details: [LAUNCHER.md](LAUNCHER.md).
 
+### Dropping onto the orb: capture without switching
+The orb is always on screen, so it's also the quickest place to put something you've just seen: an email in
+Outlook, a clash report in Explorer, a page in the browser. Drag it onto the orb and it's a task, and you never
+left the app you were in. The orb lights up (an accent halo and a **+** in place of the count) and a bubble
+beside it says what letting go will do; afterwards the same bubble says what was added, with Undo, and steps
+aside on its own. Like the panel, it never takes focus.
+
+- **One task per item, named the way you'd name it:** a file by its name without the extension, an email by
+  its subject, a page by its title, text one line at a time (as a paste). In the space on show, first on top.
+- **The task is what syncs; what it points to stays on this PC.** The path, link or saved email lives in
+  `attachments.json` and an `attachments` folder beside tack.json, never in tack.json, never synced, imported
+  or exported. A paperclip on the row (Ctrl+O, or the task's menu) opens it, through the launcher's rules:
+  ShellExecute on a full path, or an http(s) address in the browser. A task from another device never has one.
+- **Emails are kept, everything else is linked.** An email (or anything an app drags as a "virtual file") has
+  no place on disk, so Tack saves a copy, marked as from outside the PC as a browser marks a download. A file
+  in a temporary folder is copied too, since whoever put it there will clean it away. Programs are never kept.
+- **Bounded, and never a move.** More than 20 items is refused before any of it is read; text is read up to
+  2 MB, a copy up to 50 MB, the folder up to 500 MB. Tack tells the app it came from that it linked or copied,
+  never that it moved, so an email stays in your mailbox and dragged text stays where it was.
+- **Nothing lingers.** When a task is deleted for good (its Undo has lapsed, or another device deleted it
+  some minutes ago), its attachment goes, and the saved copy with it.
+- **Nothing until you use it.** Until something is dragged over the orb, the only cost is one look for
+  attachments.json at startup; the bubble is made the first time.
+
 ### Progress that resets itself
 The orb's ring is *today's* finished share of work: done today ÷ (done today + still open). It needs no
 reset button, no streaks, no stats screen. Each morning it starts empty again.
@@ -141,6 +165,7 @@ src/Tack
 ├── Interop/               Win32/DWM: glass, monitors & DPI, global hotkey, shell watcher
 ├── Windows/               OrbWindow, PeekWindow, PanelWindow
 ├── Launcher/              The optional radial launcher: Core/ (platform-neutral, tested), its window, settings card, launching
+├── Drop/                  Dropping onto the orb: Core/ (reading drags, attachments.json, the rules; tested), OLE, the module
 ├── Views/                 TasksView, NotesView, SettingsView (UserControls inside the panel)
 ├── Controls/              OrbVisual (custom-drawn), animation helpers, converters
 └── Themes/                Theme.xaml (typography and every control style), Dark.xaml / Light.xaml (palettes)
@@ -155,7 +180,7 @@ keeps them in step, and with no space besides Main (or in All) it hands the view
 collections, which is what keeps the panel exactly as it was until a second space exists.
 
 ### Windows
-Three top-level windows (four with the launcher open), each doing one job:
+Three top-level windows (four with the launcher open, and a bubble beside the orb for a drop), each doing one job:
 
 | Window | Kind | Why |
 |---|---|---|
@@ -163,6 +188,7 @@ Three top-level windows (four with the launcher open), each doing one job:
 | Peek | Layered, topmost, click-through | Informational only; can't get in the way |
 | Panel | Normal window with DWM backdrop, topmost | Real acrylic, native corners/shadow, resizable |
 | Launcher (optional) | Layered, topmost; created when opened, closed after | Exists only while it's open |
+| Drop bubble | Layered, topmost, `WS_EX_NOACTIVATE`; click-through until it offers Undo | Made the first time something is dragged over the orb |
 
 ### Placement across monitors
 All placement is done in **physical pixels** through `SetWindowPos`, never WPF's `Left`/`Top`

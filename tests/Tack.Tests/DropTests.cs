@@ -178,7 +178,7 @@ internal static class DropTests
     private static void Emails()
     {
         using var s = new Setup();
-        string msgSource = Path.Combine(TempDir(), "source.msg");
+        string msgSource = Path.Combine(s.Folder, "source.msg");
         byte[] eml = Eml("=?utf-8?B?Q2/DtnJkaW5hdGlvbiBtZWV0aW5n?= =?iso-8859-1?Q?_=E9tage_3?=");
         var source = new OleSource()
             .Bytes(DropFormats.DescriptorW, OleSource.Descriptor(("RE Clash report L3.msg", null, false), ("Coordination meeting.eml", eml.Length, false)))
@@ -244,6 +244,7 @@ internal static class DropTests
         Check.True(File.Exists(AttachmentRules.SavedPath(s.Store.Folder, a.Target)!), "and still there once the original is cleaned away");
         Check.Equal(null, s.Store.For(o.Added[1].Id), "a program from a temporary folder is neither copied nor linked");
         Check.Equal(1, o.NotKept, "and the toast says one wasn't kept");
+        try { Directory.Delete(temp, recursive: true); } catch { }
     }
 
     private static void Links()
