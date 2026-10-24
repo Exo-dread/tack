@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.1 (2026-10-24)
 
 Sync stands up better to damaged and hostile files. From a second security review of Tack and
 Tack Focus.

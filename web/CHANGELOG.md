@@ -1,6 +1,9 @@
 # Tack Focus changelog
 
-## Unreleased
+## 0.4.3 (24 October 2026)
+
+Sync stands up better to damaged and hostile files, and is gentler on Microsoft. From a second
+security review of Tack and Tack Focus.
 
 - **Sturdier against bad files in the sync folder.** Ways a damaged or hostile file could stop sync
   between your other devices, even after it was gone, are closed. Each device now takes in no more
