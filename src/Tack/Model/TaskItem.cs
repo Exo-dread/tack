@@ -13,6 +13,7 @@ public sealed class TaskItem : Observable
     private string? _completedIso;
     private bool _isChecking;
     private string? _spaceLabel;
+    private string? _attachmentTip;
 
     internal TaskItem(TaskData data)
     {
@@ -50,6 +51,16 @@ public sealed class TaskItem : Observable
     {
         get => _spaceLabel;
         set => Set(ref _spaceLabel, value);
+    }
+
+    /// <summary>
+    /// UI-only: what its paperclip opens ("Open Clash report L3.pdf"), when something dropped onto the orb left
+    /// an attachment on it on this PC (attachments.json, never synced); else null and no paperclip.
+    /// </summary>
+    public string? AttachmentTip
+    {
+        get => _attachmentTip;
+        set => Set(ref _attachmentTip, value);
     }
 
     public bool CompletedToday => CompletedAt is { } c && c.LocalDateTime.Date == DateTime.Today;

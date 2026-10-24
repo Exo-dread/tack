@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using Tack.Controls;
+using Tack.Drop;
 using Tack.Interop;
 using Tack.Launcher;
 using static Tack.Interop.NativeMethods;
@@ -32,6 +33,12 @@ public partial class OrbWindow : Window, IFadingWindow
     public event Action? DragFinished;
     public event Action<bool>? HoverChanged;
 
+    /// <summary>
+    /// Something dragged from another app came over the orb (true), or left it or was let go (false). A drag
+    /// raises no mouse events here, so this is how a faded orb knows to come back.
+    /// </summary>
+    public event Action<bool>? DragHoverChanged;
+
     public OrbWindow()
     {
         InitializeComponent();
@@ -45,6 +52,36 @@ public partial class OrbWindow : Window, IFadingWindow
             if (_pressed) OnRelease(this, null);
             else if (_launcherPress) { _launcherPress = false; Launcher?.CancelGesture(); }
         };
+        Orb.DragEnter += (_, e) =>
+        {
+            DragHoverChanged?.Invoke(true);
+            ToDropTarget(e, t => t.DragEnter(e.Data, e.AllowedEffects));
+        };
+        Orb.DragOver += (_, e) => ToDropTarget(e, t => t.DragOver(e.AllowedEffects));
+        Orb.DragLeave += (_, e) =>
+        {
+            ToDropTarget(e, t => { t.DragLeave(); return DragDropEffects.None; });
+            DragHoverChanged?.Invoke(false);
+        };
+        Orb.Drop += (_, e) =>
+        {
+            ToDropTarget(e, t => t.Drop(e.Data, e.AllowedEffects));
+            DragHoverChanged?.Invoke(false);
+        };
+    }
+
+    private void ToDropTarget(DragEventArgs e, Func<IOrbDropTarget, DragDropEffects> to)
+    {
+        e.Handled = true;
+        e.Effects = _dropTarget is { } target ? to(target) : DragDropEffects.None;
+    }
+
+    /// <summary>Lights the bead up (or back down) while something it can take is over it.</summary>
+    public void ShowDropTarget(bool on)
+    {
+        if (Orb.IsDropTarget == on) return;
+        Orb.IsDropTarget = on;
+        Anim.Scale(Orb, on ? 1.1 : 1.0, on ? 180 : 140, on ? Anim.Spring : null);
     }
 
     /// <summary>
@@ -52,6 +89,23 @@ public partial class OrbWindow : Window, IFadingWindow
     /// always has; when on, it only takes presses made with Shift held (ordinary clicks and drags are untouched).
     /// </summary>
     internal IOrbLauncher? Launcher { get; set; }
+
+    /// <summary>
+    /// Takes what's dropped onto the orb (files, links, emails, text) as tasks. Null leaves the orb as it was:
+    /// it accepts no drop. Only drags reach it, so clicks, drags of the orb and the launcher are untouched.
+    /// </summary>
+    internal IOrbDropTarget? DropTarget
+    {
+        get => _dropTarget;
+        set
+        {
+            _dropTarget = value;
+            Orb.AllowDrop = value != null;
+            if (value == null) ShowDropTarget(false);
+        }
+    }
+
+    private IOrbDropTarget? _dropTarget;
 
     public IntPtr Handle => _hwnd;
 

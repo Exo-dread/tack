@@ -14,6 +14,15 @@ internal sealed class UndoSlot
 
     public bool CanUndo => _undo != null;
 
+    /// <summary>Whether <paramref name="undo"/> is the Undo held right now.</summary>
+    public bool Holds(Action undo) => _undo == undo;
+
+    /// <summary>
+    /// The Undo that was held no longer is: it lapsed, was taken to run (raised before it runs), or another
+    /// took its place. Not raised when there was none.
+    /// </summary>
+    public event Action? Settled;
+
     /// <summary>Holds a new Undo; the one it replaces lapses first.</summary>
     public void Hold(Action? undo, Action? lapsed)
     {
@@ -29,16 +38,25 @@ internal sealed class UndoSlot
         if (undo == null) return null;
         _undo = null;
         _lapsed = null;
+        Settle();
         return undo;
     }
 
     /// <summary>The Undo is past using: whatever was waiting on it goes ahead, once.</summary>
     public void Lapse()
     {
+        bool held = _undo != null;
         _undo = null;
         var lapsed = _lapsed;
         _lapsed = null;
         try { lapsed?.Invoke(); }
         catch (Exception ex) { Log.Error("Couldn't finish what a toast's Undo held back", ex); }
+        if (held) Settle();
+    }
+
+    private void Settle()
+    {
+        try { Settled?.Invoke(); }
+        catch (Exception ex) { Log.Error("Couldn't tidy up after a toast's Undo", ex); }
     }
 }

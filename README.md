@@ -46,6 +46,9 @@ and gets out of the way the moment you're done.
   sheet while you follow it, then throw it away.
 - **Find anything.** Ctrl+F searches every task, finished task and note in every space as you type,
   whatever the case or accents, and takes you straight to what you pick.
+- **Drop it on the orb.** Drag an email from Outlook, a file or folder from Explorer, a link from your
+  browser or a few lines of text onto the orb, and each becomes a task, without leaving the app you're in.
+  A small paperclip on the task opens what you dropped.
 - **A launcher, if you want one.** Turn it on in Settings → Launcher, then Shift+click the orb for a ring
   of your own shortcuts (apps, folders, websites, groups), or Shift+drag to one and let go. Drag on past an
   app to choose the display it opens on. Turn on **Recent files** and resting on an app shows the files it
@@ -107,6 +110,25 @@ Win+Alt+N, then Ctrl+Alt+Shift+T) and the welcome tasks tell you which. You can 
 - Tick the circle to finish a task. You have a moment to change your mind before it moves to **Done**.
 - Drag the dots at a task's left edge to reorder.
 - Deleting is undoable: every delete shows an **Undo** button.
+
+### Dropping onto the orb
+
+Drag something over the orb and it lights up with a **+** and says what letting go will do ("Drop to add
+a task"). Let go and each item becomes a task in the space on show, first item on top, with **Undo** in a
+small bubble beside the orb ("Added 3 tasks · Undo"). Up to 20 at a time.
+
+| You drop | The task is called | Its paperclip opens |
+|---|---|---|
+| A file or folder (Explorer, the desktop, most apps) | The file's name without its extension ("Clash report L3") | The file or folder, where it is |
+| An email from Outlook | The email's subject | Tack's own copy of the email, kept in `attachments` beside tack.json |
+| A link from a browser | The page's title, else the address | The page, in your default browser (http and https only) |
+| Text | One task a line, as when you paste a list | (nothing) |
+
+- Click the **paperclip** on a task (or press **Ctrl+O** on it, or right-click → Open) to open it. If a
+  file was moved or deleted since, Tack says so.
+- What a task points to stays on this PC: other devices see the task's text, never the path or link.
+- Delete the task (once its Undo is gone) and Tack lets go of it, and of any email it kept a copy of.
+- Programs and scripts are never kept, only their names. Tack keeps at most 500 MB of copies (50 MB each).
 
 ### Spaces
 
@@ -192,6 +214,7 @@ shortcut and let go. Plain clicks and drags of the orb are untouched. More: [doc
 | Ctrl+D | A task | Mark done |
 | Alt+↑ / Alt+↓ | A task | Move it up or down |
 | Ctrl+M | A task | Move it to another space (once there are spaces) |
+| Ctrl+O | A task | Open what was dropped onto the orb for it (its paperclip) |
 | Backspace | An empty task | Delete it |
 | Ctrl+Enter | Notes | Send the current line (or selection) to Tasks |
 | F5 | Notes | Insert the date and time |
@@ -211,8 +234,10 @@ sync with whatever you like. Saves are debounced, written atomically (temp file,
 previous version is kept as `tack.json.bak`, so a crash or power cut can't corrupt your list. If the file
 is ever unreadable, Tack recovers from the backup and keeps the damaged file aside. With the launcher
 on, its shortcuts are kept beside tack.json in `launcher.json` (never in tack.json, never synced).
-Images pasted into Notes are PNG files in the `snippets` folder beside it, listed in `snippets.json`;
-they too stay on this PC, out of tack.json, sync, imports and exports.
+Images pasted into Notes are PNG files in the `snippets` folder beside it, listed in `snippets.json`.
+Once you drop something onto the orb, what each task points to is kept in `attachments.json`, and
+emails in an `attachments` folder, beside tack.json. All of these stay on this PC: never in tack.json,
+never synced, imported or exported.
 
 The file also has a `tackFocus` section: a clock for every change, sort keys and recently deleted
 items, so Tack can merge edits made elsewhere. Older versions of Tack ignore it. **Settings → Import**

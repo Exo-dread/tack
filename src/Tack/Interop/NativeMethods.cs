@@ -243,7 +243,7 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool EmptyWorkingSet(IntPtr hProcess);
 
-    // ---- Clipboard memory (snippets): a pasted image's size and header are read before it's copied ----
+    // ---- Clipboard and drag memory (snippets, dropping onto the orb): sizes and headers are read before anything is copied ----
     [DllImport("kernel32.dll")]
     public static extern UIntPtr GlobalSize(IntPtr hMem);
 
@@ -450,6 +450,57 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool DeviceIoControl(Microsoft.Win32.SafeHandles.SafeFileHandle device, uint code, IntPtr inBuffer, uint inSize,
         byte[] outBuffer, uint outSize, out uint returned, IntPtr overlapped);
+
+    // ================= Dropping onto the orb (nothing below runs until something is dragged over it) =================
+
+    public const short CF_TEXT = 1;
+    public const short CF_UNICODETEXT = 13;
+    public const short CF_HDROP = 15;
+    public const int STGM_READ = 0x0;
+    public const int STGM_READWRITE = 0x2;
+    public const int STGM_SHARE_EXCLUSIVE = 0x10;
+    public const int STGM_SHARE_DENY_WRITE = 0x20;
+    public const int STGM_CREATE = 0x1000;
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "DragQueryFileW")]
+    public static extern uint DragQueryFile(IntPtr hDrop, uint index, [Out] char[]? file, uint size);
+
+    // GlobalSize, GlobalLock, GlobalUnlock and ReleaseStgMedium: under kernel32 above (snippets read the clipboard with them too).
+
+    [DllImport("ole32.dll", CharSet = CharSet.Unicode)]
+    public static extern int StgCreateDocfile(string name, int mode, int reserved, out IStorage storage);
+
+    [DllImport("ole32.dll", CharSet = CharSet.Unicode)]
+    public static extern int StgOpenStorage(string name, IntPtr priority, int mode, IntPtr exclude, int reserved, out IStorage storage);
+
+    /// <summary>Windows' own list of file types that run code (programs, scripts, shortcuts): what Attachment Manager warns about.</summary>
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool AssocIsDangerous(string association);
+
+    /// <summary>
+    /// A structured storage (the compound file inside an Outlook .msg). Only OpenStream, CreateStream, CopyTo
+    /// and Commit are called; the rest are declared to keep the vtable in order (objidl.h).
+    /// </summary>
+    [ComImport, Guid("0000000B-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IStorage
+    {
+        [PreserveSig] int CreateStream([MarshalAs(UnmanagedType.LPWStr)] string name, int mode, int reserved1, int reserved2, out System.Runtime.InteropServices.ComTypes.IStream stream);
+        [PreserveSig] int OpenStream([MarshalAs(UnmanagedType.LPWStr)] string name, IntPtr reserved1, int mode, int reserved2, out System.Runtime.InteropServices.ComTypes.IStream stream);
+        [PreserveSig] int CreateStorage([MarshalAs(UnmanagedType.LPWStr)] string name, int mode, int reserved1, int reserved2, out IStorage storage);
+        [PreserveSig] int OpenStorage([MarshalAs(UnmanagedType.LPWStr)] string name, IntPtr priority, int mode, IntPtr exclude, int reserved, out IStorage storage);
+        [PreserveSig] int CopyTo(int excludeCount, IntPtr exclude, IntPtr snbExclude, IStorage destination);
+        [PreserveSig] int MoveElementTo([MarshalAs(UnmanagedType.LPWStr)] string name, IStorage destination, [MarshalAs(UnmanagedType.LPWStr)] string newName, int flags);
+        [PreserveSig] int Commit(int flags);
+        [PreserveSig] int Revert();
+        [PreserveSig] int EnumElements(int reserved1, IntPtr reserved2, int reserved3, out IntPtr enumerator);
+        [PreserveSig] int DestroyElement([MarshalAs(UnmanagedType.LPWStr)] string name);
+        [PreserveSig] int RenameElement([MarshalAs(UnmanagedType.LPWStr)] string oldName, [MarshalAs(UnmanagedType.LPWStr)] string newName);
+        [PreserveSig] int SetElementTimes([MarshalAs(UnmanagedType.LPWStr)] string name, IntPtr created, IntPtr accessed, IntPtr modified);
+        [PreserveSig] int SetClass(ref Guid clsid);
+        [PreserveSig] int SetStateBits(int bits, int mask);
+        [PreserveSig] int Stat(out System.Runtime.InteropServices.ComTypes.STATSTG stat, int flags);
+    }
 
     public static long GetExStyle(IntPtr hwnd) => GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();
     public static void SetExStyle(IntPtr hwnd, long style) => SetWindowLongPtr(hwnd, GWL_EXSTYLE, new IntPtr(style));

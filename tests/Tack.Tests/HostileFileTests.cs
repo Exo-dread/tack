@@ -70,6 +70,110 @@ internal static class HostileFileTests
         yield return ("snippets, hostile paste: copied files on shares, device paths, cloud placeholders, oversized or misnamed are never read", HostileFiles);
         yield return ("snippets, hostile snippets.json: entries naming other files or out of range are dropped; only Tack's own files are cleared", HostileIndex);
         yield return ("snippets, hostile snippet file: one replaced by a vast, damaged or oversized image shows an empty frame, no error", HostileStoredFile);
+        // Dropping onto the orb: hostile drags (huge lists, javascript: links, device paths, endless streams) are in DropTests.
+        yield return ("attachments.json: a damaged or hand-edited file can't point a paperclip anywhere a drop couldn't; the good entries still load", AttachmentsEntries);
+        yield return ("attachments.json: too large, too deep or too many is bounded, and the backup takes over", AttachmentsBounds);
+    }
+
+    // ---------------------------------------------------------------- attachments.json (local, never synced)
+
+    private static void AttachmentsEntries()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "tack-drop-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var store = new Tack.Drop.Core.AttachmentStore(folder, Tack.Drop.DesktopDrop.IsProgram);
+            string longLabel = "<a href=\"javascript:x\">" + new string('L', 10_000) + "\n second line";
+            string json = $$"""
+            { "version": 99, "future": { "anything": [1, 2, 3] }, "attachments": [
+              { "task": "aaaaaaaaaaaa", "kind": "link", "target": "javascript:alert(1)", "label": "x" },
+              { "task": "aaaaaaaaaaab", "kind": "link", "target": "file://\\\\evil\\share\\x.exe", "label": "x" },
+              { "task": "aaaaaaaaaaac", "kind": "link", "target": "https://user:pw@acc.autodesk.com/", "label": "x" },
+              { "task": "bbbbbbbbbbbb", "kind": "file", "target": "..\\..\\Windows\\notepad.exe", "label": "x", "saved": true },
+              { "task": "bbbbbbbbbbbc", "kind": "file", "target": "C:\\Users\\me\\Desktop\\x.pdf", "label": "x", "saved": true },
+              { "task": "cccccccccccc", "kind": "file", "target": "0123456789ab\\run.exe", "label": "x", "saved": true },
+              { "task": "cccccccccccd", "kind": "file", "target": "0123456789ab\\Mail.eml:payload.exe", "label": "x", "saved": true },
+              { "task": "dddddddddddd", "kind": "program", "target": "C:\\x.exe", "label": "x" },
+              { "task": "../../escape", "kind": "file", "target": "C:\\x.pdf", "label": "x" },
+              { "task": "eeeeeeeeeeee", "kind": "file", "target": "\\\\?\\C:\\x.pdf", "label": "x" },
+              { "task": "eeeeeeeeeeef", "kind": "folder", "target": "Projects\\relative", "label": "x" },
+              { "task": "ffffffffffff", "kind": "folder", "target": "C:\\Projects", "label": {{System.Text.Json.JsonSerializer.Serialize(longLabel)}} },
+              { "task": "ffffffffffff", "kind": "link", "target": "https://second.example/", "label": "the same task again" },
+              { "task": "111111111111", "kind": "link", "target": "https://acc.autodesk.com/docs", "label": "ACC", "opened": 3 },
+              { "task": "222222222222", "kind": "file", "target": "0123456789ab\\Mail.eml", "label": "Mail.eml", "saved": true },
+              { "task": "333333333333", "kind": "link", "target": 123, "label": "x" },
+              { "task": "444444444444", "kind": "link", "target": "https://x.example/\ud800", "label": "half a character" },
+              { "task": "555555555555", "kind": "file", "target": "\\\\fileserver\\Projects\\x.pdf", "label": "x.pdf", "saved": "yes" },
+              "a string", null, 7, [ ]
+            ]}
+            """;
+            store.Parse(Encoding.UTF8.GetBytes(json));
+            var kept = store.All.ToDictionary(e => e.TaskId, e => e.Attachment);
+            Check.Sequence(["ffffffffffff", "111111111111", "222222222222", "555555555555"], kept.Keys.ToList(), "only what a drop could have made, each task once");
+            Check.Equal(Tack.Drop.Core.AttachmentKind.Folder, kept["ffffffffffff"].Kind, "the first entry for a task wins");
+            Check.True(kept["ffffffffffff"].Label.Length <= Tack.Drop.Core.DropLimits.MaxLabel && !kept["ffffffffffff"].Label.Contains('\n'), "a label is one line, bounded");
+            Check.Equal("https://acc.autodesk.com/docs", kept["111111111111"].Target, "an http(s) page");
+            Check.True(kept["222222222222"].Saved, "a saved copy inside the folder");
+            Check.True(!kept["555555555555"].Saved, "\"saved\" means true, nothing else");
+            Check.Equal(@"\\fileserver\Projects\x.pdf", kept["555555555555"].Target, "a network file, as dropped");
+
+            // Written back, only what was kept.
+            store.Save();
+            string written = File.ReadAllText(store.FilePath);
+            Check.True(!written.Contains("javascript:alert", StringComparison.Ordinal) && !written.Contains("notepad", StringComparison.Ordinal) && !written.Contains("future", StringComparison.Ordinal), "nothing refused is written back");
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch { }
+        }
+    }
+
+    private static void AttachmentsBounds()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "tack-drop-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            string path = Path.Combine(folder, Tack.Drop.Core.AttachmentStore.FileName);
+            string Entry(int i) => $$"""{ "task": "t{{i:x10}}", "kind": "link", "target": "https://x.example/{{i}}", "label": "x" }""";
+            File.WriteAllText(path + ".bak", $$"""{ "attachments": [ {{Entry(1)}} ] }""");
+
+            // Too large: never read; the backup is.
+            using (var f = new FileStream(path, FileMode.Create)) f.SetLength(Tack.Drop.Core.DropLimits.MaxFileBytes + 1);
+            var store = new Tack.Drop.Core.AttachmentStore(folder);
+            var errors = new List<string>();
+            store.Load((m, _) => errors.Add(m));
+            Check.Equal(1, store.Count, "too large: the backup instead");
+            Check.True(errors.Count == 1, "and the log says so");
+
+            // Too deep: unreadable as a whole; the backup again.
+            File.WriteAllText(path, "{\"attachments\": [" + new string('[', 200) + new string(']', 200) + "]}");
+            store.Load();
+            Check.Equal(1, store.Count, "too deep: the backup");
+
+            // Not an attachments file at all.
+            File.WriteAllText(path, "[1, 2, 3]");
+            store.Load();
+            Check.Equal(1, store.Count, "not one: the backup");
+
+            // Too many: the first ones, up to the cap.
+            File.WriteAllText(path, "{ \"attachments\": [" + string.Join(",", Enumerable.Range(0, Tack.Drop.Core.DropLimits.MaxAttachments + 1000).Select(Entry)) + "] }");
+            store.Load();
+            Check.Equal(Tack.Drop.Core.DropLimits.MaxAttachments, store.Count, "never more than the cap");
+            Check.True(store.For("t0000000000") != null && store.For($"t{Tack.Drop.Core.DropLimits.MaxAttachments:x10}") == null, "the first ones");
+            Check.True(!store.Add("tffffffffff", new Tack.Drop.Core.Attachment(Tack.Drop.Core.AttachmentKind.Link, "https://y.example/", "y")), "and no more added");
+
+            // Neither file: nothing, and nothing created.
+            File.Delete(path);
+            File.Delete(path + ".bak");
+            store.Load();
+            Check.True(store.Count == 0 && !File.Exists(path) && !Directory.Exists(store.Folder), "no attachments, no file made");
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch { }
+        }
     }
 
     // ---------------------------------------------------------------- Snippets (Tack for Windows only)

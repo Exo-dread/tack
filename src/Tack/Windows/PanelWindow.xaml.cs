@@ -22,7 +22,7 @@ namespace Tack.Windows;
 /// The expanded state: a compact acrylic panel with Tasks and Notes.
 /// It knows nothing about the orb; AppShell decides where and when it appears.
 /// </summary>
-public partial class PanelWindow : Window, IFadingWindow, INotesHost
+public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndoToast
 {
     private const int WM_SIZING = 0x0214;
     private const int WM_ENTERSIZEMOVE = 0x0231;
@@ -92,6 +92,7 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost
         SearchPage.Chosen += text => Announce(text, "Tack.Search");
         SearchPage.CountChanged += text => SearchCount.Text = text;
 
+        _undo.Settled += () => UndoSettled?.Invoke();
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
         _toastTimer.Tick += (_, _) => HideToast();
 
@@ -886,6 +887,22 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost
 
     // ---- Toast + undo ----
 
+    /// <summary>The toast's Undo is still on offer (deleted tasks can come back).</summary>
+    public bool HasPendingUndo => _undo.CanUndo;
+
+    /// <summary>Whether <paramref name="undo"/> is the Undo on offer right now.</summary>
+    public bool Offers(Action undo) => _undo.Holds(undo);
+
+    /// <summary>
+    /// The Undo that was on offer no longer is: it lapsed, was used, or another toast took its place.
+    /// Raised before a used Undo runs; anything that depends on it waits for the dispatcher.
+    /// </summary>
+    public event Action? UndoSettled;
+
+    void Drop.IUndoToast.ShowToast(string message, Action? undo) => ShowToast(message, undo);
+
+    void Drop.IUndoToast.Announce(string text) => Announce(text, "Tack.Drop");
+
     /// <summary>
     /// Shows a toast, with Undo when <paramref name="undo"/> is given. <paramref name="lapsed"/> runs once that Undo
     /// can't be used any more: the toast went, or another took its place (a discarded snippet's file goes then).
@@ -948,6 +965,9 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost
         return true;
     }
 
+    /// <summary>Undo, when <paramref name="undo"/> is still the one on offer (the bubble by the orb asks this way).</summary>
+    public bool UndoIf(Action undo) => _undo.Holds(undo) && Undo();
+
     private void ToastUndo_Click(object sender, RoutedEventArgs e) => Undo();
 
     /// <summary>Tack is quitting: a toast's Undo lapses with it.</summary>
@@ -1003,6 +1023,9 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost
 
     private static bool IsPasteKey(KeyEventArgs e) =>
         (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control) || (e.Key == Key.Insert && Keyboard.Modifiers == ModifierKeys.Shift);
+
+    /// <summary>A task's paperclip (or Ctrl+O): opens what was dropped onto the orb for it, or says why it can't.</summary>
+    internal void OpenAttachment(TaskItem task) => _shell.Drop.Open(task, message => ShowToast(message));
 
     /// <summary>Alt+F4 and friends fold the panel away instead of destroying it.</summary>
     protected override void OnClosing(CancelEventArgs e)

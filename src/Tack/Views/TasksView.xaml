@@ -113,6 +113,22 @@
             <Setter Property="Focusable" Value="False" />
         </Style>
 
+        <!-- A task with something dropped onto the orb for it: a small paperclip that opens it (Ctrl+O). -->
+        <Style x:Key="AttachButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="Margin" Value="0,4,0,0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+            <Setter Property="Content" Value="&#xE723;" />
+            <Setter Property="ToolTip" Value="{Binding AttachmentTip}" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding AttachmentTip}" />
+            <Setter Property="Visibility" Value="{Binding AttachmentTip, Converter={StaticResource Vis}}" />
+            <EventSetter Event="Click" Handler="Attachment_Click" />
+        </Style>
+
         <Style x:Key="TaskRow" TargetType="Border">
             <Setter Property="CornerRadius" Value="7" />
             <Setter Property="Padding" Value="0,0,4,0" />
@@ -124,6 +140,7 @@
 
         <!-- "Move to" lists the spaces when the menu opens (and shows only once there are spaces). -->
         <ContextMenu x:Key="TaskMenu" x:Shared="False" Opened="TaskMenu_Opened">
+            <MenuItem Header="Open" Tag="Open" Click="MenuOpen_Click" InputGestureText="Ctrl+O" Visibility="Collapsed" />
             <MenuItem Header="Focus on this" Click="MenuFocus_Click" InputGestureText="Ctrl+Enter" />
             <MenuItem Header="Mark done" Click="MenuDone_Click" InputGestureText="Ctrl+D" />
             <MenuItem Header="Move to top" Click="MenuTop_Click" />
@@ -137,6 +154,7 @@
         </ContextMenu>
 
         <ContextMenu x:Key="NowMenu" x:Shared="False" Opened="TaskMenu_Opened">
+            <MenuItem Header="Open" Tag="Open" Click="MenuOpen_Click" InputGestureText="Ctrl+O" Visibility="Collapsed" />
             <MenuItem Header="Mark done" Click="MenuDone_Click" InputGestureText="Ctrl+D" />
             <MenuItem Header="Stop focusing" Click="Unfocus_Click" />
             <MenuItem Header="Move to" Tag="MoveTo" InputGestureText="Ctrl+M" Visibility="Collapsed" />
@@ -191,11 +209,16 @@
                              LostKeyboardFocus="Editor_LostKeyboardFocus" />
                     <TextBlock x:Name="Struck" Grid.Column="1" Margin="4,7,8,7" Text="{Binding Text}" TextWrapping="Wrap"
                                TextDecorations="Strikethrough" Foreground="{DynamicResource TextTertiaryBrush}" Visibility="Collapsed" />
-                    <!-- Its space, in All while there are spaces. -->
-                    <TextBlock Grid.Column="2" Style="{StaticResource SpaceLabel}" />
+                    <!-- Its space, in All while there are spaces, and its paperclip, when it has one. -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
+                        <TextBlock Style="{StaticResource SpaceLabel}" />
+                        <Button Style="{StaticResource AttachButton}" />
+                    </StackPanel>
 
                     <Border x:Name="Actions" Style="{StaticResource RowToolbar}">
                         <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource RowButton}" Click="Attachment_Click" Content="&#xE723;" ToolTip="{Binding AttachmentTip}"
+                                    AutomationProperties.Name="{Binding AttachmentTip}" Visibility="{Binding AttachmentTip, Converter={StaticResource Vis}}" />
                             <Button Style="{StaticResource RowButton}" Click="Focus_Click" ToolTip="Focus on this (Ctrl+Enter)"
                                     AutomationProperties.Name="Focus on this">
                                 <Path Data="{StaticResource TargetIcon}" StrokeThickness="1.3" Width="14" Height="14"
@@ -240,10 +263,17 @@
                             VerticalAlignment="Top" Margin="2,2,0,0" Click="Reopen_Click" />
                     <TextBlock Grid.Column="1" Margin="4,7,8,7" Text="{Binding Text}" TextWrapping="Wrap"
                                TextDecorations="Strikethrough" Foreground="{DynamicResource TextTertiaryBrush}" />
-                    <TextBlock Grid.Column="2" Style="{StaticResource SpaceLabel}" />
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
+                        <TextBlock Style="{StaticResource SpaceLabel}" />
+                        <Button Style="{StaticResource AttachButton}" />
+                    </StackPanel>
                     <Border x:Name="Actions" Style="{StaticResource RowToolbar}">
-                        <Button Style="{StaticResource RowButton}" Click="Delete_Click" ToolTip="Delete" Content="&#xE711;"
-                                AutomationProperties.Name="Delete task" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource RowButton}" Click="Attachment_Click" Content="&#xE723;" ToolTip="{Binding AttachmentTip}"
+                                    AutomationProperties.Name="{Binding AttachmentTip}" Visibility="{Binding AttachmentTip, Converter={StaticResource Vis}}" />
+                            <Button Style="{StaticResource RowButton}" Click="Delete_Click" ToolTip="Delete" Content="&#xE711;"
+                                    AutomationProperties.Name="Delete task" />
+                        </StackPanel>
                     </Border>
                 </Grid>
             </Border>
@@ -326,8 +356,11 @@
 
                 <TextBlock Grid.Column="1" Text="NOW" Style="{StaticResource Overline}" VerticalAlignment="Center" Margin="2,2,0,0" />
                 <TextBlock Grid.Column="1" Style="{StaticResource SpaceLabel}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="8,2,6,0" />
-                <Button Grid.Column="2" Style="{StaticResource RowButton}" Content="&#xE711;" Click="Unfocus_Click" AutomationProperties.Name="Stop focusing"
-                        ToolTip="Stop focusing (back to the list)" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <Button Style="{StaticResource AttachButton}" Margin="0" VerticalAlignment="Center" />
+                    <Button Style="{StaticResource RowButton}" Content="&#xE711;" Click="Unfocus_Click" AutomationProperties.Name="Stop focusing"
+                            ToolTip="Stop focusing (back to the list)" />
+                </StackPanel>
 
                 <ToggleButton x:Name="NowCheck" Grid.Row="1" Grid.Column="0" Style="{StaticResource CheckCircle}" VerticalAlignment="Top"
                               Margin="2,0,0,0" IsChecked="{Binding IsChecking, Mode=OneWay}" Checked="Check_Changed" Unchecked="Check_Changed" ToolTip="Done (Ctrl+D)" AutomationProperties.Name="Mark done" />
