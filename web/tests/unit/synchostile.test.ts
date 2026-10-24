@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { FileError, importFile, isFileDate, readSheetRecord, readTaskRecord, readFile } from '../../src/model/file';
 import { encode, Hlc, isStamp, MAX_AHEAD_MS, stampTime, ZERO } from '../../src/model/hlc';
 import { isOrderKey, MAX_ORDER_KEY } from '../../src/model/order';
+import { addShared, keptShare, readShare } from '../../src/model/share';
 import { wellFormed } from '../../src/model/text';
 import { Workspace } from '../../src/model/workspace';
-import { MAX_SPACES_LISTED } from '../../src/model/limits';
+import { MAX_PASTE_LINES, MAX_SPACES_LISTED } from '../../src/model/limits';
 import { listed, MAIN } from '../../src/model/spaces';
 import { deadTask, DeviceFileError, fileName, makeDeviceFile, MAX_FILE_BYTES, MAX_NOTE_TEXT, MAX_RECORDS, MAX_SEEN, MAX_TAKEN, MAX_TASK_TEXT, MAX_TRICKLE, parseDeviceFile, serializeDeviceFile, trimSeen } from '../../src/sync/devicefile';
 import { emptyMeta, seenBy, takeIn } from '../../src/sync/engine';
@@ -765,6 +766,54 @@ describe('L1 (second audit): imports, pastes and edits', () => {
     w.editTask(t.id, 'y'.repeat(MAX_TASK_TEXT + 1));
     expect(w.tasks.get(t.id)!.text).toBe('short');
     expect(w.addTask('z'.repeat(MAX_TASK_TEXT))).not.toBeNull();
+  });
+});
+
+describe('shares from other apps (the address: anyone can write a link to /?share)', () => {
+  const ws = () => new Workspace(new Hlc('aaaa1111', () => NOW), () => new Date(NOW));
+  const at = (search: string) => readShare(search)!;
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i}`).join('\n');
+
+  it('add no more lines at once than a paste, and nothing at all past that', () => {
+    const w = ws();
+    expect(addShared(w, at(`?share&text=${encodeURIComponent(lines(MAX_PASTE_LINES + 1))}`)).kind).toBe('too-many');
+    expect(w.tasks.size).toBe(0);
+    const fits = addShared(w, at(`?share&text=${encodeURIComponent(lines(MAX_PASTE_LINES))}`));
+    expect(fits.kind === 'added' && fits.added.length).toBe(MAX_PASTE_LINES);
+  });
+
+  it('add no task longer than any device reads, even with an address joined on', () => {
+    const w = ws();
+    const long = 'x'.repeat(MAX_TASK_TEXT - 5);
+    // The address can't join that line (it would be too long for every device): it's its own task.
+    const result = addShared(w, at(`?share&text=${encodeURIComponent(`${long}\nhttps://example.com/a`)}`));
+    expect(result.kind === 'added' && result.added.map((t) => t.text)).toEqual([long, 'https://example.com/a']);
+    expect(addShared(w, at(`?share&title=${'y'.repeat(MAX_TASK_TEXT + 1)}`)).kind).toBe('too-long');
+    expect([...w.tasks.values()].every((t) => t.text.length <= MAX_TASK_TEXT)).toBe(true);
+  });
+
+  it('are only ever text, which every device reads back exactly as written', () => {
+    const w = ws();
+    const hostile = { title: '<img src=x onerror=alert(1)>', text: '</li><script>alert(2)</script>\njavascript:alert(3)\n\u0000\u001b[31m red', url: 'javascript:alert(4)' };
+    const result = addShared(w, at(`?share&${new URLSearchParams(hostile)}`));
+    expect(result.kind === 'added' && result.added.map((t) => t.text)).toEqual([
+      '<img src=x onerror=alert(1)>',
+      '</li><script>alert(2)</script>',
+      'javascript:alert(3)',
+      '\u0000\u001b[31m red',
+      'javascript:alert(4)',
+    ]);
+    // One rule per field: what a share stores is what the sync reader takes, unchanged.
+    const file = makeDeviceFile(w.toData(), { device: 'aaaa1111', name: 'a', app: 'a', written: w.hlc.now(), seen: {} });
+    const back = parseDeviceFile(serializeDeviceFile(file), 'aaaa1111', NOW);
+    for (const t of w.tasks.values()) expect(back.tasks.find((r) => r.id === t.id)?.text).toBe(t.text);
+    for (const t of w.tasks.values()) expect(readTaskRecord(t, NOW)?.text).toBe(t.text);
+  });
+
+  it('kept in browser storage for the next start, are read back as three strings or not at all', () => {
+    expect(keptShare(JSON.parse('{"title":"a","text":"b","url":"c","__proto__":{"text":"x"}}'))).toEqual({ title: 'a', text: 'b', url: 'c' });
+    expect(keptShare(JSON.parse('{"title":"a","text":["b"],"url":"c"}'))).toBeNull();
+    expect(keptShare(JSON.parse('{"__proto__":{"title":"a","text":"b","url":"c"}}'))).toBeNull();
   });
 });
 

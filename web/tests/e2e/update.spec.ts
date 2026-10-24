@@ -339,6 +339,25 @@ test.describe('updates', () => {
     expect(visit.errors).toEqual([]);
   });
 
+  test('a share that opened the app holds it back while its Undo is on show; leaving applies it, and the share is kept once', async ({ page, site }) => {
+    const first = await installed(page, site);
+    // Opened by the share sheet: the page is new, and untouched.
+    await page.goto(`${site.url}?share&text=${encodeURIComponent('Shared just now')}`);
+    await expect(page.locator('html.ready')).toHaveCount(1);
+    const undo = page.locator('.toast:not([inert])');
+    await expect(undo.locator('.toast-text')).toHaveText('Added from Share');
+    const visit = await watch(page, first.errors);
+    await update(page, site);
+    await arrived(page);
+    await stays(page, visit);
+    await expect(undo.getByRole('button', { name: 'Undo' })).toBeVisible();
+
+    await setVisibility(page, 'hidden');
+    await reloadedIntoNew(page, site, visit);
+    await expect(page.locator('.open-list .label').filter({ hasText: 'Shared just now' })).toHaveCount(1);
+    expect(visit.errors).toEqual([]);
+  });
+
   test('arrived while touched, and the leaving reload never ran (a phone froze the page): coming back applies it', async ({ page, site }) => {
     const visit = await installed(page, site);
     await touch(page);

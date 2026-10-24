@@ -77,7 +77,18 @@ and axe scans with spaces on screen in light and dark; and updates of the app, a
 the test's own that puts up a new version (visibility emulated: headless pages never hide): in at
 once when opened untouched, even if it took over while the app was still starting; held while you
 are using the app or are in the task box, then applied when you leave or come back; a draft in the
-box coming back with the page; never while the draft isn't the one kept.
+box coming back with the page; never while the draft isn't the one kept; held while a share that
+just opened the app still offers Undo, then applied when you leave, the share kept once. And
+sharing from another app (`share.spec.ts`, loading /?share&… as Android's share sheet does, since
+Playwright can't open one): the manifest's share target; a shared page becoming one task with
+Undo, on Tasks, and the address bar left clean; added once, whatever reloads follow; several lines
+as a task per line; markup and `javascript:` shared as plain text (under the production CSP too);
+into the space on show; more lines than a paste turned away; a share kept through a start that
+went no further; and offline, answered by the service worker (Chromium).
+
+**Sharing** is also unit-tested (`share.test.ts`: reading the address, what a share becomes, adding
+it) with hostile cases in `synchostile.test.ts` (the paste's line limit, no task too long for sync,
+markup kept as text that every device reads back unchanged, a kept share that isn't three strings).
 
 Gestures are driven with synthetic pointer events (Playwright can only tap), so they test the
 gesture logic, not a real finger. WebKit on Windows is close to Safari's engine but isn't iOS:
@@ -89,6 +100,7 @@ Emulation can't cover these. Each takes a minute.
 
 ### iPhone (Safari, then Home Screen)
 - [ ] Open tackfocus.app in Safari; Share → **Add to Home Screen**; the icon and name look right.
+      (Tack Focus isn't in the iPhone's share sheet: iOS doesn't let web apps receive shares.)
 - [ ] Launch from the icon: full screen, no Safari bars; the **status bar text is legible** in both
       light and dark (it should take the app's background colour).
 - [ ] Tap the task box: the keyboard opens and the **dock rides on top of it**, nothing hidden
@@ -114,6 +126,12 @@ Emulation can't cover these. Each takes a minute.
 - [ ] Spaces: with two or more, tap the title to switch (the sheet sits within thumb reach); a task's
       *Move* and Notes ⋯ → *Move sheet to…* work with the keyboard open and closed; the back
       gesture closes the switcher without switching.
+- [ ] **Share to Tack** (installed; after an update Android can take a day to list it, reinstalling
+      lists it at once): Chrome's Share on a page → Tack Focus adds "title link" with *Added from
+      Share · Undo*; the same with Tack Focus already open (on Notes, too: it opens on Tasks); a
+      link from another app (Outlook, Maps, YouTube) and some selected text; a list from a notes app
+      is a task per line. Neither Back nor reopening the app adds it again. With spaces, it lands
+      in the space on show. Airplane mode: still works.
 
 ### Desktop browsers
 - [ ] Chrome or Edge: install as an app; the window shows both columns; the open-task count shows

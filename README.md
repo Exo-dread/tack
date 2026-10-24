@@ -202,8 +202,9 @@ of native WPF libraries into `%TEMP%\.net\Tack` on first launch; it's safe to de
 **[tackfocus.app](https://tackfocus.app)** is Tack's tasks, notes and spaces as an installable web app for
 iPhone, Android and any browser. Open it and add it to your home screen; there's nothing to download. It
 works offline, keeps everything on the device, and new versions arrive by themselves when you open it.
-Turn on sync in both apps and they keep each other up to date through a folder in your own OneDrive, with
-no Tack account and no Tack server. On iPhone and in Firefox, staying signed in takes a quick visit to
+On Android, an installed Tack Focus is in the share sheet: share a page, a link or some text from any app
+and it becomes a task, with Undo. Turn on sync in both apps and they keep each other up to date through a
+folder in your own OneDrive, with no Tack account and no Tack server. On iPhone and in Firefox, staying signed in takes a quick visit to
 Microsoft about once a day as the app opens; if that's slow, Tack says "Renewing your OneDrive sign-in…"
 and lets you open it anyway. Privacy, in plain words: [tackfocus.app/privacy](https://tackfocus.app/privacy/).
 The code is in [`web/`](web/README.md).

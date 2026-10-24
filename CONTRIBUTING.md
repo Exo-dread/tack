@@ -41,9 +41,10 @@ so both can run side by side (with its own `TackData` folder, as above).
 | `tests/Tack.Tests/` | Tests for the sync model, tack.json, spaces, hostile sync files and the launcher (its logic, plus its window and settings card off screen). A plain console app: no test packages |
 | `tests/vectors/` | Shared test vectors: `sync.json` (model) and `sync-engine.json` (sync cycles, device files) from Tack Focus, `desktop-export.json` and `desktop-device.json` from Tack for Windows, `legacy-1.1.json` written by Tack 1.1 |
 | `tools/make_icon.py` | Regenerates `Assets/Tack.ico` and `docs/icon.png` (needs Pillow) |
+| `tools/winget-manifest.ps1` | Writes the winget manifests for a released version (prepared, not yet submitted: [docs/WINGET.md](docs/WINGET.md)) |
 | `build.ps1` | Builds the release zips into `artifacts/` |
 | `web/` | Tack Focus, the web and mobile app (TypeScript, no runtime dependencies). See [web/README.md](web/README.md) |
-| `docs/` | `DESIGN.md` (why Tack is the way it is), `SYNC.md` (how sync works, live since 1.3.0 / 0.2.0), `LAUNCHER.md` (the radial launcher), `ONEDRIVE-SETUP.md` (the Microsoft app registration) |
+| `docs/` | `DESIGN.md` (why Tack is the way it is), `SYNC.md` (how sync works, live since 1.3.0 / 0.2.0), `LAUNCHER.md` (the radial launcher), `ONEDRIVE-SETUP.md` (the Microsoft app registration), `WINGET.md` (the winget package) |
 | `.github/workflows/` | `ci.yml` (build and tests), `release.yml` (Tack downloads on a tag on `main`), `web.yml` (Tack Focus tests and deploy to tackfocus.app) |
 | `CLAUDE.md` | The security rules on top of these house rules (untrusted input, limits, calling Microsoft, CI/CD), for coding sessions and people alike |
 

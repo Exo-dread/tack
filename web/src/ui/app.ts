@@ -1,5 +1,6 @@
 import { encode } from '../model/hlc';
-import { MAX_PASTE_LINES } from '../model/limits';
+import { MAX_PASTE_LINES, MAX_TASK_TEXT } from '../model/limits';
+import { addShared, type Shared } from '../model/share';
 import { ALL } from '../model/spaces';
 import { pastedLines } from '../model/text';
 import { dayKey, msUntilMidnight } from '../model/time';
@@ -412,13 +413,23 @@ export class App {
   }
 
   /**
-   * Nothing on screen that a reload would drop: no task being edited, no sheet open, and a task
-   * half typed in the box is kept as its draft (which comes back with the page).
+   * Nothing on screen that a reload would drop: no task being edited, no sheet open, a task half
+   * typed in the box kept as its draft (which comes back with the page), and, in view, no Undo on
+   * offer for a share that just arrived (the app opened for it, untouched: an update would
+   * otherwise reload it away before your eyes).
    */
   get settled(): boolean {
     const text = this.input.value;
-    return (!text.trim() || loadDraft() === text) && !this.tasks.isEditing && !document.querySelector('dialog[open]');
+    return (
+      (!text.trim() || loadDraft() === text) &&
+      !this.tasks.isEditing &&
+      !document.querySelector('dialog[open]') &&
+      !(document.visibilityState === 'visible' && this.shareUndo && this.toasts.offers(this.shareUndo))
+    );
   }
+
+  /** The Undo of the last share added (see `settled`). */
+  private shareUndo: (() => void) | null = null;
 
   // ================================================================== summary
 
@@ -545,6 +556,27 @@ export class App {
   }
 
   // ================================================================== launch and keys
+
+  /**
+   * Something shared from another app (Android's share sheet, see main.ts): tasks in the space on
+   * show (from All, Main), as a paste adds them, with Undo.
+   */
+  receiveShare(shared: Shared): void {
+    const result = addShared(this.ws, shared, this.spaces.here);
+    if (result.kind === 'added') {
+      if (this.mode !== 'tasks') this.setMode('tasks', false);
+      if (this.tasks.el.scrollTop > 0) this.tasks.el.scrollTo({ top: 0 });
+      const n = result.added.length;
+      this.shareUndo = result.undo;
+      this.toasts.show(n === 1 ? 'Added from Share' : `Added ${n} tasks from Share`, result.undo);
+    } else if (result.kind === 'too-many') {
+      this.toasts.show(`Share up to ${MAX_PASTE_LINES.toLocaleString('en')} lines at once`);
+    } else if (result.kind === 'too-long') {
+      this.toasts.show(`A task can be up to ${MAX_TASK_TEXT.toLocaleString('en')} characters`);
+    } else {
+      this.toasts.show('Nothing to add from Share');
+    }
+  }
 
   /** Home-screen shortcuts: /?new opens straight into the task box, /?notes into Notes. */
   private handleLaunchIntent(): void {

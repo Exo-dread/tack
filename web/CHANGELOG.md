@@ -1,5 +1,14 @@
 # Tack Focus changelog
 
+## Unreleased
+
+- **Share to Tack (Android).** An installed Tack Focus now appears in Android's share sheet. Share a
+  page, a link or some text from any app and it becomes a task in the space on show, with *Undo*:
+  a page is its title with its link, and text of several lines is a task per line, as when you
+  paste a list (up to 10,000 lines). Whatever was shared stays on the device and is only ever kept
+  as task text. Android may take a day to add Tack Focus to the share sheet after the update;
+  reinstalling adds it at once. iPhone doesn't let web apps receive shares.
+
 ## 0.4.3 (24 October 2026)
 
 Sync stands up better to damaged and hostile files, and is gentler on Microsoft. From a second

@@ -56,7 +56,8 @@ self.addEventListener('fetch', (event) => {
       event.respondWith(caches.open(CACHE).then((cache) => cache.match(page, { ignoreVary: true }).then((cached) => cached || fetch(request))));
       return;
     }
-    // Every other page load gets the cached app shell: instant, and identical offline.
+    // Every other page load gets the cached app shell: instant, and identical offline. That
+    // includes a share from another app (/?share&text=…), so what was shared stays on the device.
     event.respondWith(
       caches.open(CACHE).then((cache) =>
         cache.match(SHELL, { ignoreSearch: true, ignoreVary: true }).then((cached) => cached || fetch(request)),

@@ -10,9 +10,12 @@ import { SyncController } from './sync/controller';
 import { isSignInReturn } from './sync/msauth';
 import { App, dropUntouchedWelcome, seedWelcome } from './ui/app';
 import { isReloading, showLeaving, showReturning } from './ui/renewing';
+import { shareHandled, takeShare } from './ui/share';
 import { registerServiceWorker } from './ui/sw';
 
 async function boot(): Promise<void> {
+  // Shared from another app? Off the address bar before anything else; added once the app is up.
+  const shared = takeShare();
   const backend: Backend = await openBackend();
   let loaded: { data: WorkspaceData; device: string | null };
   try {
@@ -77,6 +80,11 @@ async function boot(): Promise<void> {
   });
   sync.start();
   if (returned === 'signed-in' || returned === 'signed-in-again') app.syncTurnedOn(returned === 'signed-in-again');
+  // Last, so its Undo is the toast on show.
+  if (shared) {
+    app.receiveShare(shared);
+    shareHandled();
+  }
 }
 
 function showBootError(error: unknown): void {
