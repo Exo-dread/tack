@@ -1,20 +1,37 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Tack.Controls;
 using Tack.Model;
+using Tack.Snippets;
 using Tack.Sync;
 using Tack.Windows;
 
 namespace Tack.Views;
 
+/// <summary>What Notes asks of the panel it's in: toasts (whose Undo says when it lapses), announcements, the snippet viewer.</summary>
+internal interface INotesHost
+{
+    /// <summary>A toast, with Undo when <paramref name="undo"/> is given; <paramref name="lapsed"/> runs once it can't be undone any more.</summary>
+    void ShowToast(string message, Action? undo = null, Action? lapsed = null);
+
+    void Announce(string text);
+
+    void ViewSnippet(string path, Snippet snippet);
+}
+
 /// <summary>
 /// Notes: a stack of scratch-paper sheets. Plain text, saved as you type,
 /// with a couple of quiet helpers (list continuation, timestamps, line-to-task).
 /// It shows the sheets of the space on show (<see cref="SpaceView"/>); a space without
-/// any shows blank paper until you write on it.
+/// any shows blank paper until you write on it. An image pasted onto a sheet becomes a
+/// snippet: a thumbnail above its text, kept on this PC only (<see cref="SnippetStore"/>).
 /// </summary>
 public partial class NotesView : UserControl
 {
@@ -22,9 +39,12 @@ public partial class NotesView : UserControl
     private static readonly Regex ListPrefix = new(@"^(\s*)(?:([-*•])|\[[ xX]\]|(\d{1,3})([.)]))\s+", RegexOptions.Compiled);
 
     private readonly Dictionary<NoteSheet, (int Caret, double Scroll)> _positions = new();
+    private readonly Dictionary<string, BitmapSource> _thumbs = new(); // by snippet id
     private Workspace _ws = null!;
     private SpaceView _view = null!;
     private PanelWindow _panel = null!;
+    private INotesHost? _host;
+    private SnippetStore? _snippets;
     private NoteSheet? _shown;
 
     public NotesView()
@@ -32,14 +52,40 @@ public partial class NotesView : UserControl
         InitializeComponent();
     }
 
-    internal void Initialize(Workspace ws, SpaceView view, PanelWindow panel)
+    /// <summary>
+    /// Sets the view up. Without <paramref name="snippets"/>, pasting an image does nothing, as before
+    /// snippets; <paramref name="host"/> is the panel unless a test stands in for it.
+    /// </summary>
+    internal void Initialize(Workspace ws, SpaceView view, PanelWindow panel, SnippetStore? snippets = null, INotesHost? host = null)
     {
         _ws = ws;
         _view = view;
         _panel = panel;
+        _host = host ?? panel;
         DataContext = view;
         _shown = view.ActiveSheet;
+
+        if (snippets == null) return;
+        _snippets = snippets;
+        snippets.Changed += sheet => { if (sheet == _view.ActiveSheet?.Id) ShowSnippets(); };
+        // Ctrl+V and Shift+Insert are caught in Editor_PreviewKeyDown; this is the menu's Paste.
+        CommandManager.AddPreviewExecutedHandler(Editor, (_, e) =>
+        {
+            if (e.Command == ApplicationCommands.Paste && PasteImage()) e.Handled = true;
+        });
+        IsVisibleChanged += (_, _) => { if (!IsVisible) KeepThumbsOf(_view.ActiveSheet?.Id); };
+        ShowSnippets();
     }
+
+    /// <summary>Snippets are on: an image pasted here (or on Tasks) is kept.</summary>
+    internal bool TakesImages => _snippets != null;
+
+    /// <summary>What's on the clipboard. Tests hand in their own instead of touching this PC's clipboard.</summary>
+    internal Func<IDataObject?> ReadClipboard { get; set; } = () =>
+    {
+        try { return Clipboard.GetDataObject(); }
+        catch (Exception) { return null; } // another app has it open: the paste goes on as it would have
+    };
 
     public void FocusEditor()
     {
@@ -55,6 +101,7 @@ public partial class NotesView : UserControl
         if (_shown != null) _positions[_shown] = (Editor.CaretIndex, Editor.VerticalOffset);
         _shown = _view.ActiveSheet;
         if (_shown != null) SheetList.ScrollIntoView(_shown);
+        ShowSnippets();
 
         // The sheet just made from what was typed on blank paper: the text on the paper is its
         // text, and what was typed stays undoable (the history held nothing else: landing on the
@@ -132,10 +179,31 @@ public partial class NotesView : UserControl
     private void DeleteSheet_Click(object sender, RoutedEventArgs e)
     {
         if ((((sender as MenuItem)?.Parent as ContextMenu)?.PlacementTarget as FrameworkElement)?.DataContext is not NoteSheet sheet) return;
-        bool wasEmpty = sheet.IsEmpty;
+        DeleteSheet(sheet);
+    }
+
+    /// <summary>
+    /// Deletes a sheet (the last one is cleared instead), and its snippets with it: their files go once
+    /// Undo lapses, and Undo brings them back with the sheet.
+    /// </summary>
+    internal void DeleteSheet(NoteSheet sheet)
+    {
+        var held = _snippets?.Of(sheet.Id) ?? [];
+        bool wasEmpty = sheet.IsEmpty && held.Count == 0;
         var undo = _ws.DeleteSheet(sheet);
         _positions.Remove(sheet);
-        if (!wasEmpty) _panel.ShowToast("Sheet deleted", undo);
+        _snippets?.Detach(held);
+        if (wasEmpty) return;
+        if (held.Count == 0)
+        {
+            _host?.ShowToast("Sheet deleted", undo);
+            return;
+        }
+        _host?.ShowToast("Sheet deleted", () =>
+        {
+            undo();
+            _snippets?.Attach(held);
+        }, () => Forget(held));
     }
 
     /// <summary>"Move to" shows once there are spaces, listing them all; the sheet's own is greyed out.</summary>
@@ -208,6 +276,12 @@ public partial class NotesView : UserControl
             case Key.PageUp when mods == ModifierKeys.Control:
                 CycleSheet(-1);
                 e.Handled = true;
+                break;
+
+            // An image becomes a snippet; anything with text in it pastes as it always has.
+            case Key.V when mods == ModifierKeys.Control:
+            case Key.Insert when mods == ModifierKeys.Shift:
+                if (PasteImage()) e.Handled = true;
                 break;
         }
     }
@@ -282,4 +356,207 @@ public partial class NotesView : UserControl
     }
 
     private static string Shorten(string s) => s.Length > 28 ? s[..27].TrimEnd() + "…" : s;
+
+    // ---- Snippets ----
+
+    /// <summary>The strip's height (and its thumbnails'), in DIPs.</summary>
+    internal const double ThumbHeight = 52;
+
+    /// <summary>Ctrl+V (or Paste) with an image on the clipboard: true when it was one, kept or not.</summary>
+    internal bool PasteImage() => _snippets != null && Paste(ReadClipboard());
+
+    /// <summary>A paste in Notes: an image goes on the sheet as a snippet (true); anything else is left to the text box (false).</summary>
+    internal bool Paste(IDataObject? data)
+    {
+        if (_snippets == null) return false;
+        var found = SnippetImage.FromPaste(data);
+        if (!found.IsImage) return false;
+        Keep(found, fromTasks: false);
+        return true;
+    }
+
+    /// <summary>
+    /// Keeps pasted images on the sheet being written on (on blank paper, a new sheet). Pasted here they just
+    /// appear; pasted on Tasks (which comes here to show them) a toast says where they went, with Undo. An
+    /// image that can't be kept says why.
+    /// </summary>
+    internal void Keep(PastedImages found, bool fromTasks)
+    {
+        if (_snippets is not { } store) return;
+        string? problem = Explain(found.Problem);
+        var added = new List<Snippet>();
+        if (found.Images.Count > 0)
+        {
+            var sheet = _view.ActiveSheet ?? _ws.AddSheet(_view.NewItemSpace);
+            foreach (var png in found.Images)
+            {
+                var (snippet, refusal) = store.Add(sheet.Id, png, DateTimeOffset.Now);
+                if (snippet == null)
+                {
+                    problem = Explain(refusal);
+                    break;
+                }
+                if (png.Thumb != null) _thumbs[snippet.Id] = png.Thumb;
+                added.Add(snippet);
+            }
+            ShowSnippets();
+        }
+        if (added.Count > 0)
+        {
+            RevealSnippet(added[^1]);
+            string what = added.Count == 1 ? "Snippet" : $"{added.Count} snippets";
+            _host?.Announce($"{what} added");
+            if (problem == null && fromTasks)
+            {
+                // Undo is the paste undone: nothing to bring back, so the files go then and there.
+                _host?.ShowToast($"{what} added to Notes", () =>
+                {
+                    store.Detach(added);
+                    Forget(added);
+                });
+                return;
+            }
+        }
+        if (problem != null) _host?.ShowToast(problem);
+    }
+
+    private static string? Explain(PasteProblem problem) => problem switch
+    {
+        PasteProblem.TooBig => "That image is too big to paste",
+        PasteProblem.Unreadable => "Couldn't read that image",
+        PasteProblem.NotOnThisPc => "Only images on this PC's own drives can be pasted",
+        _ => null,
+    };
+
+    private static string? Explain(SnippetRefusal refusal) => refusal switch
+    {
+        SnippetRefusal.Full => $"Notes keeps up to {SnippetStore.MaxCount} snippets: discard one to make room",
+        SnippetRefusal.NoRoom => $"Notes keeps up to {SnippetStore.MaxTotalBytes / (1024 * 1024)} MB of snippets: discard one to make room",
+        SnippetRefusal.CantSave => "Couldn't keep that image",
+        _ => null,
+    };
+
+    /// <summary>The strip shows the sheet's snippets, oldest first; with none it isn't there at all.</summary>
+    private void ShowSnippets()
+    {
+        if (_snippets == null) return;
+        var list = _snippets.Of(_view.ActiveSheet?.Id);
+        SnippetStrip.Children.Clear();
+        SnippetScroller.Visibility = list.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        for (int i = 0; i < list.Count; i++) SnippetStrip.Children.Add(Cell(list[i], i, list.Count));
+    }
+
+    /// <summary>A thumbnail (click to view, right-click for a menu) with its × in the corner.</summary>
+    private Grid Cell(Snippet snippet, int index, int count)
+    {
+        string time = snippet.PastedAt;
+        var thumb = new Button
+        {
+            Style = (Style)FindResource("SnippetThumb"),
+            Width = Math.Clamp(ThumbHeight * snippet.Width / Math.Max(1, snippet.Height), 40, 120),
+            ToolTip = $"Pasted {time} · click to view",
+            ContextMenu = (ContextMenu)FindResource("SnippetMenu"),
+            Tag = snippet,
+        };
+        if (Thumb(snippet) is { } image)
+        {
+            var brush = new ImageBrush(image) { Stretch = Stretch.UniformToFill, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top };
+            brush.Freeze();
+            thumb.Background = brush;
+        }
+        else
+        {
+            thumb.SetResourceReference(BackgroundProperty, "SubtleFillBrush"); // its file is damaged or gone
+        }
+        AutomationProperties.SetName(thumb, count == 1 ? $"Snippet, pasted {time}" : $"Snippet {index + 1} of {count}, pasted {time}");
+        AutomationProperties.SetHelpText(thumb, "Opens it full size");
+        thumb.Click += (_, _) => View(snippet);
+
+        // Hidden until the pointer is over the thumbnail, but always there for screen readers.
+        var discard = new Button
+        {
+            Style = (Style)FindResource("SnippetDiscard"),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 3, 3, 0),
+            ToolTip = "Discard",
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Tag = snippet,
+        };
+        AutomationProperties.SetName(discard, "Discard snippet");
+        discard.Click += (_, _) => Discard(snippet);
+
+        var cell = new Grid { Margin = new Thickness(0, 0, 8, 0), Tag = snippet, Children = { thumb, discard } };
+        cell.MouseEnter += (_, _) => ShowDiscard(discard, true);
+        cell.MouseLeave += (_, _) => ShowDiscard(discard, false);
+        return cell;
+    }
+
+    private static void ShowDiscard(Button discard, bool show)
+    {
+        discard.IsHitTestVisible = show;
+        Anim.Fade(discard, show ? 1 : 0, show ? 120 : 90);
+    }
+
+    /// <summary>A snippet's thumbnail: made when it was pasted, otherwise read from its file (and kept while it's on show).</summary>
+    private BitmapSource? Thumb(Snippet snippet)
+    {
+        if (_thumbs.TryGetValue(snippet.Id, out var thumb)) return thumb;
+        if (_snippets == null || SnippetImage.Load(_snippets.PathOf(snippet)) is not { } loaded) return null;
+        _thumbs[snippet.Id] = loaded;
+        return loaded;
+    }
+
+    /// <summary>Folded away: only the thumbnails on show stay in memory.</summary>
+    private void KeepThumbsOf(string? sheetId)
+    {
+        var keep = (_snippets?.Of(sheetId) ?? []).Select(s => s.Id).ToHashSet();
+        foreach (string id in _thumbs.Keys.Where(id => !keep.Contains(id)).ToList()) _thumbs.Remove(id);
+    }
+
+    private void RevealSnippet(Snippet snippet) =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+            SnippetStrip.Children.OfType<FrameworkElement>().FirstOrDefault(c => Equals(c.Tag, snippet))?.BringIntoView());
+
+    private void View(Snippet snippet)
+    {
+        if (_snippets != null) _host?.ViewSnippet(_snippets.PathOf(snippet), snippet);
+    }
+
+    /// <summary>× on a snippet: off the sheet at once; its file goes once Undo lapses.</summary>
+    internal void Discard(Snippet snippet)
+    {
+        if (_snippets is not { } store) return;
+        store.Detach([snippet]);
+        _host?.Announce("Snippet discarded");
+        _host?.ShowToast("Snippet discarded", () => store.Attach([snippet]), () => Forget([snippet]));
+    }
+
+    private void Forget(IReadOnlyCollection<Snippet> snippets)
+    {
+        _snippets?.Forget(snippets);
+        foreach (var s in snippets) _thumbs.Remove(s.Id);
+    }
+
+    private static Snippet? SnippetOf(object sender) =>
+        ((sender as MenuItem)?.Parent as ContextMenu)?.PlacementTarget is FrameworkElement { Tag: Snippet s } ? s : null;
+
+    private void ViewSnippet_Click(object sender, RoutedEventArgs e)
+    {
+        if (SnippetOf(sender) is { } s) View(s);
+    }
+
+    private void DiscardSnippet_Click(object sender, RoutedEventArgs e)
+    {
+        if (SnippetOf(sender) is { } s) Discard(s);
+    }
+
+    /// <summary>The mouse wheel scrolls the strip sideways (it has nothing to scroll up and down).</summary>
+    private void SnippetScroller_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (SnippetScroller.ScrollableWidth <= 0) return;
+        SnippetScroller.ScrollToHorizontalOffset(SnippetScroller.HorizontalOffset - e.Delta * 0.4);
+        e.Handled = true;
+    }
 }

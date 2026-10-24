@@ -35,10 +35,11 @@ so both can run side by side (with its own `TackData` folder, as above).
 | `src/Tack/Interop/` | Win32 and DWM: glass, monitors/DPI, hotkey, shell watcher. All P/Invoke is in `NativeMethods.cs` |
 | `src/Tack/Windows/` | The three windows: orb, peek bubble, panel |
 | `src/Tack/Launcher/` | The optional radial launcher (off by default): `Core/` is platform-neutral and unit-tested; the rest is its window, settings card and Windows launching/placement. See [docs/LAUNCHER.md](docs/LAUNCHER.md) |
+| `src/Tack/Snippets/` | Images pasted into Notes: reading a paste (sizes checked before anything is decoded or copied), `snippets.json` and the `snippets` folder beside tack.json (never synced), and the full-size viewer |
 | `src/Tack/Views/` | Tasks, Notes and Settings pages shown inside the panel |
 | `src/Tack/Controls/` | Custom-drawn orb, animation helpers, converters |
 | `src/Tack/Themes/` | `Theme.xaml` (fonts and every control style), `Dark.xaml` / `Light.xaml` (colour palettes) |
-| `tests/Tack.Tests/` | Tests for the sync model, tack.json, spaces, hostile sync files and the launcher (its logic, plus its window and settings card off screen). A plain console app: no test packages |
+| `tests/Tack.Tests/` | Tests for the sync model, tack.json, spaces, hostile sync files, the launcher (its logic, plus its window and settings card off screen) and snippets (pastes as the clipboard hands them over, without touching this PC's clipboard). A plain console app: no test packages. Set `TACK_SHOTS` to a folder to have the on-screen tests save what they draw there |
 | `tests/vectors/` | Shared test vectors: `sync.json` (model) and `sync-engine.json` (sync cycles, device files) from Tack Focus, `desktop-export.json` and `desktop-device.json` from Tack for Windows, `legacy-1.1.json` written by Tack 1.1 |
 | `tools/make_icon.py` | Regenerates `Assets/Tack.ico` and `docs/icon.png` (needs Pillow) |
 | `build.ps1` | Builds the release zips into `artifacts/` |

@@ -505,6 +505,12 @@ public sealed class Workspace : Observable, IImportTarget
     internal Func<bool> KeepDeletions { get; set; }
 
     /// <summary>
+    /// Whether a sheet holds something kept on this PC alone (snippets), so it isn't blank even with no text.
+    /// Nothing here syncs; it only keeps <see cref="LeaveWelcomeBehind"/> from taking such a sheet.
+    /// </summary>
+    internal Func<string, bool>? HoldsLocalContent { get; set; }
+
+    /// <summary>
     /// Joining a sync folder your other devices already use: the welcome tasks you never touched
     /// (not edited, ticked or moved, in the list or to a space: all their clocks are still the one
     /// they were made with, here, and none for a space) and a blank sheet never written on (or put
@@ -519,7 +525,8 @@ public sealed class Workspace : Observable, IImportTarget
         var tasks = _allTasks.Where(t => !t.IsDeleted && Untouched(t)).ToList();
         foreach (var t in tasks) Remove(t);
         // Only this PC's own blank sheets, never one that just arrived from another device.
-        var blank = Sheets.Where(s => s.Text.Length == 0 && s.Clk.Text == s.Clk.Deleted && Stamp.Node(s.Clk.Deleted) == Clock.Node && s.Clk.Space == Stamp.Zero).ToList();
+        var blank = Sheets.Where(s => s.Text.Length == 0 && s.Clk.Text == s.Clk.Deleted && Stamp.Node(s.Clk.Deleted) == Clock.Node && s.Clk.Space == Stamp.Zero
+            && HoldsLocalContent?.Invoke(s.Id) != true).ToList();
         if (blank.Count == Sheets.Count) blank = blank.Skip(1).ToList();
         foreach (var s in blank) SetSheetDeleted(s, true);
         if (tasks.Count > 0 || blank.Count > 0) Rebuild();

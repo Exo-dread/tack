@@ -12,7 +12,9 @@ using Tack.Controls;
 using Tack.Interop;
 using Tack.Model;
 using Tack.Services;
+using Tack.Snippets;
 using Tack.Sync;
+using Tack.Views;
 
 namespace Tack.Windows;
 
@@ -20,7 +22,7 @@ namespace Tack.Windows;
 /// The expanded state: a compact acrylic panel with Tasks and Notes.
 /// It knows nothing about the orb; AppShell decides where and when it appears.
 /// </summary>
-public partial class PanelWindow : Window
+public partial class PanelWindow : Window, INotesHost
 {
     private const int WM_SIZING = 0x0214;
     private const int WM_ENTERSIZEMOVE = 0x0231;
@@ -34,7 +36,8 @@ public partial class PanelWindow : Window
     private readonly AppShell _shell;
     private readonly DispatcherTimer _toastTimer;
     private IntPtr _hwnd;
-    private Action? _undo;
+    private readonly UndoSlot _undo = new(); // the toast's Undo, and what waits for it to lapse
+    private SnippetViewer? _viewer;
     private bool _settingsOpen;
     private bool _userResized;
     private bool _sizeChangePending;
@@ -77,7 +80,7 @@ public partial class PanelWindow : Window
         TasksPage.Initialize(ws, view, this);
         TasksPage.ContentHeightChanged += () => { if (IsTasksAutoSized) RequestPreferredSize(); };
         TasksPage.RowFolding += ms => { if (IsTasksAutoSized) RequestPreferredSize(new GlideTiming(WindowBoundsAnimator.Clock, ms, EaseIn: true)); };
-        NotesPage.Initialize(ws, view, this);
+        NotesPage.Initialize(ws, view, this, shell.Snippets);
         SettingsPage.Initialize(ws, view, shell, this);
 
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
@@ -99,8 +102,17 @@ public partial class PanelWindow : Window
         IsVisibleChanged += (_, _) =>
         {
             if (IsVisible) RevealShownSpace();
-            else _heldHeight = 0; // folded away: it fits its list again next time
+            else
+            {
+                _heldHeight = 0; // folded away: it fits its list again next time
+                CloseViewer();
+            }
         };
+        // The menu's Paste on Tasks (Ctrl+V and Shift+Insert are caught in OnPreviewKeyDown).
+        CommandManager.AddPreviewExecutedHandler(this, (_, e) =>
+        {
+            if (e.Command == ApplicationCommands.Paste && PasteImageOnTasks()) e.Handled = true;
+        });
     }
 
     public IntPtr Handle => _hwnd;
@@ -654,9 +666,13 @@ public partial class PanelWindow : Window
 
     // ---- Toast + undo ----
 
-    public void ShowToast(string message, Action? undo = null)
+    /// <summary>
+    /// Shows a toast, with Undo when <paramref name="undo"/> is given. <paramref name="lapsed"/> runs once that Undo
+    /// can't be used any more: the toast went, or another took its place (a discarded snippet's file goes then).
+    /// </summary>
+    public void ShowToast(string message, Action? undo = null, Action? lapsed = null)
     {
-        _undo = undo;
+        _undo.Hold(undo, lapsed);
         ToastText.Text = message;
         ToastUndo.Visibility = undo != null ? Visibility.Visible : Visibility.Collapsed;
         Toast.Visibility = Visibility.Visible;
@@ -669,21 +685,74 @@ public partial class PanelWindow : Window
     private void HideToast()
     {
         _toastTimer.Stop();
-        _undo = null;
+        _undo.Lapse();
         if (Toast.Visibility == Visibility.Visible)
-            Anim.Fade(Toast, 0, 160, () => { if (_undo == null) Toast.Visibility = Visibility.Collapsed; });
+            Anim.Fade(Toast, 0, 160, () => { if (!_undo.CanUndo) Toast.Visibility = Visibility.Collapsed; });
     }
 
     public bool Undo()
     {
-        if (_undo == null) return false;
-        var undo = _undo;
+        if (_undo.Take() is not { } undo) return false;
         HideToast();
         undo();
         return true;
     }
 
     private void ToastUndo_Click(object sender, RoutedEventArgs e) => Undo();
+
+    /// <summary>Tack is quitting: a toast's Undo lapses with it.</summary>
+    internal void EndToast() => _undo.Lapse();
+
+    void INotesHost.Announce(string text) => Announce(text);
+
+    // ---- Snippets ----
+
+    /// <summary>A snippet is open full size: the panel mustn't fold away while it has the focus.</summary>
+    internal bool IsViewerOpen => _viewer != null;
+
+    /// <summary>The snippet viewer closed; true when that was because something else was clicked.</summary>
+    internal event Action<bool>? ViewerClosed;
+
+    void INotesHost.ViewSnippet(string path, Snippet snippet)
+    {
+        CloseViewer();
+        var viewer = SnippetViewer.Open(this, _hwnd, path, snippet);
+        if (viewer == null)
+        {
+            ShowToast("Couldn't open that snippet");
+            return;
+        }
+        _viewer = viewer;
+        viewer.Closed += (_, _) =>
+        {
+            if (_viewer == viewer) _viewer = null;
+            if (!viewer.ClosedByClickAway && IsVisible)
+            {
+                Activate();
+                FocusDefault();
+            }
+            ViewerClosed?.Invoke(viewer.ClosedByClickAway);
+        };
+    }
+
+    internal void CloseViewer() => _viewer?.CloseSoon();
+
+    /// <summary>
+    /// Ctrl+V on Tasks with an image (and no text) on the clipboard: it goes to Notes as a snippet on the sheet
+    /// on show, and Notes comes forward to show it. Anything with text pastes as it always has.
+    /// </summary>
+    private bool PasteImageOnTasks()
+    {
+        if (_settingsOpen || _ws.Settings.Tab != "tasks" || !NotesPage.TakesImages) return false;
+        var found = SnippetImage.FromPaste(NotesPage.ReadClipboard());
+        if (!found.IsImage) return false;
+        if (found.Images.Count > 0) SelectTab("notes");
+        NotesPage.Keep(found, fromTasks: true);
+        return true;
+    }
+
+    private static bool IsPasteKey(KeyEventArgs e) =>
+        (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control) || (e.Key == Key.Insert && Keyboard.Modifiers == ModifierKeys.Shift);
 
     /// <summary>Alt+F4 and friends fold the panel away instead of destroying it.</summary>
     protected override void OnClosing(CancelEventArgs e)
@@ -700,6 +769,11 @@ public partial class PanelWindow : Window
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
+        if (IsPasteKey(e) && PasteImageOnTasks())
+        {
+            e.Handled = true;
+            return;
+        }
         // Alt+0 shows All, Alt+1..9 the first nine spaces, wherever the caret is (a draft stays as it is).
         // Only once there are spaces: until then Alt+digits do what they always did.
         if (Keyboard.Modifiers == ModifierKeys.Alt && e.Key == Key.System && e.SystemKey is >= Key.D0 and <= Key.D9

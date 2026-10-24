@@ -40,6 +40,58 @@
             <MenuItem Header="Delete sheet" Click="DeleteSheet_Click" />
         </ContextMenu>
 
+        <!-- A snippet's thumbnail: the image (set as its background) in a rounded frame. Click to view it. -->
+        <Style x:Key="SnippetThumb" TargetType="Button">
+            <Setter Property="Height" Value="52" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" CornerRadius="6" BorderThickness="1" Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource StrokeStrongBrush}" />
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The × over a thumbnail's corner, shown while the pointer is over the thumbnail. -->
+        <Style x:Key="SnippetDiscard" TargetType="Button">
+            <Setter Property="Width" Value="20" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="FontSize" Value="8" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Content" Value="&#xE711;" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" CornerRadius="10" BorderThickness="1" Background="{DynamicResource FlyoutBrush}"
+                                BorderBrush="{DynamicResource StrokeStrongBrush}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <ContextMenu x:Key="SnippetMenu" x:Shared="False">
+            <MenuItem Header="View" Click="ViewSnippet_Click" />
+            <MenuItem Header="Discard snippet" Click="DiscardSnippet_Click" />
+        </ContextMenu>
+
         <!-- The paper itself. -->
         <Style x:Key="NotesBox" TargetType="TextBox" BasedOn="{StaticResource GhostTextBox}">
             <Setter Property="AcceptsReturn" Value="True" />
@@ -102,12 +154,24 @@
         <Border Grid.Row="1" CornerRadius="10" Background="{DynamicResource ControlFillBrush}"
                 BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1">
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Snippets: images pasted onto this sheet, kept on this PC only. Not there until the sheet has one. -->
+                <ScrollViewer x:Name="SnippetScroller" Margin="12,10,12,0" Visibility="Collapsed" Focusable="False"
+                              HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
+                              PreviewMouseWheel="SnippetScroller_PreviewMouseWheel">
+                    <StackPanel x:Name="SnippetStrip" Orientation="Horizontal" AutomationProperties.Name="Snippets" />
+                </ScrollViewer>
+
                 <!-- A space with no sheets shows blank paper: the first keystroke makes its sheet. -->
                 <!-- MaxLength: DeviceFile.MaxNoteText, the longest note any device reads from a sync file. -->
-                <TextBox x:Name="Editor" Style="{StaticResource NotesBox}" AutomationProperties.Name="Note" MaxLength="1000000"
+                <TextBox x:Name="Editor" Grid.Row="1" Style="{StaticResource NotesBox}" AutomationProperties.Name="Note" MaxLength="1000000"
                          Text="{Binding ActiveSheet.Text, UpdateSourceTrigger=PropertyChanged}"
                          PreviewKeyDown="Editor_PreviewKeyDown" TextChanged="Editor_TextChanged" />
-                <TextBlock x:Name="Hint" Margin="16,12,16,12" IsHitTestVisible="False" TextWrapping="Wrap"
+                <TextBlock x:Name="Hint" Grid.Row="1" Margin="16,12,16,12" IsHitTestVisible="False" TextWrapping="Wrap"
                            Foreground="{DynamicResource TextTertiaryBrush}" LineHeight="20"
                            Visibility="{Binding ActiveSheet.IsEmpty, Converter={StaticResource Vis}, FallbackValue=Visible}">
                     <Run Text="Jot anything. It saves as you type." />
