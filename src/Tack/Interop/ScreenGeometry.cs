@@ -37,6 +37,37 @@ internal static class ScreenGeometry
         return new MonitorArea(ToInt32Rect(info.rcMonitor), ToInt32Rect(info.rcWork), scale);
     }
 
+    /// <summary>
+    /// What the screen shows in a rectangle (physical pixels), as DWM composed it: a window's acrylic included.
+    /// Null if it can't be read. (No CAPTUREBLT: that would make the pointer flicker, and Tack's own panel isn't layered.)
+    /// </summary>
+    public static System.Windows.Media.Imaging.BitmapSource? Capture(Int32Rect r)
+    {
+        if (r.Width <= 0 || r.Height <= 0 || r.Width > 16384 || r.Height > 16384) return null;
+        IntPtr screen = NativeMethods.GetDC(IntPtr.Zero);
+        if (screen == IntPtr.Zero) return null;
+        IntPtr dc = NativeMethods.CreateCompatibleDC(screen), bitmap = NativeMethods.CreateCompatibleBitmap(screen, r.Width, r.Height);
+        try
+        {
+            if (dc == IntPtr.Zero || bitmap == IntPtr.Zero) return null;
+            IntPtr old = NativeMethods.SelectObject(dc, bitmap);
+            bool copied = NativeMethods.BitBlt(dc, 0, 0, r.Width, r.Height, screen, r.X, r.Y, NativeMethods.SRCCOPY);
+            NativeMethods.SelectObject(dc, old);
+            if (!copied) return null;
+            var source = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(bitmap, IntPtr.Zero, Int32Rect.Empty,
+                System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+            source.Freeze();
+            return source;
+        }
+        catch (Exception) { return null; }
+        finally
+        {
+            if (bitmap != IntPtr.Zero) NativeMethods.DeleteObject(bitmap);
+            if (dc != IntPtr.Zero) NativeMethods.DeleteDC(dc);
+            NativeMethods.ReleaseDC(IntPtr.Zero, screen);
+        }
+    }
+
     /// <summary>How long one refresh of the display a window is on takes (ms); 60 Hz if Windows doesn't say.</summary>
     public static double RefreshMs(IntPtr hwnd)
     {

@@ -116,6 +116,7 @@
         </Style>
     </Window.Resources>
 
+    <Grid>
     <Grid x:Name="Root">
         <!-- Tint over the acrylic (or a solid surface when glass is off). -->
         <Border x:Name="Surface" Background="{DynamicResource GlassTintBrush}" />
@@ -237,5 +238,9 @@
                 </Grid>
             </Grid>
         </Grid>
+    </Grid>
+    <!-- Fade when idle: the panel as the screen showed it a moment before (frosted glass and all), fading
+         away over the faded panel, so the fade starts from what was there. Only while it fades. -->
+    <Image x:Name="FadePicture" Stretch="Fill" Visibility="Collapsed" IsHitTestVisible="False" />
     </Grid>
 </Window>

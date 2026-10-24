@@ -239,16 +239,28 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
     /// <summary>
     /// Fade when idle: the whole panel at half opacity, see-through (as a solid panel at half strength: frosted
     /// glass can't be half there), and back. Back is always at once; the fade itself eases out unless
-    /// <paramref name="animate"/> is false (Windows' animation effects are off).
+    /// <paramref name="animate"/> is false (Windows' animation effects are off). The glass can't fade, so it
+    /// isn't asked to: the panel as the screen showed it (glass and all) is laid over the faded panel and
+    /// fades away, so the first frame is what was there and every one after is a step from it to the faded
+    /// look, never a flash of the solid surface between.
     /// </summary>
     public void SetFaded(bool faded, bool animate)
     {
         if (faded == _faded) return;
         _faded = faded;
+        EndFadePicture();
         if (faded)
         {
+            var before = animate && IsVisible && _glassActive && !_clear ? ScreenGeometry.Capture(ScreenGeometry.GetWindowRect(_hwnd)) : null;
             ApplyGlass(_ws.Settings.Glass);
-            if (animate) Anim.Fade(Root, IdleOpacity, 320, from: 1);
+            if (before != null)
+            {
+                Anim.Set(Root, OpacityProperty, IdleOpacity);
+                FadePicture.Source = before;
+                FadePicture.Visibility = Visibility.Visible;
+                Anim.Fade(FadePicture, 0, 320, EndFadePicture, from: 1);
+            }
+            else if (animate) Anim.Fade(Root, IdleOpacity, 320, from: 1);
             else Anim.Set(Root, OpacityProperty, IdleOpacity);
         }
         else
@@ -256,6 +268,15 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
             Anim.Set(Root, OpacityProperty, 1);
             ApplyGlass(_ws.Settings.Glass);
         }
+    }
+
+    /// <summary>The picture a fade starts from, gone (the fade is over, or came back first).</summary>
+    private void EndFadePicture()
+    {
+        if (FadePicture.Source == null) return;
+        Anim.Set(FadePicture, OpacityProperty, 1);
+        FadePicture.Visibility = Visibility.Collapsed;
+        FadePicture.Source = null;
     }
 
     public bool IsFaded => _faded;

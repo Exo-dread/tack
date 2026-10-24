@@ -226,7 +226,9 @@ Two optional touches in Settings → Look, both leaving Tack exactly as it was u
   pointer has been away for three seconds, and come back the moment it returns or the panel gets the
   focus (or something is dragged over the orb). Never while the panel is in use, a menu, the undo toast, a
   snippet or the bubble beside the orb is up, or you drag or resize. A faded panel is truly see-through
-  (half a solid panel: frosted glass can't be half there), so you can see the model behind it. Nothing
+  (half a solid panel: frosted glass can't be half there), so you can see the model behind it; the fade
+  starts from a picture of the panel as the screen showed it, glass and all, fading away over the faded
+  panel, so it never flashes the solid surface first. Nothing
   runs while idle: a one-shot timer starts when the pointer leaves, and the fade is one short animation,
   none if Windows' animation effects are off.
 

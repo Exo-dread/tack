@@ -71,6 +71,7 @@ internal static class Screens
             await Shot(panel, area, rect, folder, $"{theme}-glass-faded");
             panel.SetFaded(false, animate: false);
             await Shot(panel, area, rect, folder, $"{theme}-glass-back-from-faded");
+            await FadeSequence(panel, area, rect, theme);
 
             // Settings → Look.
             panel.OpenSettings();
@@ -102,6 +103,36 @@ internal static class Screens
         shell.Orb.SetFaded(false, animate: false);
         behind.Close();
         Console.WriteLine($"Wrote the pictures to {folder}");
+    }
+
+    /// <summary>
+    /// The animated fade over frosted glass, as the screen shows it: one pixel of the panel's margin over a white
+    /// stripe, before and then at moments through the fade. It should move one way only, from the glass to the
+    /// faded look, with no first frame of solid surface in between.
+    /// </summary>
+    private static async Task FadeSequence(Tack.Windows.PanelWindow panel, Int32Rect area, Int32Rect rect, string theme)
+    {
+        await Wait(450);
+        var (x, y) = OnWhite(panel, area, rect);
+        int At() => TestCopy.Pixel(TestCopy.Capture(new Int32Rect(area.X + x, area.Y + y, 1, 1)), 0, 0).G;
+        var seen = new List<string> { $"before {At()}" };
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        panel.SetFaded(true, animate: true);
+        foreach (int ms in new[] { 20, 45, 90, 160, 450 })
+        {
+            await Wait(Math.Max(0, ms - (int)clock.ElapsedMilliseconds));
+            seen.Add($"+{clock.ElapsedMilliseconds} ms {At()}");
+        }
+        panel.SetFaded(false, animate: false);
+        Console.WriteLine($"{theme}-glass fade, over white: {string.Join(", ", seen)}");
+    }
+
+    /// <summary>A pixel of the panel's empty right margin over a white stripe, in <paramref name="area"/>'s pixels.</summary>
+    private static (int X, int Y) OnWhite(Tack.Windows.PanelWindow panel, Int32Rect area, Int32Rect rect)
+    {
+        int y = rect.Y - area.Y + rect.Height * 2 / 3;
+        int x = rect.X - area.X + rect.Width - (int)(18 * VisualTreeHelper.GetDpi(panel).DpiScaleX);
+        return (x - ((x / Stripe) % 2 == 0 ? 0 : Stripe), y);
     }
 
     private static async Task Shot(Tack.Windows.PanelWindow panel, Int32Rect area, Int32Rect rect, string folder, string name)
