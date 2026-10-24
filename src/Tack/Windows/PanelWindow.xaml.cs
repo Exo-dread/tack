@@ -156,6 +156,7 @@ public partial class PanelWindow : Window
                 {
                     _heldHeight = 0;
                     RememberManualSize();
+                    if (_searchOpen) _searchHeight = ActualHeight; // search keeps the size you gave it
                 }
                 UserMovedOrResized?.Invoke();
                 break;
