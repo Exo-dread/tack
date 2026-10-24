@@ -24,6 +24,7 @@ internal static class ScreenTests
         yield return ("notes on screen: typing on a space's blank paper makes its sheet and keeps every keystroke, with no error", TypingOnBlankPaper);
         yield return ("tasks on screen: the line to the task in focus in another space keeps room for the task beside a long space name", NowLineKeepsTheTask);
         yield return ("notes on screen: what's typed on a space's blank paper can be undone, all of it, on the sheet it made", UndoOnBlankPaper);
+        yield return ("notes on screen: a sheet switch from inside the editor's own change is no error, shows the sheet and isn't an undo step", SwitchInsideAChange);
         yield return ("panel on screen: the toast keeps Undo inside the panel, however long its message", ToastKeepsUndo);
         yield return ("peek on screen: a long space name gives way to the counts and stays inside the bubble; with only Main, as before", PeekLongName);
         yield return ("menus on screen: Move to lists a thousand spaces at a time, the rest under More spaces, made when it opens", MoveMenuInPages);
@@ -102,6 +103,95 @@ internal static class ScreenTests
             Check.Equal("Hi", second.Text, "typing goes on on the same sheet");
             Check.Equal(1, view.Sheets.Count, "still one sheet");
             Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+        });
+    }
+
+    /// <summary>
+    /// Whatever a keystroke sets off runs inside the editor's change (its TextChanged handlers, the
+    /// sheet's text binding), where the TextBox refuses to touch its undo history. A sheet switch from
+    /// there (a Tack 1.5.0 build in the making crashed so, on the first keystroke on blank paper) must
+    /// wait for the change to end.
+    /// </summary>
+    private static void SwitchInsideAChange()
+    {
+        Ui.Run(errors =>
+        {
+            var ws = new Workspace(new Settings(), new Hlc("desk0001"), WorkspaceData.Empty);
+            var alpha = ws.ActiveSheet;
+            alpha.Text = "Alpha";
+            var beta = ws.AddSheet(text: "Beta");
+            ws.ActiveSheet = alpha;
+            var view = new SpaceView(ws);
+            var notes = new NotesView();
+            notes.Initialize(ws, view, null!);
+            var editor = (TextBox)notes.FindName("Editor");
+            using var window = Ui.Host(notes);
+
+            // Types, running `change` once from inside the first keystroke's change.
+            void TypeChanging(string text, Action change)
+            {
+                bool done = false;
+                void OnTextChanged(object sender, TextChangedEventArgs e)
+                {
+                    if (done) return;
+                    done = true;
+                    change();
+                }
+                editor.TextChanged += OnTextChanged;
+                try { Ui.Type(editor, text); }
+                catch (Exception ex) { errors.Add(ex); }
+                finally { editor.TextChanged -= OnTextChanged; }
+                Ui.Pump();
+            }
+
+            // Runs `change` inside a change of the editor's own, the way a paste or Undo is one.
+            void InChange(Action change)
+            {
+                editor.BeginChange();
+                try { change(); }
+                catch (Exception ex) { errors.Add(ex); }
+                finally { editor.EndChange(); }
+                Ui.Pump();
+            }
+
+            // Only Main: from one sheet to the other, and back.
+            Ui.Type(editor, "!");
+            TypeChanging("?", () => ws.ActiveSheet = beta);
+            Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+            Check.Equal("Alpha!?", alpha.Text, "the keystroke on the sheet it was typed on");
+            Check.True(view.ActiveSheet == beta && editor.Text == "Beta", $"the other sheet on show ('{editor.Text}')");
+            Check.True(!editor.CanUndo, "the switch isn't an undo step");
+            Ui.Type(editor, "s");
+            editor.Undo();
+            Ui.Pump();
+            Check.True(beta.Text == "Beta" && !editor.CanUndo, $"Undo takes back what's typed here and no more ('{beta.Text}')");
+            InChange(() => ws.ActiveSheet = alpha);
+            Check.Equal(0, errors.Count, "back: no error\n" + string.Join("\n", errors));
+            Check.True(view.ActiveSheet == alpha && editor.Text == "Alpha!?", $"back: the sheet on show ('{editor.Text}')");
+            Check.True(!editor.CanUndo, "back: not an undo step");
+
+            // Spaces: from a sheet onto a space's blank paper, where Undo would make a sheet of what it brought back.
+            var work = ws.AddSpace("Work");
+            var blank = ws.AddSpace("Blank");
+            view.Show(work.Id);
+            Ui.Pump();
+            Ui.Type(editor, "Plan");
+            var plan = view.ActiveSheet;
+            Check.True(plan != null && plan.Text == "Plan", "Work's sheet, made on its blank paper");
+            TypeChanging("s", () => view.Show(blank.Id));
+            Check.Equal(0, errors.Count, "onto blank paper: no error\n" + string.Join("\n", errors));
+            Check.Equal("Plans", plan!.Text, "onto blank paper: the keystroke on Work's sheet");
+            Check.True(view.ActiveSheet == null && editor.Text.Length == 0, $"onto blank paper: it shows ('{editor.Text}')");
+            Check.True(!editor.CanUndo, "onto blank paper: nothing to undo");
+            Ui.Type(editor, "N");
+            var made = view.ActiveSheet;
+            Check.True(made != null && made.Text == "N" && made.Space == blank.Id, "typing on it makes its sheet");
+            Check.True(editor.CanUndo, "and what's typed stays undoable");
+            InChange(() => view.Show(work.Id));
+            Check.Equal(0, errors.Count, "back to Work: no error\n" + string.Join("\n", errors));
+            Check.True(view.ActiveSheet == plan && editor.Text == "Plans", $"back to Work: its sheet ('{editor.Text}')");
+            Check.True(!editor.CanUndo, "back to Work: not an undo step");
+            Check.Equal(2, ws.Sheets.Count(s => s.Space.Length > 0), "no other sheet");
         });
     }
 
