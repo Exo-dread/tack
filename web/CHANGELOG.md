@@ -1,5 +1,15 @@
 # Tack Focus changelog
 
+## Unreleased
+
+- **Search.** Tap the search button beside Settings (on a phone), or press **Ctrl+F** (⌘F), and type:
+  open tasks, finished tasks and notes from every space are listed as you type, grouped Tasks, Done
+  and Notes, each with its space while you have spaces. Case and accents don't matter, and a note
+  matches anywhere in it, not just its title. ↑ ↓ and Enter (or a tap) go there: its space and page,
+  the task scrolled to and lit up for a moment, or the sheet with the match selected. Esc closes it
+  and puts the focus back. On a narrow phone the header's buttons sit a little closer, so the space's
+  name keeps its room. Tack for Windows finds exactly the same things.
+
 ## 0.4.3 (24 October 2026)
 
 Sync stands up better to damaged and hostile files, and is gentler on Microsoft. From a second

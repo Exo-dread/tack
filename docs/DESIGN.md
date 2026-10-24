@@ -66,6 +66,23 @@ colours, priorities or due dates, and there are still no tags.
   Work while the phone shows Personal. A space deleted on another device just shows Main.
 - **Deleting a space loses nothing.** Its tasks and notes fall back to Main, and Undo restores it all.
 
+### Search: one box, everything, then out of the way
+With spaces, a Done list and sheets of notes, "where did I write that?" needs an answer that isn't
+scrolling. **Ctrl+F** opens a box over the tabs (nothing else moves, and nothing shows until then) and
+lists what matches as you type: open tasks, finished tasks and notes, from every space at once,
+grouped, each with its space. It's deliberately plain:
+
+- **One rule, both apps.** A query matches text that contains it, anywhere (all of a note), ignoring
+  case and accents, with curly quotes, dashes and Unicode spaces taken as their plain forms. Both
+  apps fold text the same way, a character at a time, and are held to the same cases
+  (`tests/shared/search.json`), so the phone and the PC never disagree about what's there.
+- **Going there is the point.** Enter opens the result where it lives: its space (unless All shows
+  it), its tab, the task scrolled to and lit up for a moment, or the sheet with the match selected.
+  Esc puts you back where you were.
+- **Quick at any size.** Text is folded once per task or sheet and kept until it changes, so a
+  keystroke only compares; each group draws its first fifty results, with Show more for the rest.
+  No index on disk, and nothing runs while you aren't searching.
+
 ### The launcher: optional, and kept apart
 The radial launcher is the one feature that isn't about *what was I doing?*: a ring of shortcuts around the
 orb for the apps and folders you open all day, because the orb is already where your hand goes. So it's held
@@ -135,13 +152,13 @@ white documents.
 src/Tack
 ├── App.xaml(.cs)          Startup: single instance, data folder, first-run seeding, crash safety
 ├── AppShell.cs            The coordinator: orb ⇄ panel, placement, shortcut, full-screen, housekeeping
-├── Model/                 Workspace (all user state), SpaceView (what the space on show shows), TaskItem, NoteSheet, Settings
+├── Model/                 Workspace (all user state), SpaceView (what the space on show shows), Search, TaskItem, NoteSheet, Settings
 ├── Services/              StateStore (JSON persistence), FolderSync (sync through a folder), accent colour, startup, log, single instance
 ├── Sync/                  The data model shared with Tack Focus: clocks, sort keys, merges, device files, the sync engine
 ├── Interop/               Win32/DWM: glass, monitors & DPI, global hotkey, shell watcher
 ├── Windows/               OrbWindow, PeekWindow, PanelWindow
 ├── Launcher/              The optional radial launcher: Core/ (platform-neutral, tested), its window, settings card, launching
-├── Views/                 TasksView, NotesView, SettingsView (UserControls inside the panel)
+├── Views/                 TasksView, NotesView, SettingsView, SearchView (UserControls inside the panel)
 ├── Controls/              OrbVisual (custom-drawn), animation helpers, converters
 └── Themes/                Theme.xaml (typography and every control style), Dark.xaml / Light.xaml (palettes)
 ```

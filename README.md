@@ -43,6 +43,8 @@ and gets out of the way the moment you're done.
   Until you make one, there's nothing extra on screen.
 - **Notes like scrap paper.** Plain-text sheets that save as you type. Lists continue themselves,
   F5 stamps the time, and Ctrl+Enter turns a line into a task.
+- **Find anything.** Ctrl+F searches every task, finished task and note in every space as you type,
+  whatever the case or accents, and takes you straight to what you pick.
 - **A launcher, if you want one.** Turn it on in Settings → Launcher, then Shift+click the orb for a ring
   of your own shortcuts (apps, folders, websites, groups), or Shift+drag to one and let go. Drag on past an
   app to choose the display it opens on. It's off by default, and while it's off nothing changes.
@@ -131,6 +133,19 @@ until there's a second one, Tack looks exactly as it always has.
   right-click a sheet's name to delete it (or, with spaces, move it to another).
 - Start a line with `- `, `* `, `1. ` or `[ ] ` and Enter continues the list.
 
+### Search
+
+Press **Ctrl+F** in the panel and type. A box takes the place of the tabs (nothing else moves), and
+what matches is listed below it as you type: open tasks (the one in focus first), finished tasks and
+notes, from every space, each with its space while there are spaces.
+
+- Case and accents don't matter ("cafe" finds "Café", "strasse" finds "Straße"), nor do curly quotes,
+  dashes or the odd non-breaking space pasted from an email. A note matches anywhere in it.
+- **↑ / ↓** choose, **Enter** (or a click) goes there: to its space and tab, with the task scrolled to
+  and lit up for a moment (the caret in it), or the sheet open with the match selected. A finished task
+  opens Done.
+- **Esc** closes search and puts the caret back where it was. Ctrl+F again brings back your last search.
+
 ### Launcher
 
 Off by default. Turn it on in **Settings → Launcher** and fill its six positions with apps, folders,
@@ -154,6 +169,8 @@ shortcut and let go. Plain clicks and drags of the orb are untouched. More: [doc
 | Esc | Panel | Cancel the current edit or close Settings, then fold away |
 | Ctrl+1 / Ctrl+2 | Panel | Tasks / Notes |
 | Ctrl+, | Panel | Settings |
+| Ctrl+F | Panel | Search tasks, finished tasks and notes in every space |
+| ↑ / ↓, Enter, Esc | Search | Choose a result, go to it, close search |
 | Ctrl+Z | Panel | Undo the last delete, move, clear or paste |
 | Enter / Ctrl+Enter | Add box | Add task / add and focus on it |
 | ↑ / ↓ | Tasks | Move between tasks |

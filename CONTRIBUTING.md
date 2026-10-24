@@ -29,16 +29,17 @@ so both can run side by side (with its own `TackData` folder, as above).
 | Path | What |
 |---|---|
 | `src/Tack/AppShell.cs` | Coordinates the orb and panel: expand/collapse, placement, shortcut, full-screen handling |
-| `src/Tack/Model/` | `Workspace` (all user state and every mutation), `TaskItem`, `NoteSheet`, `Settings` |
+| `src/Tack/Model/` | `Workspace` (all user state and every mutation), `TaskItem`, `NoteSheet`, `Settings`, `Search` (what Ctrl+F matches: the same rule as Tack Focus) |
 | `src/Tack/Sync/` | The data model shared with Tack Focus: clocks, sort keys, merges, the `tackFocus` section of tack.json, device files and the sync engine. A port of `web/src/model` and `web/src/sync` that must give exactly the same results |
 | `src/Tack/Services/` | `StateStore` (JSON persistence), `StateFile` (tack.json and records), `FolderSync` and `LocalSyncFolder` (sync through a folder), Import, accent colour, startup registration, log, single instance |
 | `src/Tack/Interop/` | Win32 and DWM: glass, monitors/DPI, hotkey, shell watcher. All P/Invoke is in `NativeMethods.cs` |
 | `src/Tack/Windows/` | The three windows: orb, peek bubble, panel |
 | `src/Tack/Launcher/` | The optional radial launcher (off by default): `Core/` is platform-neutral and unit-tested; the rest is its window, settings card and Windows launching/placement. See [docs/LAUNCHER.md](docs/LAUNCHER.md) |
-| `src/Tack/Views/` | Tasks, Notes and Settings pages shown inside the panel |
+| `src/Tack/Views/` | Tasks, Notes and Settings pages shown inside the panel, and search's results |
 | `src/Tack/Controls/` | Custom-drawn orb, animation helpers, converters |
 | `src/Tack/Themes/` | `Theme.xaml` (fonts and every control style), `Dark.xaml` / `Light.xaml` (colour palettes) |
 | `tests/Tack.Tests/` | Tests for the sync model, tack.json, spaces, hostile sync files and the launcher (its logic, plus its window and settings card off screen). A plain console app: no test packages |
+| `tests/shared/` | Cases both apps' tests read: `search.json`, what search matches (folding, where a match is, a workspace searched) |
 | `tests/vectors/` | Shared test vectors: `sync.json` (model) and `sync-engine.json` (sync cycles, device files) from Tack Focus, `desktop-export.json` and `desktop-device.json` from Tack for Windows, `legacy-1.1.json` written by Tack 1.1 |
 | `tools/make_icon.py` | Regenerates `Assets/Tack.ico` and `docs/icon.png` (needs Pillow) |
 | `build.ps1` | Builds the release zips into `artifacts/` |

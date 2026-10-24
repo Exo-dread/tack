@@ -30,6 +30,10 @@ same notes, same `tack.json`.
   space it shows. Until you make a space, nothing about them is on screen.
 - **Notes are scrap paper.** Plain text, titled by the first line, saved as you type. Lists continue
   themselves; *Make task* turns the current line or selection into tasks; *Time* stamps the date.
+- **Search.** The search button beside Settings (on a phone), or Ctrl+F (⌘F): every task, finished
+  task and note in every space, as you type, whatever the case or accents, grouped Tasks, Done and
+  Notes with each one's space. Tap one (or ↑ ↓ and Enter) to go there: the task lit up in its list,
+  or the sheet open with the match selected. The same matching rule as Tack for Windows.
 - **Light and dark**, six accents (each with a deeper shade for light mode), haptic ticks on phones,
   and full respect for *reduce motion*.
 - **Phones get a dock, wide screens get both.** Above 900 px, Tasks and Notes sit side by side.
@@ -50,6 +54,7 @@ keyboard covers the rest (also listed in Settings → Keyboard shortcuts):
 | Keys | Does |
 |---|---|
 | N or / | New task (jumps to the task box) |
+| Ctrl+F (⌘F) | Search tasks and notes; ↑ ↓ and Enter go to a result, Esc closes |
 | Enter / Ctrl+Enter (⌘+Enter) | Add a task / add it as your focus |
 | 1 / 2 / , | Tasks / Notes / Settings |
 | ↑ ↓, Alt+↑ / Alt+↓ | Move between tasks; move a task |
@@ -84,6 +89,7 @@ web/
 │   ├── model/              Pure, tested, no DOM
 │   │   ├── workspace.ts    Every mutation; views (now/open/done, per space); batched change events
 │   │   ├── spaces.ts       Spaces: names, ids, where a task or sheet shows
+│   │   ├── search.ts       What search matches (the same rule as Tack for Windows)
 │   │   ├── merge.ts        Field-by-field merge (between tabs and between devices)
 │   │   ├── hlc.ts          Hybrid logical clocks
 │   │   ├── order.ts        Fractional sort keys
@@ -107,6 +113,7 @@ web/
 │   │   ├── gestures.ts     Swipe and long-press reorder (pointer events)
 │   │   ├── notes.ts        Sheets, list continuation, make task
 │   │   ├── spaces.ts       Spaces on screen: the switcher, Move to…, the space on show
+│   │   ├── search.ts       Search: the box, the results, going to what's found
 │   │   ├── settings.ts     Bottom sheet: appearance, spaces, sync, data, install, about
 │   │   ├── sheet.ts        Small bottom sheets (the switcher, Move to…) and the ⋯ menu
 │   │   ├── motion.ts       Springs (CSS linear()), FLIP, reduced motion
