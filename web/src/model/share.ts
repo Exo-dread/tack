@@ -1,4 +1,4 @@
-import { MAX_PASTE_LINES, MAX_TASK_TEXT } from './limits';
+import { MAX_TASK_TEXT } from './limits';
 import { cleanTaskText, pastedLines, wellFormed } from './text';
 import type { Task } from './types';
 import type { Undo, Workspace } from './workspace';
@@ -100,20 +100,41 @@ function mentions(task: string, url: string): boolean {
   return task.split(' ').some((word) => word.replace(/\/+$/, '') === bare);
 }
 
-export type ShareResult =
-  | { kind: 'added'; added: Task[]; undo: Undo }
+/**
+ * Lines one share turns into tasks: the same as one drop onto Tack for Windows' orb
+ * (DropLimits.MaxItems). A share is something you just saw, not a list to import, and anyone can
+ * write a link to /?share, so it's small, and it's only ever added once you tap Add.
+ */
+export const MAX_SHARE_LINES = 20;
+
+export type SharePreview =
+  /** The tasks Add would make (each one a task can be), at most MAX_SHARE_LINES. */
+  | { kind: 'ready'; lines: string[] }
   /** Nothing to make a task of. */
   | { kind: 'empty' }
-  /** More lines than one paste takes (MAX_PASTE_LINES): nothing added. */
+  /** More lines than one share takes (MAX_SHARE_LINES): nothing to add. */
   | { kind: 'too-many' }
   /** Only lines longer than a task can be (MAX_TASK_TEXT), which a paste skips too. */
   | { kind: 'too-long' };
 
-/** Adds what was shared as tasks in `space` (as a paste adds them), with one Undo for them all. */
-export function addShared(ws: Workspace, shared: Shared, space?: string): ShareResult {
+/** What a share would add, without adding anything: what the card asking "Add?" shows. */
+export function previewShare(shared: Shared): SharePreview {
   const lines = sharedLines(shared);
   if (lines.length === 0) return { kind: 'empty' };
-  if (lines.length > MAX_PASTE_LINES) return { kind: 'too-many' };
-  const { added, undo } = ws.addTasks(lines, space);
+  if (lines.length > MAX_SHARE_LINES) return { kind: 'too-many' };
+  const fit = lines.filter((line) => line.length <= MAX_TASK_TEXT);
+  return fit.length ? { kind: 'ready', lines: fit } : { kind: 'too-long' };
+}
+
+export type ShareResult = { kind: 'added'; added: Task[]; undo: Undo } | Exclude<SharePreview, { kind: 'ready' }>;
+
+/**
+ * Adds what was shared as tasks in `space` (as a paste adds them), with one Undo for them all.
+ * Only once you've said so: the app shows `previewShare` first and calls this on Add.
+ */
+export function addShared(ws: Workspace, shared: Shared, space?: string): ShareResult {
+  const preview = previewShare(shared);
+  if (preview.kind !== 'ready') return preview;
+  const { added, undo } = ws.addTasks(preview.lines, space);
   return added.length ? { kind: 'added', added, undo } : { kind: 'too-long' };
 }

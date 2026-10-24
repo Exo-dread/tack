@@ -1,6 +1,6 @@
 import { encode } from '../model/hlc';
 import { MAX_PASTE_LINES, MAX_TASK_TEXT } from '../model/limits';
-import { addShared, type Shared } from '../model/share';
+import { addShared, MAX_SHARE_LINES, previewShare, type Shared } from '../model/share';
 import { ALL } from '../model/spaces';
 import { pastedLines } from '../model/text';
 import { dayKey, msUntilMidnight } from '../model/time';
@@ -419,9 +419,10 @@ export class App {
 
   /**
    * Nothing on screen that a reload would drop: no task being edited, no sheet open, a task half
-   * typed in the box kept as its draft (which comes back with the page), and, in view, no Undo on
-   * offer for a share that just arrived (the app opened for it, untouched: an update would
-   * otherwise reload it away before your eyes).
+   * typed in the box kept as its draft (which comes back with the page), and, in view, no share
+   * waiting for Add and no Undo on offer for one just added (the app opened for it, untouched: an
+   * update would otherwise reload it away before your eyes; out of view, a waiting share is kept
+   * in this tab and offered again by the new page).
    */
   get settled(): boolean {
     const text = this.input.value;
@@ -429,12 +430,17 @@ export class App {
       (!text.trim() || loadDraft() === text) &&
       !this.tasks.isEditing &&
       !document.querySelector('dialog[open]') &&
-      !(document.visibilityState === 'visible' && this.shareUndo && this.toasts.offers(this.shareUndo))
+      !(
+        document.visibilityState === 'visible' &&
+        ((this.shareUndo && this.toasts.offers(this.shareUndo)) || (this.shareAsk && this.toasts.asking(this.shareAsk)))
+      )
     );
   }
 
   /** The Undo of the last share added (see `settled`). */
   private shareUndo: (() => void) | null = null;
+  /** A share's card, while it waits for Add or Dismiss (see `settled`). */
+  private shareAsk: object | null = null;
 
   // ================================================================== summary
 
@@ -563,24 +569,51 @@ export class App {
   // ================================================================== launch and keys
 
   /**
-   * Something shared from another app (Android's share sheet, see main.ts): tasks in the space on
-   * show (from All, Main), as a paste adds them, with Undo.
+   * Something shared from another app (Android's share sheet, see main.ts). Anyone can write a
+   * link to /?share, so nothing is added by itself: a card says what came ("From Share · 3 tasks"
+   * over the first of them) and only Add makes the tasks, in the space on show (from All, Main), as
+   * a paste adds them, with Undo. Dismiss (or anything that takes the card's place) drops it. `handled` runs once it's
+   * been answered, or turned away with a message, so a reload doesn't bring it back.
    */
-  receiveShare(shared: Shared): void {
-    const result = addShared(this.ws, shared, this.spaces.here);
-    if (result.kind === 'added') {
-      if (this.mode !== 'tasks') this.setMode('tasks', false);
-      if (this.tasks.el.scrollTop > 0) this.tasks.el.scrollTo({ top: 0 });
-      const n = result.added.length;
-      this.shareUndo = result.undo;
-      this.toasts.show(n === 1 ? 'Added from Share' : `Added ${n} tasks from Share`, result.undo);
-    } else if (result.kind === 'too-many') {
-      this.toasts.show(`Share up to ${MAX_PASTE_LINES.toLocaleString('en')} lines at once`);
-    } else if (result.kind === 'too-long') {
-      this.toasts.show(`A task can be up to ${MAX_TASK_TEXT.toLocaleString('en')} characters`);
-    } else {
-      this.toasts.show('Nothing to add from Share');
+  receiveShare(shared: Shared, handled: () => void = () => {}): void {
+    const preview = previewShare(shared);
+    if (preview.kind !== 'ready') {
+      handled();
+      this.toasts.show(
+        preview.kind === 'too-many'
+          ? `Share up to ${MAX_SHARE_LINES} lines at once`
+          : preview.kind === 'too-long'
+            ? `A task can be up to ${MAX_TASK_TEXT.toLocaleString('en')} characters`
+            : 'Nothing to add from Share',
+      );
+      return;
     }
+    const n = preview.lines.length;
+    this.shareAsk = this.toasts.ask(
+      n > 1 ? `From Share · ${n} tasks` : 'From Share',
+      preview.lines[0]!,
+      'Add',
+      () => {
+        this.shareAsk = null;
+        handled();
+        this.addShare(shared);
+      },
+      () => {
+        this.shareAsk = null;
+        handled();
+      },
+    );
+  }
+
+  /** Add, on the share's card. */
+  private addShare(shared: Shared): void {
+    const result = addShared(this.ws, shared, this.spaces.here);
+    if (result.kind !== 'added') return;
+    if (this.mode !== 'tasks') this.setMode('tasks', false);
+    if (this.tasks.el.scrollTop > 0) this.tasks.el.scrollTo({ top: 0 });
+    const n = result.added.length;
+    this.shareUndo = result.undo;
+    this.toasts.show(n === 1 ? 'Added from Share' : `Added ${n} tasks from Share`, result.undo);
   }
 
   /** Home-screen shortcuts: /?new opens straight into the task box, /?notes into Notes. */

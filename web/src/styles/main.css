@@ -1226,6 +1226,21 @@ html.kb-open .toasts { bottom: calc(var(--dock-h) + 18px); }
 
 .toast-action:active { transform: scale(.95); }
 
+/* A share's card: "From Share · 3 tasks" over the first of them (two lines at most), Add, Dismiss. */
+.toast.ask { border-radius: 24px; padding: 8px 5px 8px 18px; }
+.toast-ask { flex: 1; min-width: 0; display: grid; gap: 1px; padding-right: 6px; }
+.toast-label { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.toast.ask .toast-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  padding-right: 0;
+}
+.toast-action.quiet { color: var(--text-2); font-weight: 600; background: transparent; padding: 0 12px; }
+
 /* ============================================================== settings sheet */
 
 dialog.sheet {

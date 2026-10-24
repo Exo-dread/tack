@@ -275,7 +275,7 @@ iPhone, Android and any browser. Open it and add it to your home screen; there's
 works offline, keeps everything on the device, and new versions arrive by themselves when you open it.
 Search (the button beside Settings on a phone, or Ctrl+F) finds exactly what it finds on the PC. On
 Android, an installed Tack Focus is in the share sheet: share a page, a link or some text from any app
-and it becomes a task, with Undo. Turn on sync in both apps and they keep each other up to date through
+and tap Add, and it's a task, with Undo. Turn on sync in both apps and they keep each other up to date through
 a folder in your own OneDrive, with no Tack account and no Tack server. On iPhone and in Firefox,
 staying signed in takes a quick visit to Microsoft about once a day as the app opens; if that's slow,
 Tack says "Renewing your OneDrive sign-in…" and lets you open it anyway. Privacy, in plain words:

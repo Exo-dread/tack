@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Hlc } from '../../src/model/hlc';
-import { MAX_PASTE_LINES, MAX_TASK_TEXT } from '../../src/model/limits';
-import { addShared, keptShare, readShare, sharedLines, type Shared } from '../../src/model/share';
+import { MAX_TASK_TEXT } from '../../src/model/limits';
+import { addShared, keptShare, MAX_SHARE_LINES, previewShare, readShare, sharedLines, type Shared } from '../../src/model/share';
 import { MAIN } from '../../src/model/spaces';
 import { Workspace } from '../../src/model/workspace';
 
@@ -142,7 +142,27 @@ describe('adding what was shared', () => {
     const w = ws();
     expect(addShared(w, share({ text: '   ' })).kind).toBe('empty');
     expect(addShared(w, share({ text: 'x'.repeat(MAX_TASK_TEXT + 1) })).kind).toBe('too-long');
-    expect(addShared(w, share({ text: Array.from({ length: MAX_PASTE_LINES + 1 }, (_, i) => `t${i}`).join('\n') })).kind).toBe('too-many');
+    expect(addShared(w, share({ text: Array.from({ length: MAX_SHARE_LINES + 1 }, (_, i) => `t${i}`).join('\n') })).kind).toBe('too-many');
     expect(w.tasks.size).toBe(0);
+  });
+
+  it('takes as many lines as one drop onto the orb, and no more', () => {
+    expect(MAX_SHARE_LINES).toBe(20);
+    const w = ws();
+    const fits = addShared(w, share({ text: Array.from({ length: MAX_SHARE_LINES }, (_, i) => `t${i}`).join('\n') }));
+    expect(fits.kind === 'added' && fits.added.length).toBe(MAX_SHARE_LINES);
+  });
+});
+
+describe('what a share would add (its card, before Add)', () => {
+  it('lists the tasks Add would make, and adds nothing', () => {
+    expect(previewShare(share({ title: 'Snags', text: 'Door 1.04\nDoor 1.05' }))).toEqual({ kind: 'ready', lines: ['Snags', 'Door 1.04', 'Door 1.05'] });
+    expect(previewShare(share({ text: `${'x'.repeat(MAX_TASK_TEXT + 1)}\nkept` }))).toEqual({ kind: 'ready', lines: ['kept'] });
+  });
+
+  it('says why when there would be nothing to add', () => {
+    expect(previewShare(share({ text: '  ' })).kind).toBe('empty');
+    expect(previewShare(share({ text: 'x'.repeat(MAX_TASK_TEXT + 1) })).kind).toBe('too-long');
+    expect(previewShare(share({ text: Array.from({ length: MAX_SHARE_LINES + 1 }, (_, i) => `t${i}`).join('\n') })).kind).toBe('too-many');
   });
 });

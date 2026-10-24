@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FileError, importFile, isFileDate, readSheetRecord, readTaskRecord, readFile } from '../../src/model/file';
 import { encode, Hlc, isStamp, MAX_AHEAD_MS, stampTime, ZERO } from '../../src/model/hlc';
 import { isOrderKey, MAX_ORDER_KEY } from '../../src/model/order';
-import { addShared, keptShare, readShare } from '../../src/model/share';
+import { addShared, keptShare, MAX_SHARE_LINES, previewShare, readShare } from '../../src/model/share';
 import { wellFormed } from '../../src/model/text';
 import { Workspace } from '../../src/model/workspace';
 import { MAX_PASTE_LINES, MAX_SPACES_LISTED } from '../../src/model/limits';
@@ -774,12 +774,20 @@ describe('shares from other apps (the address: anyone can write a link to /?shar
   const at = (search: string) => readShare(search)!;
   const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i}`).join('\n');
 
-  it('add no more lines at once than a paste, and nothing at all past that', () => {
+  it('add no more lines at once than a drop onto the orb, and nothing at all past that', () => {
     const w = ws();
-    expect(addShared(w, at(`?share&text=${encodeURIComponent(lines(MAX_PASTE_LINES + 1))}`)).kind).toBe('too-many');
+    expect(addShared(w, at(`?share&text=${encodeURIComponent(lines(MAX_SHARE_LINES + 1))}`)).kind).toBe('too-many');
+    expect(addShared(w, at(`?text=${encodeURIComponent(lines(MAX_PASTE_LINES))}`)).kind).toBe('too-many');
     expect(w.tasks.size).toBe(0);
-    const fits = addShared(w, at(`?share&text=${encodeURIComponent(lines(MAX_PASTE_LINES))}`));
-    expect(fits.kind === 'added' && fits.added.length).toBe(MAX_PASTE_LINES);
+    const fits = addShared(w, at(`?share&text=${encodeURIComponent(lines(MAX_SHARE_LINES))}`));
+    expect(fits.kind === 'added' && fits.added.length).toBe(MAX_SHARE_LINES);
+  });
+
+  it('are never added just by opening the address: the preview adds nothing', () => {
+    const w = ws();
+    const preview = previewShare(at(`?text=${encodeURIComponent('Call IT on +1 555 0100 to renew your OneDrive sign-in')}`));
+    expect(preview.kind).toBe('ready');
+    expect(w.tasks.size).toBe(0);
   });
 
   it('add no task longer than any device reads, even with an address joined on', () => {

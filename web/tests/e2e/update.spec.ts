@@ -339,11 +339,33 @@ test.describe('updates', () => {
     expect(visit.errors).toEqual([]);
   });
 
-  test('a share that opened the app holds it back while its Undo is on show; leaving applies it, and the share is kept once', async ({ page, site }) => {
+  test('a share that opened the app holds it back while its card is on show; leaving applies it, and the new page offers it again', async ({ page, site }) => {
     const first = await installed(page, site);
     // Opened by the share sheet: the page is new, and untouched.
     await page.goto(`${site.url}?share&text=${encodeURIComponent('Shared just now')}`);
     await expect(page.locator('html.ready')).toHaveCount(1);
+    const card = page.locator('.toast.ask:not([inert])');
+    await expect(card.locator('.toast-text')).toHaveText('Shared just now');
+    const visit = await watch(page, first.errors);
+    await update(page, site);
+    await arrived(page);
+    await stays(page, visit);
+    await expect(card.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
+
+    await setVisibility(page, 'hidden');
+    await reloadedIntoNew(page, site, visit);
+    // Not added by itself, before or after: the new page asks again.
+    await expect(page.locator('.open-list .label').filter({ hasText: 'Shared just now' })).toHaveCount(0);
+    await card.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(page.locator('.open-list .label').filter({ hasText: 'Shared just now' })).toHaveCount(1);
+    expect(visit.errors).toEqual([]);
+  });
+
+  test('a share just added holds it back while its Undo is on show; leaving applies it, and the share is kept once', async ({ page, site }) => {
+    const first = await installed(page, site);
+    await page.goto(`${site.url}?share&text=${encodeURIComponent('Added just now')}`);
+    await expect(page.locator('html.ready')).toHaveCount(1);
+    await page.locator('.toast.ask:not([inert])').getByRole('button', { name: 'Add', exact: true }).click();
     const undo = page.locator('.toast:not([inert])');
     await expect(undo.locator('.toast-text')).toHaveText('Added from Share');
     const visit = await watch(page, first.errors);
@@ -354,7 +376,8 @@ test.describe('updates', () => {
 
     await setVisibility(page, 'hidden');
     await reloadedIntoNew(page, site, visit);
-    await expect(page.locator('.open-list .label').filter({ hasText: 'Shared just now' })).toHaveCount(1);
+    await expect(page.locator('.open-list .label').filter({ hasText: 'Added just now' })).toHaveCount(1);
+    await expect(page.locator('.toast.ask')).toHaveCount(0);
     expect(visit.errors).toEqual([]);
   });
 

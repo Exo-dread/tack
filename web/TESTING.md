@@ -87,16 +87,20 @@ the test's own that puts up a new version (visibility emulated: headless pages n
 once when opened untouched, even if it took over while the app was still starting; held while you
 are using the app or are in the task box, then applied when you leave or come back; a draft in the
 box coming back with the page; never while the draft isn't the one kept; held while a share that
-just opened the app still offers Undo, then applied when you leave, the share kept once. And
-sharing from another app (`share.spec.ts`, loading /?share&… as Android's share sheet does, since
-Playwright can't open one): the manifest's share target; a shared page becoming one task with
-Undo, on Tasks, and the address bar left clean; added once, whatever reloads follow; several lines
-as a task per line; markup and `javascript:` shared as plain text (under the production CSP too);
-into the space on show; more lines than a paste turned away; a share kept through a start that
-went no further; and offline, answered by the service worker (Chromium).
+just opened the app waits for Add (offered again by the new page) or still offers Undo, then applied
+when you leave, the share kept once. And sharing from another app (`share.spec.ts`, loading
+/?share&… as Android's share sheet does, since Playwright can't open one): the manifest's share
+target; a card saying what came, and nothing added until Add; a shared page becoming one task with
+Undo, on Tasks, and the address bar left clean; added once, whatever reloads follow; Dismiss adding
+nothing, for good; a page on another site sending the browser to a share adding nothing, before or
+after a reload; several lines as a task per line; markup and `javascript:` shared as plain text
+(under the production CSP too); into the space on show; more than 20 lines turned away; a share
+kept through a start that went no further until it's answered; and offline, answered by the service
+worker (Chromium).
 
-**Sharing** is also unit-tested (`share.test.ts`: reading the address, what a share becomes, adding
-it) with hostile cases in `synchostile.test.ts` (the paste's line limit, no task too long for sync,
+**Sharing** is also unit-tested (`share.test.ts`: reading the address, what a share becomes, what its
+card shows, adding it) with hostile cases in `synchostile.test.ts` (20 lines at most, nothing added
+by reading the address, no task too long for sync,
 markup kept as text that every device reads back unchanged, a kept share that isn't three strings).
 
 Gestures are driven with synthetic pointer events (Playwright can only tap), so they test the
