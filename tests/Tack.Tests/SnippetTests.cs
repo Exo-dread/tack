@@ -295,6 +295,7 @@ internal static class SnippetTests
             back.DeleteSheet(back.SheetById(sheet.Id)!);
             again.Prune(back);
             Check.True(again.Count == 0 && !File.Exists(again.PathOf(snip)), "a sheet that's really gone takes its snippets");
+            restored.Flush(); // nothing left waiting to be saved once the folder goes
         });
     }
 

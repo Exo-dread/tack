@@ -648,6 +648,7 @@ internal static class DropTests
                 var reloaded = new AttachmentStore(folder, DesktopDrop.IsProgram);
                 reloaded.Load();
                 Check.True(reloaded.For(task.Id) != null, "attachments.json still says so");
+                lost.Flush(); // nothing left waiting to be saved once the folder goes
             }
             finally
             {

@@ -181,9 +181,10 @@ internal sealed class StateStore
                 else File.Move(tmp, _path);
                 return;
             }
-            catch (IOException) when (attempt < 3)
+            catch (IOException ex) when (attempt < 3 && ex is not (DirectoryNotFoundException or DriveNotFoundException))
             {
-                // Antivirus or backup tools sometimes hold the file for a moment.
+                // Antivirus or backup tools sometimes hold the file for a moment. (A folder that's gone isn't
+                // coming back in 120 ms: that fails at once, and the save is tried again later.)
                 Thread.Sleep(40);
             }
         }

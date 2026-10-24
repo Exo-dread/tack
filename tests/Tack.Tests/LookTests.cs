@@ -122,11 +122,12 @@ internal static class LookTests
     {
         private readonly string _folder = Path.Combine(Path.GetTempPath(), "tack-look-tests", Guid.NewGuid().ToString("N"));
         private readonly FolderSync _sync;
+        private readonly StateStore _store;
 
         public Shell(Action<Settings>? settings = null)
         {
             Directory.CreateDirectory(_folder);
-            var store = new StateStore(_folder);
+            var store = _store = new StateStore(_folder);
             Ws = store.Attach(new StateDocument { Settings = new Settings { Hotkey = "", Theme = "light" } });
             settings?.Invoke(Ws.Settings);
             _sync = new FolderSync(Ws, store);
@@ -157,6 +158,7 @@ internal static class LookTests
             App.Dispose();
             _sync.Dispose();
             Ui.Pump();
+            _store.Flush(); // no save left waiting to go into a folder that's about to be gone
             try { Directory.Delete(_folder, recursive: true); } catch { /* the log may still be open */ }
         }
     }
