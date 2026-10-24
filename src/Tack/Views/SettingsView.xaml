@@ -140,6 +140,14 @@
                                     Click="HotkeyButton_Click" ToolTip="Click, then press a new shortcut. Backspace turns it off." />
                         </Grid>
                         <TextBlock x:Name="HotkeyStatus" Style="{StaticResource Hint}" Margin="0,-4,0,10" Visibility="Collapsed" />
+                        <Border Height="1" Background="{DynamicResource DividerBrush}" />
+                        <!-- Fixed: plain text, so it reads as a key to press rather than a button to change. -->
+                        <Grid Margin="0,9">
+                            <TextBlock Text="Search tasks and notes" VerticalAlignment="Center" FontSize="13" />
+                            <TextBlock x:Name="SearchKey" Text="Ctrl+F" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,11,0"
+                                       FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       AutomationProperties.Name="Ctrl+F, in the panel" />
+                        </Grid>
                     </StackPanel>
                 </Border>
 

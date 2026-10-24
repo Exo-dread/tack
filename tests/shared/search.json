@@ -1,0 +1,101 @@
+{
+  "about": "Search's matching rule, shared by Tack Focus (web/src/model/search.ts, tests/unit/search.test.ts) and Tack for Windows (src/Tack/Model/Search.cs, tests/Tack.Tests/SearchTests.cs): both must give exactly these results. Unusual characters are written as \\u escapes so they survive any editor. Ranges are [start, end) in UTF-16 code units of the text as typed.",
+  "fold": [
+    ["Clash Report", "clash report"],
+    ["Ärger über Öl", "arger uber ol"],
+    ["Crème brûlée", "creme brulee"],
+    ["é", "e"],
+    ["ÉCOLE", "ecole"],
+    ["Straße", "strasse"],
+    ["STRASSE", "strasse"],
+    ["ẞ", "ss"],
+    ["Æsir Œuvre", "aesir oeuvre"],
+    ["Øresund Łódź Đà Nẵng", "oresund lodz da nang"],
+    ["Ħamrun Ŧ", "hamrun t"],
+    ["İstanbul ıi", "istanbul ii"],
+    ["ΟΔΟΣ οδος", "οδοσ οδοσ"],
+    ["don’t ‘single’ “double” „low‟ 5′ 6″", "don't 'single' \"double\" \"low\" 5' 6\""],
+    ["2026–2027 — draft ‐ x‑y − 1", "2026-2027 - draft - x-y - 1"],
+    ["wait…", "wait..."],
+    ["a\tb\nc\r\nd\re\u000bf\u000cg", "a b c d e f g"],
+    ["a\n\nb", "a  b"],
+    ["a\r\n\r\nb", "a  b"],
+    ["non breaking thin　wide line\u0085next narrow", "non breaking thin wide line next narrow"],
+    ["soft­hyphen zero​width j‌oin‍ w⁠j ﻿bom", "softhyphen zerowidth join wj bom"],
+    ["日本語", "日本語"],
+    ["がパ", "かハ"],
+    ["😀 Emoji", "😀 emoji"],
+    ["𐐀", "𐐨"],
+    ["Ǿ", "o"],
+    ["ﬁle", "ﬁle"],
+    ["ǅ", "ǆ"],
+    ["Å K Ω", "a k ω"],
+    ["Maß 100%", "mass 100%"],
+    ["already plain: 12 [x] {y} @z ~", "already plain: 12 [x] {y} @z ~"]
+  ],
+  "match": [
+    { "text": "Send the clash report", "query": "CLASH", "range": [9, 14] },
+    { "text": "Crème brûlée", "query": "creme brulee", "range": [0, 12] },
+    { "text": "Crème brûlée", "query": "BRÛLÉE", "range": [6, 12] },
+    { "text": "Café", "query": "cafe", "range": [0, 4] },
+    { "text": "café au lait", "query": "café", "range": [0, 5] },
+    { "text": "cafȩ́ au lait", "query": "cafe", "range": [0, 6] },
+    { "text": "Straße 12", "query": "strasse", "range": [0, 6] },
+    { "text": "Maß", "query": "ss", "range": [2, 3] },
+    { "text": "Maß", "query": "as", "range": [1, 3] },
+    { "text": "Mass", "query": "ß", "range": [2, 4] },
+    { "text": "x Æsir", "query": "aes", "range": [2, 4] },
+    { "text": "level 3 ducts\nvs beams", "query": "ducts vs", "range": [8, 16] },
+    { "text": "level 3 ducts\r\nvs beams", "query": "ducts vs", "range": [8, 17] },
+    { "text": "don't", "query": "don’t", "range": [0, 5] },
+    { "text": "Riverside", "query": "  river  ", "range": [0, 5] },
+    { "text": "Riverside", "query": "\tRIVER\n", "range": [0, 5] },
+    { "text": "Riverside", "query": "", "range": null },
+    { "text": "Riverside", "query": "   ", "range": null },
+    { "text": "Riverside", "query": "rivers ide", "range": null },
+    { "text": "", "query": "a", "range": null },
+    { "text": "日本語のメモ", "query": "メモ", "range": [4, 6] },
+    { "text": "ΟΔΟΣ", "query": "οδος", "range": [0, 4] },
+    { "text": "😀 Emoji party", "query": "emoji", "range": [3, 8] },
+    { "text": "a­b", "query": "ab", "range": [0, 3] },
+    { "text": "the first, then the second", "query": "THE", "range": [0, 3] },
+    { "text": "été à Paris", "query": "a paris", "range": [4, 11] },
+    { "text": "Nẵng", "query": "nang", "range": [0, 4] }
+  ],
+  "search": {
+    "about": "Spaces are made in order. Tasks are listed top to bottom (Now first): make them from the last to the first, each at the top of its list, then finish the done ones from the last to the first, a minute apart (so Done lists them in this order, most recent first). Sheets are made in order, after the one every workspace starts with (blank, if a workspace starts with one). Results list texts (sheets' text with \\n line breaks): tasks are the one in focus and then the open list in its order, done most recent first, notes in sheet order, from every space.",
+    "spaces": ["Work", "Dev"],
+    "tasks": [
+      { "text": "Review the coordination clashes", "space": "Work", "now": true },
+      { "text": "Send the clash report to the MEP team", "space": "Work" },
+      { "text": "Fix the flaky sync test", "space": "Dev" },
+      { "text": "Book the dentist" },
+      { "text": "Clash detection in Navisworks", "space": "Dev", "done": true },
+      { "text": "Café order", "done": true }
+    ],
+    "sheets": [
+      { "text": "Coordination meeting\n- level 3 ducts vs beams\n- clash list: Friday", "space": "Work" },
+      { "text": "Ideas\n- a reading list" },
+      { "text": "CLASH of the titans (film)", "space": "Dev" }
+    ],
+    "queries": [
+      {
+        "query": "clash",
+        "tasks": ["Review the coordination clashes", "Send the clash report to the MEP team"],
+        "done": ["Clash detection in Navisworks"],
+        "notes": ["Coordination meeting\n- level 3 ducts vs beams\n- clash list: Friday", "CLASH of the titans (film)"]
+      },
+      { "query": "CAFE", "tasks": [], "done": ["Café order"], "notes": [] },
+      { "query": "ducts vs", "tasks": [], "done": [], "notes": ["Coordination meeting\n- level 3 ducts vs beams\n- clash list: Friday"] },
+      { "query": "beams - clash", "tasks": [], "done": [], "notes": ["Coordination meeting\n- level 3 ducts vs beams\n- clash list: Friday"] },
+      {
+        "query": "the",
+        "tasks": ["Review the coordination clashes", "Send the clash report to the MEP team", "Fix the flaky sync test", "Book the dentist"],
+        "done": [],
+        "notes": ["CLASH of the titans (film)"]
+      },
+      { "query": "zzz", "tasks": [], "done": [], "notes": [] },
+      { "query": " ", "tasks": [], "done": [], "notes": [] }
+    ]
+  }
+}
