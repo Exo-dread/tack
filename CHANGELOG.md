@@ -1,10 +1,76 @@
 # Changelog
 
-## Unreleased
+## 1.7.0 (2026-10-25)
 
+Get things into Tack without leaving the app you're in, and find them again: drop onto the orb,
+snippets in Notes, search, and recent files in the launcher. Everything new is either off until you
+turn it on or out of sight until you use it; until then Tack looks and behaves as 1.6.1 did.
+
+- **Drop onto the orb.** Drag an email from Outlook, files or folders from Explorer, a link from your
+  browser or a few lines of text onto the orb: it lights up and says what it will add, and letting go
+  makes a task of each (up to 20), in the space on show, with Undo right beside the orb. An email
+  becomes a task named by its subject, a file by its name, a page by its title. The app you dragged
+  from keeps the focus, and nothing is ever moved out of it. If Tack runs as administrator, Windows won't let
+  other apps drop onto it; Settings says so.
+- **A paperclip opens what you dropped.** Tasks made by a drop show a small paperclip (and take
+  Ctrl+O, or Open in their menu) that opens the file, folder or page, or the copy of the email Tack
+  kept. What a task points to stays on this PC, in `attachments.json` and an `attachments` folder
+  beside tack.json: never in tack.json, never synced, imported or exported. Deleting the task lets it
+  go. Programs are never kept, and Tack keeps at most 500 MB of copies.
+- **Snippets in Notes.** Snip some instructions (Win+Shift+S) and press Ctrl+V in a sheet: the picture
+  sits above the sheet's text as a thumbnail while you follow it. Click it to see it full size on that
+  display (Esc or a click closes it), and × throws it away, with Undo. Image files copied in Explorer
+  paste the same way, and an image pasted on Tasks goes to the sheet in Notes. Snippets stay on this
+  PC (in a `snippets` folder beside tack.json), never synced, imported or exported: other devices show
+  the sheet's text. Up to 50 snippets (50 MB); very large images are scaled down, and deleting a sheet
+  deletes its snippets. From the keyboard, Tab reaches the thumbnails: Enter shows one, Delete discards it. Anything copied with text in it still pastes as text, and until you paste an
+  image nothing about Notes changes.
+- **Search.** Press **Ctrl+F** in the panel and type: open tasks, finished tasks and notes from every
+  space are listed as you type, grouped Tasks, Done and Notes, each with its space while you have
+  spaces. Case and accents don't matter (so "cafe" finds "Café", and curly quotes or a non-breaking
+  space pasted from Outlook still match), and a note matches anywhere in it, not just its title.
+  ↑ ↓ and Enter (or a click) go there: its space and tab, the task scrolled to and lit up for a
+  moment, or the sheet with the match selected. Esc closes it and puts the caret back. Until you press
+  Ctrl+F nothing on screen changes. Tack Focus finds exactly the same things.
+- **Recent files in the launcher** (optional, off by default: Settings → Launcher → Recent files). Rest
+  on an app in the launcher and the files it opened last fan out beside it; drag onto one and let go
+  (or click it, or press R and Enter) and it opens with that app, on the display the shortcut uses.
+  Shift+drag to Revit 2024, rest, drop on the model: it opens in Revit 2024, even where .rvt files
+  open in another version. The files come from the app's Jump List, then Revit's, AutoCAD's and
+  Navisworks' own recent lists, up to 8 that are still there, read each time the launcher opens and
+  never stored. Dragging on past an app still chooses a display.
+- **Panel background.** Settings → Look (formerly Appearance) has a slider from solid to see-through
+  for the panel's background. Only the background changes: text, icons and controls stay as they are.
+  With frosted glass it sets how much of the glass shows through the tint; without, how much of
+  what's behind the panel shows through, never so much that text gets hard to read. The tick marks the
+  look Tack has always had, and Default goes back to it.
+- **Fade when idle** (Settings → Look, off by default). The orb, and the panel while it's pinned, fade
+  to half after a few seconds without the pointer, so you can see more of what's behind them, and come
+  back the moment you point at them (or drag something over the orb). Never while you're typing in
+  the panel, or a menu, the undo toast, a snippet or the bubble beside the orb is up. With Windows'
+  animation effects off, they fade without the animation.
+- **Settings → Shortcut** lists the panel's new keys: Ctrl+F to search, Ctrl+O to open what was
+  dropped on a task.
+- **Smoother panel resizing.** When the panel changes size (switching tabs, opening Settings, adding a
+  task), it now glides all the way instead of jumping most of the way and then settling. When you tick,
+  delete or move a task, the panel shrinks with the row as it folds away and stops when the row is gone,
+  with no strip of empty glass trailing behind.
+- **Smoother peek and toast.** The peek you get when you hover the orb now slides in at the display's
+  own pace (on a 100 Hz display, from about 75 new frames a second to well over 100), and both it and
+  the undo toast (and the bubble beside the orb after a drop) take about half the work, so they stay
+  smooth when the PC is busy: while they move, a picture of them stands in, so their shadow isn't drawn
+  again for every frame.
 - Notes: a sheet switch that comes in the middle of an edit (from a keystroke, say) waits for the
   edit to end before clearing Undo, instead of being able to crash Tack. As before, the switch isn't
   an undo step, and what's typed on blank paper stays undoable.
+- **Snippets and attachments are never cleared on a guess.** If tack.json (and its backup) can't be
+  read, Tack starts empty as before, keeps the unreadable file aside, and now also leaves every
+  snippet, attachment and saved email exactly as it is for that session, so restoring tack.json
+  brings them back with their sheets and tasks. A snippets.json or attachments.json that can't be
+  read is kept aside the same way, and it and its folder are left as they are (no new snippets or
+  paperclips until it reads again), instead of everything in the folder being cleared away.
+- Snippets: Undo of a discarded snippet (or a deleted sheet) can no longer take Notes past 50
+  snippets or 50 MB; a paste that needs the room it holds ends that Undo instead.
 
 ## 1.6.1 (2026-10-24)
 

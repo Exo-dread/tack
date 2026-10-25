@@ -373,6 +373,9 @@ public sealed class Workspace : Observable, IImportTarget
     /// <summary>Every task, sheet and space held, deleted ones included (as a device file counts them).</summary>
     internal int RecordCount => _tasks.Count + _sheets.Count + _spaces.Count;
 
+    /// <summary>Every task held, deleted ones included.</summary>
+    internal int TaskCount => _tasks.Count;
+
     /// <summary>Adds a space after the last one.</summary>
     internal SpaceData AddSpace(string name)
     {
@@ -505,6 +508,19 @@ public sealed class Workspace : Observable, IImportTarget
     internal Func<bool> KeepDeletions { get; set; }
 
     /// <summary>
+    /// Whether a sheet holds something kept on this PC alone (snippets), so it isn't blank even with no text.
+    /// Nothing here syncs; it only keeps <see cref="LeaveWelcomeBehind"/> from taking such a sheet.
+    /// </summary>
+    internal Func<string, bool>? HoldsLocalContent { get; set; }
+
+    /// <summary>
+    /// This session started empty because tack.json was there but couldn't be read (<see cref="Services.StateStore.LoadFailed"/>).
+    /// Its sheets and tasks aren't the user's, so nothing kept beside tack.json is let go for want of them
+    /// (snippets of sheets it doesn't know, attachments of tasks it doesn't know), all session.
+    /// </summary>
+    internal bool LoadFailed { get; init; }
+
+    /// <summary>
     /// Joining a sync folder your other devices already use: the welcome tasks you never touched
     /// (not edited, ticked or moved, in the list or to a space: all their clocks are still the one
     /// they were made with, here, and none for a space) and a blank sheet never written on (or put
@@ -519,7 +535,8 @@ public sealed class Workspace : Observable, IImportTarget
         var tasks = _allTasks.Where(t => !t.IsDeleted && Untouched(t)).ToList();
         foreach (var t in tasks) Remove(t);
         // Only this PC's own blank sheets, never one that just arrived from another device.
-        var blank = Sheets.Where(s => s.Text.Length == 0 && s.Clk.Text == s.Clk.Deleted && Stamp.Node(s.Clk.Deleted) == Clock.Node && s.Clk.Space == Stamp.Zero).ToList();
+        var blank = Sheets.Where(s => s.Text.Length == 0 && s.Clk.Text == s.Clk.Deleted && Stamp.Node(s.Clk.Deleted) == Clock.Node && s.Clk.Space == Stamp.Zero
+            && HoldsLocalContent?.Invoke(s.Id) != true).ToList();
         if (blank.Count == Sheets.Count) blank = blank.Skip(1).ToList();
         foreach (var s in blank) SetSheetDeleted(s, true);
         if (tasks.Count > 0 || blank.Count > 0) Rebuild();

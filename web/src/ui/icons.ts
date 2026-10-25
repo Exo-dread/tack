@@ -31,6 +31,9 @@ export const icons = {
   move: icon('<path d="M3.75 7.25A1.75 1.75 0 0 1 5.5 5.5h3.55l1.95 2.1h7.5a1.75 1.75 0 0 1 1.75 1.75v8.15a1.75 1.75 0 0 1-1.75 1.75h-13a1.75 1.75 0 0 1-1.75-1.75Z"/><path d="M8.75 13.4h6.5M12.75 10.9l2.5 2.5-2.5 2.5"/>'),
   more: icon('<circle cx="6" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="18" cy="12" r="1.3" fill="currentColor" stroke="none"/>'),
   tick: icon('<path d="m6.25 12.5 3.75 3.75 7.75-8.25"/>'),
+  /** An open task in search's results: the check's empty ring. */
+  ring: icon('<circle cx="12" cy="12" r="8.25"/>'),
+  search: icon('<circle cx="10.75" cy="10.75" r="6.25"/><path d="m15.4 15.4 4.35 4.35"/>'),
 };
 
 /** The checkbox: a ring that fills, and a tick that draws itself. */

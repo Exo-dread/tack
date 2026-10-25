@@ -81,8 +81,43 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Search's box in the header (Ctrl+F): a magnifier, the placeholder from Tag, room on the right for the
+             count once there is one (CountChanged), so the placeholder has the room until then. -->
+        <Style x:Key="SearchBox" TargetType="TextBox" BasedOn="{StaticResource GhostTextBox}">
+            <Setter Property="Padding" Value="30,0,12,0" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="MaxLength" Value="1000" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Bd" CornerRadius="8" BorderThickness="1" Background="{DynamicResource ControlFillFocusBrush}"
+                                BorderBrush="{DynamicResource StrokeBrush}">
+                            <Grid>
+                                <TextBlock x:Name="Glass" Text="&#xE721;" Style="{StaticResource Glyph}" HorizontalAlignment="Left" Margin="10,1,0,0"
+                                           FontSize="12" Foreground="{DynamicResource TextTertiaryBrush}" />
+                                <TextBlock x:Name="Placeholder" Text="{TemplateBinding Tag}" Margin="{TemplateBinding Padding}"
+                                           Foreground="{DynamicResource TextTertiaryBrush}" IsHitTestVisible="False"
+                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
+                                <ScrollViewer x:Name="PART_ContentHost" Focusable="False" Padding="{TemplateBinding Padding}" VerticalAlignment="Center"
+                                              HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter TargetName="Placeholder" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
+                                <Setter TargetName="Glass" Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
+    <Grid>
     <Grid x:Name="Root">
         <!-- Tint over the acrylic (or a solid surface when glass is off). -->
         <Border x:Name="Surface" Background="{DynamicResource GlassTintBrush}" />
@@ -123,6 +158,17 @@
                     <RadioButton x:Name="NotesTab" Style="{StaticResource TabButton}" GroupName="PanelTabs" Checked="Tab_Checked"
                                  ToolTip="Notes (Ctrl+2)" Content="Notes" />
                 </StackPanel>
+
+                <!-- Search (Ctrl+F): over the tabs while it's open, so nothing else moves; not there at all until then. -->
+                <Grid x:Name="SearchBar" Grid.Column="1" Grid.ColumnSpan="2" Height="32" Margin="0,0,6,0" VerticalAlignment="Center"
+                      Visibility="Collapsed">
+                    <TextBox x:Name="SearchBox" Style="{StaticResource SearchBox}" Tag="Search tasks and notes"
+                             AutomationProperties.Name="Search tasks and notes"
+                             AutomationProperties.HelpText="Up and Down choose a result, Enter opens it, Escape closes search"
+                             TextChanged="SearchBox_TextChanged" PreviewKeyDown="SearchBox_PreviewKeyDown" />
+                    <TextBlock x:Name="SearchCount" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"
+                               Style="{StaticResource Caption}" IsHitTestVisible="False" />
+                </Grid>
 
                 <!-- Sliding accent underline under the selected tab. -->
                 <Canvas Grid.Column="0" Grid.ColumnSpan="4" IsHitTestVisible="False" ClipToBounds="False">
@@ -169,22 +215,33 @@
                 <v:TasksView x:Name="TasksPage" />
                 <v:NotesView x:Name="NotesPage" Visibility="Collapsed" />
                 <v:SettingsView x:Name="SettingsPage" Visibility="Collapsed" />
+                <v:SearchView x:Name="SearchPage" Visibility="Collapsed" />
 
-                <!-- Undo toast -->
-                <Border x:Name="Toast" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="12,0,12,14"
-                        Padding="14,6,6,6" CornerRadius="10" Visibility="Collapsed"
-                        Background="{DynamicResource FlyoutBrush}" BorderBrush="{DynamicResource StrokeStrongBrush}" BorderThickness="1">
-                    <Border.Effect>
-                        <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.4" Color="Black" />
-                    </Border.Effect>
-                    <!-- Undo first, so it keeps its room: a message too long for the panel ends in an ellipsis instead. -->
-                    <DockPanel>
-                        <Button x:Name="ToastUndo" DockPanel.Dock="Right" Style="{StaticResource TextButton}" Margin="10,0,0,0" Content="Undo" Click="ToastUndo_Click" />
-                        <TextBlock x:Name="ToastText" VerticalAlignment="Center" FontSize="12.5" Foreground="{DynamicResource TextPrimaryBrush}"
-                                   TextTrimming="CharacterEllipsis" />
-                    </DockPanel>
-                </Border>
+                <!-- Undo toast. While it slides and fades, a picture of it (shadow and all) stands in for it:
+                     software rendering would blur the shadow anew every frame. The host leaves room above the
+                     toast for its shadow, which the picture takes in. -->
+                <Grid x:Name="ToastHost" VerticalAlignment="Bottom">
+                    <Border x:Name="Toast" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="12,16,12,14"
+                            Padding="14,6,6,6" CornerRadius="10" Visibility="Collapsed"
+                            Background="{DynamicResource FlyoutBrush}" BorderBrush="{DynamicResource StrokeStrongBrush}" BorderThickness="1">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.4" Color="Black" />
+                        </Border.Effect>
+                        <!-- Undo first, so it keeps its room: a message too long for the panel ends in an ellipsis instead. -->
+                        <DockPanel>
+                            <Button x:Name="ToastUndo" DockPanel.Dock="Right" Style="{StaticResource TextButton}" Margin="10,0,0,0" Content="Undo" Click="ToastUndo_Click" />
+                            <TextBlock x:Name="ToastText" VerticalAlignment="Center" FontSize="12.5" Foreground="{DynamicResource TextPrimaryBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </DockPanel>
+                    </Border>
+                    <Image x:Name="ToastPicture" Stretch="None" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed"
+                           IsHitTestVisible="False" />
+                </Grid>
             </Grid>
         </Grid>
+    </Grid>
+    <!-- Fade when idle: the panel as the screen showed it a moment before (frosted glass and all), fading
+         away over the faded panel, so the fade starts from what was there. Only while it fades. -->
+    <Image x:Name="FadePicture" Stretch="Fill" Visibility="Collapsed" IsHitTestVisible="False" />
     </Grid>
 </Window>

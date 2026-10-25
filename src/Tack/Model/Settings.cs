@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Tack.Model;
 
 /// <summary>User preferences and remembered UI state. Serialized as-is into tack.json.</summary>
@@ -26,6 +28,9 @@ public sealed class Settings : Observable
     private string? _activeSheet;
     private string? _syncFolder;
     private string? _spaceOnShow;
+    private double? _panelBackgroundGlass;
+    private double? _panelBackgroundSolid;
+    private bool _fadeWhenIdle;
 
     // ---- Preferences ----
     public bool LaunchAtStartup { get => _launchAtStartup; set => Set(ref _launchAtStartup, value); }
@@ -46,6 +51,35 @@ public sealed class Settings : Observable
 
     /// <summary>"system" follows the Windows accent colour; otherwise a #RRGGBB colour.</summary>
     public string Accent { get => _accent; set => Set(ref _accent, string.IsNullOrWhiteSpace(value) ? "system" : value); }
+
+    // Settings → Look → Panel background: how solid the panel's background is (1 = solid), one value for
+    // frosted glass and one without, since without the blur it must stay more solid to keep text readable.
+    // Only the background: text, icons and controls are never see-through. Null (the default, and never
+    // written to tack.json) is the look Tack has always had: the theme's own tint, or a solid panel.
+
+    /// <summary>The least solid the panel's background may be over frosted glass (the blur keeps text readable).</summary>
+    public const double MinGlassBackground = 0.25;
+
+    /// <summary>
+    /// The least solid it may be without glass, where whatever is behind shows unblurred: at this, text keeps
+    /// 4.5:1 contrast (secondary text 3:1) over a white or a black window behind, in either theme.
+    /// </summary>
+    public const double MinSolidBackground = 0.80;
+
+    /// <summary>How solid the background tint is over frosted glass, from <see cref="MinGlassBackground"/> to 1; null: the theme's own tint.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? PanelBackgroundGlass { get => _panelBackgroundGlass; set => Set(ref _panelBackgroundGlass, Opacity(value, MinGlassBackground)); }
+
+    /// <summary>How solid the panel is without frosted glass, from <see cref="MinSolidBackground"/> to 1; null: solid.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? PanelBackgroundSolid { get => _panelBackgroundSolid; set => Set(ref _panelBackgroundSolid, Opacity(value, MinSolidBackground)); }
+
+    /// <summary>
+    /// Fade when idle (off by default): the orb and a pinned panel drop to half opacity while the pointer
+    /// has been away from them for a few seconds (and the panel isn't in use), and come back at once.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool FadeWhenIdle { get => _fadeWhenIdle; set => Set(ref _fadeWhenIdle, value); }
 
     // ---- Remembered state ----
 
@@ -104,6 +138,10 @@ public sealed class Settings : Observable
         PanelWidth = null;
         PanelHeight = null;
     }
+
+    /// <summary>A background opacity kept to whole percent, within its bounds; anything unreadable (or not a number) is the default.</summary>
+    private static double? Opacity(double? value, double min) =>
+        value is double v && double.IsFinite(v) ? Math.Round(Math.Clamp(v, min, 1), 2) : null;
 
     private static double ClampWidth(double w) => Math.Clamp(double.IsFinite(w) ? w : DefaultWidth, MinWidth, 1200);
 

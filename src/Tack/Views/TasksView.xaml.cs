@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -23,9 +22,8 @@ public partial class TasksView : UserControl
     /// <summary>Grace period after ticking a task, during which a second click undoes it.</summary>
     private static readonly TimeSpan CheckDelay = TimeSpan.FromMilliseconds(650);
 
-    private static readonly Regex ListMarker = new(@"^\s*(?:[-*+•·◦▪–]\s+|\d{1,3}[.)]\s+|\[[ xX]?\]\s*)", RegexOptions.Compiled);
-
     private readonly Dictionary<TaskItem, DispatcherTimer> _checking = new();
+    private readonly HashSet<FrameworkElement> _folding = new(); // rows folding away right now
     private Workspace _ws = null!;
     private SpaceView _view = null!;
     private PanelWindow _panel = null!;
@@ -39,6 +37,36 @@ public partial class TasksView : UserControl
 
     /// <summary>Raised whenever the list's natural height may have changed (rows added, removed, re-wrapped, folded).</summary>
     public event Action? ContentHeightChanged;
+
+    /// <summary>Raised as a row starts folding away (ticked, deleted, moved to another space), with how long it takes (ms).</summary>
+    public event Action<double>? RowFolding;
+
+    /// <summary>
+    /// How tall the page would like to be at <paramref name="width"/>, with nothing to scroll. A row that is
+    /// folding away is already left out, so a panel that fits its list knows its final height from the
+    /// first frame and shrinks once, in step with the row, instead of chasing it frame by frame.
+    /// </summary>
+    internal double FittedHeight(double width)
+    {
+        Measure(new Size(width, double.PositiveInfinity));
+        double height = DesiredSize.Height;
+        foreach (var row in _folding)
+            if (row.IsVisible) height -= row.DesiredSize.Height;
+        InvalidateMeasure(); // hand layout back to the window
+        return height;
+    }
+
+    /// <summary>Folds a row away (its height to nothing, eased in), then runs <paramref name="completed"/>.</summary>
+    private void Fold(FrameworkElement row, double ms, Action completed)
+    {
+        _folding.Add(row);
+        RowFolding?.Invoke(ms);
+        Anim.Collapse(row, ms, () =>
+        {
+            _folding.Remove(row);
+            completed();
+        });
+    }
 
     internal void Initialize(Workspace ws, SpaceView view, PanelWindow panel)
     {
@@ -101,10 +129,7 @@ public partial class TasksView : UserControl
     private void OnAddBoxPaste(object sender, DataObjectPastingEventArgs e)
     {
         if (e.SourceDataObject.GetData(DataFormats.UnicodeText) is not string text) return;
-        var lines = text.Replace("\r", "").Split('\n')
-            .Select(l => ListMarker.Replace(ListMarker.Replace(l, ""), "").Trim())
-            .Where(l => l.Length > 0)
-            .ToList();
+        var lines = TaskLines.Split(text);
         if (lines.Count > DeviceFile.MaxPasteLines)
         {
             e.CancelCommand();
@@ -160,7 +185,7 @@ public partial class TasksView : UserControl
             if (Keyboard.FocusedElement is TextBox tb && tb.DataContext == task) FocusInput();
             var container = ContainerFor(task);
             if (container == null) _ws.Complete(task);
-            else Anim.Collapse(container, 200, () => _ws.Complete(task));
+            else Fold(container, 200, () => _ws.Complete(task));
             Anim.Set(NowEditor, OpacityProperty, 1);
         };
         _checking[task] = timer;
@@ -213,6 +238,19 @@ public partial class TasksView : UserControl
         _panel.FocusDefault();
     }
 
+    // ================= Attachments (what was dropped onto the orb) =================
+
+    private void Attachment_Click(object sender, RoutedEventArgs e)
+    {
+        if (ItemOf(sender) is { } task) OpenAttachment(task);
+        e.Handled = true;
+    }
+
+    private void OpenAttachment(TaskItem task)
+    {
+        if (task.AttachmentTip != null) _panel?.OpenAttachment(task);
+    }
+
     // ================= Deleting =================
 
     private void Delete_Click(object sender, RoutedEventArgs e)
@@ -234,7 +272,7 @@ public partial class TasksView : UserControl
 
         var container = animate ? ContainerFor(task) : null;
         if (container == null) Remove();
-        else Anim.Collapse(container, 180, Remove);
+        else Fold(container, 180, Remove);
     }
 
     // ================= Context menu =================
@@ -243,6 +281,7 @@ public partial class TasksView : UserControl
         (((sender as MenuItem)?.Parent as ContextMenu)?.PlacementTarget as FrameworkElement)?.DataContext as TaskItem;
 
     private void MenuFocus_Click(object sender, RoutedEventArgs e) { if (MenuItemTask(sender) is { } t) MakeNow(t); }
+    private void MenuOpen_Click(object sender, RoutedEventArgs e) { if (MenuItemTask(sender) is { } t) OpenAttachment(t); }
     private void MenuDone_Click(object sender, RoutedEventArgs e) { if (MenuItemTask(sender) is { } t) ToggleCheck(t); }
     private void MenuDelete_Click(object sender, RoutedEventArgs e) { if (MenuItemTask(sender) is { } t) DeleteWithUndo(t); }
 
@@ -257,6 +296,12 @@ public partial class TasksView : UserControl
     private void TaskMenu_Opened(object sender, RoutedEventArgs e)
     {
         if (sender is not ContextMenu menu || (menu.PlacementTarget as FrameworkElement)?.DataContext is not TaskItem task) return;
+        // "Open Clash report L3.pdf" leads the menu of a task with something dropped onto the orb for it.
+        if (menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Tag is "Open") is { } open)
+        {
+            open.Header = task.AttachmentTip ?? "Open";
+            open.Visibility = task.AttachmentTip != null ? Visibility.Visible : Visibility.Collapsed;
+        }
         if (menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Tag is "MoveTo") is not { } moveTo) return;
         moveTo.Visibility = _view.HasSpaces ? Visibility.Visible : Visibility.Collapsed;
         moveTo.Items.Clear();
@@ -293,7 +338,7 @@ public partial class TasksView : UserControl
                 if (task == _ws.Now) AnimateNowCard(); else AnimateIn(task);
             });
         }
-        if (leaves && ContainerFor(task) is { } container) Anim.Collapse(container, 180, Move);
+        if (leaves && ContainerFor(task) is { } container) Fold(container, 180, Move);
         else Move();
     }
 
@@ -347,6 +392,11 @@ public partial class TasksView : UserControl
 
             case Key.D when mods == ModifierKeys.Control:
                 ToggleCheck(task);
+                e.Handled = true;
+                break;
+
+            case Key.O when mods == ModifierKeys.Control && task.AttachmentTip != null:
+                OpenAttachment(task);
                 e.Handled = true;
                 break;
 
@@ -499,6 +549,70 @@ public partial class TasksView : UserControl
             shift.BeginAnimation(TranslateTransform.YProperty,
                 new DoubleAnimation(0, Anim.Ms(170)) { EasingFunction = Anim.EaseOut });
         }
+    }
+
+    // ================= Search: going to a task =================
+
+    /// <summary>
+    /// Search opened this task: scrolled to once the list on show has it, lit up for a moment, and
+    /// the caret at the end of its text (a finished task's row has no text box: the caret goes to
+    /// the add box, as when the panel opens).
+    /// </summary>
+    internal void Reveal(TaskItem task)
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            if (ContainerFor(task) is not { } container)
+            {
+                FocusInput();
+                return;
+            }
+            if (container == NowCard) LightUp(NowCard, () =>
+            {
+                NowCard.SetResourceReference(Border.BackgroundProperty, "AccentFaintBrush");
+                NowCard.SetResourceReference(Border.BorderBrushProperty, "AccentSoftBrush");
+            });
+            else if (RowOf(container) is { } row) LightUp(row, () =>
+            {
+                row.ClearValue(Border.BackgroundProperty);
+                row.ClearValue(Border.BorderBrushProperty);
+            });
+            if (!task.IsDone && EditorFor(task) is { } editor) FocusTextBox(editor, atEnd: true);
+            else FocusInput();
+            // The whole row, with a little room around it (the caret's own scrolling shows only its text box).
+            container.UpdateLayout();
+            container.BringIntoView(new Rect(0, -12, container.ActualWidth, container.ActualHeight + 24));
+        });
+    }
+
+    /// <summary>How long a task search went to stays lit before it fades (in 260 ms) back to how it was.</summary>
+    internal static readonly TimeSpan LitFor = TimeSpan.FromMilliseconds(1100);
+
+    /// <summary>The row's own border in a list's container.</summary>
+    private static Border? RowOf(FrameworkElement container) =>
+        container is ContentPresenter cp && cp.ContentTemplate?.FindName("Row", cp) is Border row ? row : null;
+
+    /// <summary>Lights a row up in the accent for a moment, then fades it back (<paramref name="restore"/> puts its own look back).</summary>
+    private static void LightUp(Border row, Action restore)
+    {
+        var fill = ((SolidColorBrush)row.FindResource("AccentSoftBrush")).Clone();
+        var edge = ((SolidColorBrush)row.FindResource("AccentBorderBrush")).Clone();
+        row.Background = fill;
+        row.BorderBrush = edge;
+        var hold = new DispatcherTimer { Interval = LitFor };
+        hold.Tick += (_, _) =>
+        {
+            hold.Stop();
+            var fade = new DoubleAnimation(0, Anim.Ms(260)) { EasingFunction = Anim.EaseOut };
+            fade.Completed += (_, _) =>
+            {
+                // Unless something else has changed its look meanwhile (a drag lifting it, say).
+                if (ReferenceEquals(row.Background, fill) && ReferenceEquals(row.BorderBrush, edge)) restore();
+            };
+            fill.BeginAnimation(Brush.OpacityProperty, fade);
+            edge.BeginAnimation(Brush.OpacityProperty, fade);
+        };
+        hold.Start();
     }
 
     // ================= Containers and entrance animations =================

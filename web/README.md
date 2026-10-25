@@ -10,6 +10,11 @@ same notes, same `tack.json`.
 - **Capture in seconds.** The task box sits at the bottom, under your thumb. Type, press return,
   close the app: the task is already saved (even a half-typed one survives). Paste a list to add
   many. Ctrl+Enter (or ⌘+Enter) adds a task straight into focus.
+- **Share to Tack (Android).** Once Tack Focus is installed, it's in Android's share sheet: share a
+  page, a link or some text from any app, tap *Add* on the card that says what came, and it's a
+  task in the space on show (the page's title with its link; up to 20 lines of text, a task per
+  line, as a paste), with *Undo*. Nothing is added without that tap, and nothing about it is sent
+  anywhere. iPhone doesn't let web apps receive shares.
 - **One thing in focus.** Swipe a task right (or tap it, then *Focus*) to make it *Now*: it glides
   into the card at the top. The orb's ring fills as today's tasks get done, and the page's light
   warms a little with it.
@@ -30,6 +35,10 @@ same notes, same `tack.json`.
   space it shows. Until you make a space, nothing about them is on screen.
 - **Notes are scrap paper.** Plain text, titled by the first line, saved as you type. Lists continue
   themselves; *Make task* turns the current line or selection into tasks; *Time* stamps the date.
+- **Search.** The search button beside Settings (on a phone), or Ctrl+F (⌘F): every task, finished
+  task and note in every space, as you type, whatever the case or accents, grouped Tasks, Done and
+  Notes with each one's space. Tap one (or ↑ ↓ and Enter) to go there: the task lit up in its list,
+  or the sheet open with the match selected. The same matching rule as Tack for Windows.
 - **Light and dark**, six accents (each with a deeper shade for light mode), haptic ticks on phones,
   and full respect for *reduce motion*.
 - **Phones get a dock, wide screens get both.** Above 900 px, Tasks and Notes sit side by side.
@@ -50,6 +59,7 @@ keyboard covers the rest (also listed in Settings → Keyboard shortcuts):
 | Keys | Does |
 |---|---|
 | N or / | New task (jumps to the task box) |
+| Ctrl+F (⌘F) | Search tasks and notes; ↑ ↓ and Enter go to a result, Esc closes |
 | Enter / Ctrl+Enter (⌘+Enter) | Add a task / add it as your focus |
 | 1 / 2 / , | Tasks / Notes / Settings |
 | ↑ ↓, Alt+↑ / Alt+↓ | Move between tasks; move a task |
@@ -84,12 +94,14 @@ web/
 │   ├── model/              Pure, tested, no DOM
 │   │   ├── workspace.ts    Every mutation; views (now/open/done, per space); batched change events
 │   │   ├── spaces.ts       Spaces: names, ids, where a task or sheet shows
+│   │   ├── search.ts       What search matches (the same rule as Tack for Windows)
 │   │   ├── merge.ts        Field-by-field merge (between tabs and between devices)
 │   │   ├── hlc.ts          Hybrid logical clocks
 │   │   ├── order.ts        Fractional sort keys
 │   │   ├── file.ts         tack.json import/export (desktop-compatible)
 │   │   ├── limits.ts       How much a device holds and passes on (the same numbers as Tack for Windows)
 │   │   ├── welcome.ts      The first-run tasks, and leaving them behind when joining sync
+│   │   ├── share.ts        What another app shared (Android's share sheet) as tasks
 │   │   └── text.ts, time.ts, ids.ts, types.ts
 │   ├── sync/               Optional sync through your OneDrive (docs/SYNC.md)
 │   │   ├── engine.ts       One sync cycle: read others' device files, merge, write ours
@@ -107,10 +119,12 @@ web/
 │   │   ├── gestures.ts     Swipe and long-press reorder (pointer events)
 │   │   ├── notes.ts        Sheets, list continuation, make task
 │   │   ├── spaces.ts       Spaces on screen: the switcher, Move to…, the space on show
+│   │   ├── search.ts       Search: the box, the results, going to what's found
 │   │   ├── settings.ts     Bottom sheet: appearance, spaces, sync, data, install, about
 │   │   ├── sheet.ts        Small bottom sheets (the switcher, Move to…) and the ⋯ menu
 │   │   ├── motion.ts       Springs (CSS linear()), FLIP, reduced motion
 │   │   ├── viewport.ts     Keeps the app inside the visible area above the keyboard
+│   │   ├── share.ts        Takes a share off the address bar before anything else, keeps it until answered
 │   │   ├── renewing.ts     What shows while the OneDrive sign-in renews at Microsoft
 │   │   ├── sw.ts           Registers the service worker; applies updates at a safe moment
 │   │   └── orb.ts, toast.ts, haptics.ts, theme.ts, icons.ts, install.ts, dom.ts

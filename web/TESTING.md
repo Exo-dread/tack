@@ -33,7 +33,7 @@ through a folder on disk. The sync tests run
 with the service worker blocked: in WebKit, Playwright can't intercept requests from a page a
 worker controls, and they must never reach the real Microsoft.
 
-**Unit tests (261, including 40 runs of the sync simulation)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
+**Unit tests (369, including 40 runs of the sync simulation)** cover the parts where a bug would lose or scramble data: sort keys under 3,000
 random inserts, clock monotonicity and skew, .NET date parsing, every workspace mutation and its
 undo, snapshot restore, two- and three-device merges with a randomised convergence test, concurrent
 note edits (conflict copies), and tack.json import/export against a file shaped exactly like
@@ -42,12 +42,15 @@ re-importing after edits on the desktop, on the phone, or both (newer wins; note
 storage (in an in-memory IndexedDB) merging every write so a stale tab can't undo a newer edit,
 and spaces: what each space shows (filtering in the one order, counts, a space that's gone showing
 Main), reordering inside a space without re-keying the others, adding into a space, and reordering
-spaces.
+spaces; and search (`search.test.ts`): what matches, case and accents folded, and where a match is
+in the text as typed, from `../tests/shared/search.json`, cases Tack for Windows' tests read too;
+every space searched in the lists' own order; where opening a result goes; and a speed guard (10,000
+tasks and 500 long notes).
 `vectors.test.ts` computes the shared test vectors that Tack for Windows' port of the model must
 reproduce exactly (`tests/Tack.Tests`), and reads back the file the desktop saved for its round-trip
 export to check nothing was lost on the way.
 
-**End-to-end tests (246 across three projects, 20 skipped where they don't apply)** run against `vite build` + `vite preview`, so the real
+**End-to-end tests (321 across three projects, 24 skipped where they don't apply)** run against `vite build` + `vite preview`, so the real
 service worker and bundle are tested:
 
 | Project | Engine | Emulates |
@@ -73,11 +76,32 @@ while typing), adding into the space on show, moving tasks and sheets with Undo,
 task's space, the "Now in …" line, Done and Clear per space, notes per space (blank paper until you
 write, and Undo there making no sheet), the sheet strip left as it always was with Main alone,
 deleting a space with Undo, renaming and reordering, the space on show surviving a reload,
-and axe scans with spaces on screen in light and dark; and updates of the app, against a server of
+and axe scans with spaces on screen in light and dark; search (Ctrl+F, or the button beside Settings
+on a phone): nothing new on screen until it's used, tasks, done and notes found whatever the case or
+accents, grouped, each with its space, arrows and Enter going to a task in another space (scrolled to,
+lit up, focused), a finished task opening Done, a note opening with the match selected and in sight,
+Esc putting the focus back, the 360 px phone header keeping room for a space's name, reduced motion,
+axe scans in light and dark, and a speed guard over 10,000 tasks and 500 long notes
+(`search-scale.spec.ts`, without traces); and updates of the app, against a server of
 the test's own that puts up a new version (visibility emulated: headless pages never hide): in at
 once when opened untouched, even if it took over while the app was still starting; held while you
 are using the app or are in the task box, then applied when you leave or come back; a draft in the
-box coming back with the page; never while the draft isn't the one kept.
+box coming back with the page; never while the draft isn't the one kept; held while a share that
+just opened the app waits for Add (offered again by the new page) or still offers Undo, then applied
+when you leave, the share kept once. And sharing from another app (`share.spec.ts`, loading
+/?share&… as Android's share sheet does, since Playwright can't open one): the manifest's share
+target; a card saying what came, and nothing added until Add; a shared page becoming one task with
+Undo, on Tasks, and the address bar left clean; added once, whatever reloads follow; Dismiss adding
+nothing, for good; a page on another site sending the browser to a share adding nothing, before or
+after a reload; several lines as a task per line; markup and `javascript:` shared as plain text
+(under the production CSP too); into the space on show; more than 20 lines turned away; a share
+kept through a start that went no further until it's answered; and offline, answered by the service
+worker (Chromium).
+
+**Sharing** is also unit-tested (`share.test.ts`: reading the address, what a share becomes, what its
+card shows, adding it) with hostile cases in `synchostile.test.ts` (20 lines at most, nothing added
+by reading the address, no task too long for sync,
+markup kept as text that every device reads back unchanged, a kept share that isn't three strings).
 
 Gestures are driven with synthetic pointer events (Playwright can only tap), so they test the
 gesture logic, not a real finger. WebKit on Windows is close to Safari's engine but isn't iOS:
@@ -89,6 +113,7 @@ Emulation can't cover these. Each takes a minute.
 
 ### iPhone (Safari, then Home Screen)
 - [ ] Open tackfocus.app in Safari; Share → **Add to Home Screen**; the icon and name look right.
+      (Tack Focus isn't in the iPhone's share sheet: iOS doesn't let web apps receive shares.)
 - [ ] Launch from the icon: full screen, no Safari bars; the **status bar text is legible** in both
       light and dark (it should take the app's background colour).
 - [ ] Tap the task box: the keyboard opens and the **dock rides on top of it**, nothing hidden
@@ -114,6 +139,12 @@ Emulation can't cover these. Each takes a minute.
 - [ ] Spaces: with two or more, tap the title to switch (the sheet sits within thumb reach); a task's
       *Move* and Notes ⋯ → *Move sheet to…* work with the keyboard open and closed; the back
       gesture closes the switcher without switching.
+- [ ] **Share to Tack** (installed; after an update Android can take a day to list it, reinstalling
+      lists it at once): Chrome's Share on a page → Tack Focus adds "title link" with *Added from
+      Share · Undo*; the same with Tack Focus already open (on Notes, too: it opens on Tasks); a
+      link from another app (Outlook, Maps, YouTube) and some selected text; a list from a notes app
+      is a task per line. Neither Back nor reopening the app adds it again. With spaces, it lands
+      in the space on show. Airplane mode: still works.
 
 ### Desktop browsers
 - [ ] Chrome or Edge: install as an app; the window shows both columns; the open-task count shows

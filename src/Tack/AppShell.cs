@@ -5,10 +5,12 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using Tack.Controls;
+using Tack.Drop;
 using Tack.Interop;
 using Tack.Launcher;
 using Tack.Model;
 using Tack.Services;
+using Tack.Snippets;
 using Tack.Windows;
 using static Tack.Interop.NativeMethods;
 
@@ -35,11 +37,13 @@ internal sealed class AppShell : IDisposable
     private readonly HotkeyManager _hotkey;
     private readonly ShellWatcher _watcher;
     private readonly LauncherModule _launcher;
+    private readonly DropModule _drop;
     private readonly DispatcherTimer _peekDelay;
     private readonly DispatcherTimer _collapseCheck;
     private readonly DispatcherTimer _trimDelay;
     private readonly DispatcherTimer _midnight;
     private readonly DispatcherTimer _fullscreenRecheck;
+    private readonly IdleFade _fade;
     private int _rechecksLeft;
 
     private WindowBoundsAnimator? _panelBounds;
@@ -59,8 +63,16 @@ internal sealed class AppShell : IDisposable
         _orb = new OrbWindow();
         // The optional radial launcher (off by default). Created before the panel, whose Settings page shows it.
         _launcher = new LauncherModule(store.Folder, () => _orb.Center);
+        // Images pasted into Notes, kept beside tack.json on this PC only. Never pasted one: nothing on disk.
+        Snippets = new SnippetStore(store.Folder);
+        Snippets.Prune(ws); // not if tack.json couldn't be read: then it holds none of the sheets they belong to
+        ws.HoldsLocalContent = Snippets.Any;
+        // Dropping onto the orb: attachments.json, if there is one, puts the paperclips back on their tasks.
+        _drop = new DropModule(store.Folder, ws, _view);
         _peek = new PeekWindow();
         _panel = new PanelWindow(ws, _view, this);
+        _drop.Attach(_orb.ShowDropTarget, _panel, MakeDropBubble);
+        _orb.DropTarget = _drop;
         _hotkey = new HotkeyManager();
         _watcher = new ShellWatcher();
 
@@ -74,7 +86,7 @@ internal sealed class AppShell : IDisposable
         _trimDelay.Tick += (_, _) => { _trimDelay.Stop(); TrimMemory(); };
 
         _midnight = new DispatcherTimer();
-        _midnight.Tick += (_, _) => { _ws.RefreshDay(); ScheduleMidnight(); };
+        _midnight.Tick += (_, _) => { _ws.RefreshDay(); _drop.Prune(); ScheduleMidnight(); };
 
         // Apps often go full-screen a moment after they take focus, so look again shortly after.
         _fullscreenRecheck = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
@@ -82,13 +94,15 @@ internal sealed class AppShell : IDisposable
 
         _orb.OpenRequested += Expand;
         _orb.HoverChanged += OnOrbHover;
-        _orb.DragStarted += () => { _peekDelay.Stop(); _peek.Dismiss(); };
+        _orb.DragStarted += () => { _peekDelay.Stop(); _peek.Dismiss(); _drop.Dismiss(); };
         _orb.DragFinished += RememberOrbPosition;
 
         _panel.Deactivated += (_, _) => { if (_expanded && !_ws.Settings.Pinned) _collapseCheck.Start(); };
         _panel.UserMovedOrResized += RememberAnchorFromPanel;
         _panel.SizeMoveStarted += () => _panelBounds?.Stop();
-        _panel.PreferredSizeChanged += () => FitPanel(animate: true);
+        _panel.PreferredSizeChanged += inStep => FitPanel(animate: true, inStep);
+        // Clicking elsewhere closes a snippet and, like any click away, folds an unpinned panel.
+        _panel.ViewerClosed += byClickAway => { if (byClickAway && _expanded && !_ws.Settings.Pinned) _collapseCheck.Start(); };
 
         _hotkey.Pressed += Toggle;
         _watcher.ForegroundChanged += OnForegroundChanged;
@@ -101,10 +115,49 @@ internal sealed class AppShell : IDisposable
         _launcher.EnabledChanged += () => _orb.Launcher = _launcher.Enabled ? _launcher : null;
         _launcher.Opened += () => { _peekDelay.Stop(); _peek.Dismiss(); _trimDelay.Stop(); };
         _launcher.Closed += () => { if (!_expanded) _trimDelay.Start(); };
+
+        // Fade when idle (Settings → Look; off by default, and then none of this changes anything).
+        _fade = new IdleFade(ws.Settings, _orb, _panel,
+            orbBusy: () => _orb.IsDragging || _launcher.IsOpen || _orb.Orb.ContextMenu?.IsOpen == true || _drop.BubbleShown,
+            panelBusy: () => !_expanded || !_ws.Settings.Pinned || _panel.IsActive || _panel.IsInSizeMove || _panel.IsToastShown || _panel.IsViewerOpen
+                || _dialogOpen || _hiddenForFullscreen);
+        _orb.HoverChanged += _fade.OrbPointer;
+        _orb.DragStarted += _fade.OrbAwake;
+        // Something dragged over the orb to drop: whole while it's there; the bubble beside it keeps it so.
+        _orb.DragHoverChanged += over => { if (over) _fade.OrbAwake(); else _fade.OrbIdle(); };
+        _panel.ViewerClosed += _ => _fade.PanelIdle();
+        _launcher.Opened += _fade.OrbAwake;
+        _launcher.Closed += _fade.OrbIdle;
+        _panel.Activated += (_, _) => _fade.PanelAwake();
+        _panel.Deactivated += (_, _) => _fade.PanelIdle();
+        _panel.MouseEnter += (_, _) => _fade.PanelPointer(true);
+        _panel.MouseLeave += (_, _) => _fade.PanelPointer(false);
+        _panel.ToastChanged += () => { if (_panel.IsToastShown) _fade.PanelAwake(); else _fade.PanelIdle(); };
+    }
+
+    /// <summary>The bubble beside the orb after a drop, made on the first drag; once it goes, the orb may fade again.</summary>
+    private DropBubble MakeDropBubble()
+    {
+        var bubble = new DropBubble { Orb = _orb };
+        bubble.IsVisibleChanged += (_, e) => { if (e.NewValue is false) _fade.OrbIdle(); };
+        return bubble;
     }
 
     /// <summary>The optional radial launcher (Settings → Launcher).</summary>
     internal LauncherModule Launcher => _launcher;
+
+    /// <summary>The windows, for tests/Tack.Tests (which drives a copy of Tack in its own process).</summary>
+    internal OrbWindow Orb => _orb;
+
+    internal PanelWindow Panel => _panel;
+
+    internal PeekWindow Peek => _peek;
+
+    /// <summary>Images pasted into Notes (on this PC only).</summary>
+    internal SnippetStore Snippets { get; }
+
+    /// <summary>Dropping onto the orb, and the paperclips it leaves on tasks.</summary>
+    internal DropModule Drop => _drop;
 
     public string DataFolder => _store.Folder;
 
@@ -140,10 +193,17 @@ internal sealed class AppShell : IDisposable
         {
             _orb.PlayAppear();
             _trimDelay.Start();
+            _fade.OrbIdle();
         }
 
         EvaluateFullscreen();
         _sync.Start();
+        // Attachments of tasks deleted for good while Tack was closed, and copies nothing points to.
+        _orb.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+        {
+            _drop.Prune();
+            _drop.SweepOrphans();
+        });
     }
 
     /// <summary>True once Tack is shutting down; windows may then really close.</summary>
@@ -184,12 +244,15 @@ internal sealed class AppShell : IDisposable
             open.InputGestureText = HotkeyActive ? _ws.Settings.Hotkey : "";
             _peekDelay.Stop();
             _peek.Dismiss();
+            _fade.OrbAwake();
         };
+        menu.Closed += (_, _) => _fade.OrbIdle();
         return menu;
     }
 
     public void Dispose()
     {
+        _panel.EndToast(); // a discarded snippet's Undo lapses as Tack quits
         _launcher.Dispose();
         _hotkey.Dispose();
         _watcher.Dispose();
@@ -212,6 +275,7 @@ internal sealed class AppShell : IDisposable
             return;
         }
         _launcher.ForceClose();
+        _drop.Dismiss();
         _expanded = true;
         _peekDelay.Stop();
         _peek.Dismiss();
@@ -230,7 +294,8 @@ internal sealed class AppShell : IDisposable
         _panel.Activate();
         _panel.PlayEntrance(_anchorRight, _anchorBottom);
 
-        if (_orb.IsVisible) _orb.PlayDisappear(() => { if (_expanded) _orb.Hide(); });
+        // A faded orb folds away as it is, and is whole again for when it comes back.
+        if (_orb.IsVisible) _orb.PlayDisappear(() => { if (_expanded) { _orb.Hide(); _fade.OrbAwake(); } });
     }
 
     public void Collapse()
@@ -246,6 +311,7 @@ internal sealed class AppShell : IDisposable
             if (_expanded) return; // re-opened mid-animation
             _panel.Hide();
             _panel.CloseSettings(animate: false);
+            _fade.PanelAwake(); // whole again for when it next opens
             _trimDelay.Start();
         });
 
@@ -257,6 +323,7 @@ internal sealed class AppShell : IDisposable
             _orb.MoveCenterTo(cx, cy);
             WindowEffects.BringToTopmost(_orb.Handle);
             _orb.PlayAppear();
+            _fade.OrbIdle();
         }
     }
 
@@ -270,7 +337,7 @@ internal sealed class AppShell : IDisposable
 
     private void CollapseIfAbandoned()
     {
-        if (!_expanded || _ws.Settings.Pinned || _panel.IsActive || _dialogOpen) return;
+        if (!_expanded || _ws.Settings.Pinned || _panel.IsActive || _dialogOpen || _panel.IsViewerOpen) return;
         Collapse();
     }
 
@@ -329,9 +396,10 @@ internal sealed class AppShell : IDisposable
     /// Resizes the open panel to what the current tab wants (tab switch, settings, tasks added or
     /// finished). The corner nearest the orb stays put, so the panel grows and shrinks away from it
     /// instead of jumping, and it is nudged back inside the screen if it would spill over.
-    /// A size the user dragged to is respected: it *is* the tab's preferred size.
+    /// A size the user dragged to is respected: it *is* the tab's preferred size. A row folding away
+    /// comes with its timing, so the panel shrinks in step with it.
     /// </summary>
-    private void FitPanel(bool animate)
+    private void FitPanel(bool animate, GlideTiming? inStep = null)
     {
         if (!_expanded || _panelBounds == null || !_panel.IsVisible || _panel.IsInSizeMove) return;
 
@@ -342,7 +410,7 @@ internal sealed class AppShell : IDisposable
         int y = _anchorBottom ? basis.Y + basis.Height - h : basis.Y;
         var target = ScreenGeometry.Clamp(new Int32Rect(x, y, w, h), mon.Work, mon.Px(PanelInset));
 
-        if (animate) _panelBounds.AnimateTo(target);
+        if (animate) _panelBounds.AnimateTo(target, inStep);
         else _panelBounds.JumpTo(target);
     }
 
@@ -376,7 +444,7 @@ internal sealed class AppShell : IDisposable
 
     private void OnOrbHover(bool hot)
     {
-        if (hot && !_expanded && !_orb.IsDragging && !_launcher.IsOpen) _peekDelay.Start();
+        if (hot && !_expanded && !_orb.IsDragging && !_launcher.IsOpen && !_drop.BubbleShown) _peekDelay.Start();
         else
         {
             _peekDelay.Stop();
@@ -386,7 +454,7 @@ internal sealed class AppShell : IDisposable
 
     private void ShowPeek()
     {
-        if (_expanded || !_orb.IsVisible || _orb.IsDragging || _launcher.IsOpen) return;
+        if (_expanded || !_orb.IsVisible || _orb.IsDragging || _launcher.IsOpen || _drop.BubbleShown) return;
         _ws.RefreshDay();
         _peek.ShowFor(_orb, _view, HotkeyActive ? _ws.Settings.Hotkey : "");
     }
@@ -415,6 +483,7 @@ internal sealed class AppShell : IDisposable
         if (hide)
         {
             _launcher.ForceClose();
+            _drop.Dismiss();
             _peek.Dismiss();
             _orb.Hide();
             if (_expanded && _ws.Settings.Pinned) _panel.Hide();
@@ -463,6 +532,7 @@ internal sealed class AppShell : IDisposable
         switch (e.PropertyName)
         {
             case nameof(Settings.Glass): _panel.ApplyGlass(s.Glass); break;
+            case nameof(Settings.PanelBackgroundGlass) or nameof(Settings.PanelBackgroundSolid): _panel.BackgroundChanged(); break;
             case nameof(Settings.Theme): ApplyTheme(); break;
             case nameof(Settings.Accent): ApplyAccent(); break;
             case nameof(Settings.LaunchAtStartup): StartupRegistration.Set(s.LaunchAtStartup); break;
@@ -470,7 +540,9 @@ internal sealed class AppShell : IDisposable
             case nameof(Settings.Pinned):
                 if (s.Pinned) WindowEffects.BringToTopmost(_panel.Handle);
                 else if (_expanded && !_panel.IsActive) _collapseCheck.Start();
+                if (s.Pinned) _fade.PanelIdle(); else _fade.PanelAwake();
                 break;
+            case nameof(Settings.FadeWhenIdle): _fade.SettingChanged(); break;
         }
     }
 

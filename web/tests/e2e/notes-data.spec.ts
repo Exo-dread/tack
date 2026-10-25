@@ -234,6 +234,20 @@ test.describe('security and accessibility', () => {
     expect(violations).toEqual([]);
   });
 
+  test('a share from another app runs cleanly under the production Content Security Policy', async ({ page }) => {
+    const { violations, documents } = await underCsp(page);
+    // Markup in a share would trip the policy (an inline handler) if it were ever shown as markup.
+    const fields = new URLSearchParams({ title: '<img src=/nothing.png onerror="console.log(1)">', text: '<b onclick="x()">bold</b>\nhttps://example.com/' });
+    await open(page, `/?share&${fields}`);
+    await expect(page.locator('.toast.ask .toast-text')).toHaveText('<img src=/nothing.png onerror="console.log(1)">');
+    await page.locator('.toast.ask').getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(openTexts(page).first()).toHaveText('<img src=/nothing.png onerror="console.log(1)">');
+    await expect(openTexts(page).nth(1)).toHaveText('<b onclick="x()">bold</b> https://example.com/');
+    await page.waitForTimeout(500);
+    expect(documents).toEqual(['/']);
+    expect(violations).toEqual([]);
+  });
+
   test('the privacy page runs cleanly under the production Content Security Policy', async ({ page }) => {
     const { violations, documents } = await underCsp(page);
     await page.goto('/privacy/');

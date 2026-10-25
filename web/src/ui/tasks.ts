@@ -8,7 +8,7 @@ import { coarsePointer, h, isEditable, svg } from './dom';
 import { RowGestures } from './gestures';
 import { haptics } from './haptics';
 import { checkMark, icons } from './icons';
-import { animate, EASE_OUT, exitInPlace, measure, playFlip, POP, reducedMotion, SPRING } from './motion';
+import { afterAnimation, animate, EASE_OUT, exitInPlace, measure, playFlip, POP, reducedMotion, SPRING } from './motion';
 import { Orb } from './orb';
 import type { SpaceUi } from './spaces';
 import type { Toasts } from './toast';
@@ -729,6 +729,19 @@ export class TasksView {
     });
   }
 
+  /**
+   * Search opened this task: scrolled to the middle of the page, lit up for a moment, and its
+   * text focused (a button: on a phone, no keyboard comes up). False if it isn't on show.
+   */
+  reveal(id: string): boolean {
+    const row = this.nowCard?.dataset.id === id ? this.nowCard : (this.openRows.get(id) ?? this.doneRows.get(id));
+    if (!row) return false;
+    row.scrollIntoView({ block: 'center', inline: 'nearest' });
+    row.querySelector<HTMLElement>(':scope > .row-body > .text')?.focus({ preventScroll: true });
+    glow(row);
+    return true;
+  }
+
   /** The first task's text, for keyboard users arriving on the page. */
   focusFirst(): void {
     this.el.querySelector<HTMLElement>('.now-card .text, li.row .text')?.focus();
@@ -770,6 +783,20 @@ function setLabel(button: HTMLElement | null, text: string, tag = ''): void {
     where?.remove();
   }
   button.setAttribute('aria-label', tag ? `${text} (${tag}). Edit` : `${text}. Edit`);
+}
+
+/** How long a task search went to stays lit before it fades. */
+export const LIT_MS = 1100;
+
+/** Lights a row up in the accent for a moment, then fades it out. */
+function glow(row: HTMLElement): void {
+  row.querySelector(':scope > .found-glow')?.remove();
+  const light = h('span.found-glow', { 'aria-hidden': 'true' });
+  row.append(light);
+  setTimeout(() => {
+    const fade = animate(light, [{ opacity: 1 }, { opacity: 0 }], { duration: 420, easing: EASE_OUT, fill: 'forwards' });
+    afterAnimation(fade, () => light.remove(), 900);
+  }, LIT_MS);
 }
 
 function previousLive(el: Element): Element | null {

@@ -9,7 +9,14 @@ import { afterAnimation, animate, EASE_IN, SPRING } from './motion';
 export class Toasts {
   readonly el: HTMLElement;
   private readonly live: HTMLElement;
-  private current: { node: HTMLElement; timer: ReturnType<typeof setTimeout>; undo?: () => void } | null = null;
+  private current: {
+    node: HTMLElement;
+    timer?: ReturnType<typeof setTimeout>;
+    undo?: () => void;
+    /** A question's (see `ask`): what happens if it goes unanswered. */
+    dropped?: () => void;
+    token?: object;
+  } | null = null;
 
   constructor() {
     this.el = h('div.toasts');
@@ -96,6 +103,54 @@ export class Toasts {
     this.announce(undo ? `${message}. Undo available.` : message);
   }
 
+  /**
+   * A question in place of a toast: a small `label` over `message` (two lines of it at most), the
+   * action and Dismiss. It stays until it's answered: the action runs `act`; Dismiss, a swipe down,
+   * or a newer toast taking its place runs `dropped`. Returns a token for `asking`.
+   */
+  ask(label: string, message: string, action: string, act: () => void, dropped: () => void): object {
+    this.dismiss(false);
+    const token = {};
+    let answered = false;
+    const answer = (run: () => void) => {
+      if (answered) return;
+      answered = true;
+      if (this.current?.node === node) this.dismiss();
+      run();
+    };
+    const node = h(
+      'div.toast.ask',
+      {},
+      h('span.toast-ask', {}, h('span.toast-label', { text: label }), h('span.toast-text', { text: message })),
+      h('button.toast-action', { type: 'button', text: action, onclick: () => answer(act) }),
+      h('button.toast-action.quiet', { type: 'button', text: 'Dismiss', onclick: () => answer(dropped) }),
+    );
+    let startY = 0;
+    node.addEventListener('pointerdown', (e) => (startY = e.clientY));
+    node.addEventListener('pointerup', (e) => {
+      if (e.clientY - startY > 24) answer(dropped);
+    });
+    this.el.append(node);
+    animate(node, [{ opacity: 0, transform: 'translateY(16px) scale(.96)' }, { opacity: 1, transform: 'none' }], {
+      duration: SPRING.duration,
+      easing: SPRING.easing,
+    });
+    // No countdown: it waits for an answer. A newer toast ends it (see dismiss).
+    this.current = { node, dropped: () => answer(dropped), token };
+    this.announce(`${label}: ${message}. ${action} or Dismiss.`);
+    return token;
+  }
+
+  /** Is the question `ask` returned this token for still on show? */
+  asking(token: object): boolean {
+    return this.current?.token === token;
+  }
+
+  /** Is this undo still on offer (its toast on show)? */
+  offers(undo: () => void): boolean {
+    return this.current?.undo === undo;
+  }
+
   /** Ctrl/Cmd+Z: runs the current toast's undo, if there is one. */
   undo(): boolean {
     const u = this.current?.undo;
@@ -111,6 +166,8 @@ export class Toasts {
     if (!c) return;
     this.current = null;
     clearTimeout(c.timer);
+    // A question nobody answered (a newer toast took its place): it's dropped.
+    c.dropped?.();
     // While it fades, its Undo would run the next toast's undo: take it out of reach at once.
     c.node.inert = true;
     const a = animated

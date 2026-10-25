@@ -17,6 +17,7 @@ internal sealed class OrbVisual : FrameworkElement
     public static readonly DependencyProperty CountProperty = Register(nameof(Count), 0);
     public static readonly DependencyProperty AllDoneProperty = Register(nameof(AllDone), false);
     public static readonly DependencyProperty IsHotProperty = Register(nameof(IsHot), false);
+    public static readonly DependencyProperty IsDropTargetProperty = Register(nameof(IsDropTarget), false);
 
     /// <summary>The bead's materials for one theme.</summary>
     private sealed record Look(Brush Shadow, Brush Body, Brush Sheen, Pen Rim, Pen RimHot, Pen Track, Brush Count);
@@ -49,6 +50,9 @@ internal sealed class OrbVisual : FrameworkElement
     public bool AllDone { get => (bool)GetValue(AllDoneProperty); set => SetValue(AllDoneProperty, value); }
     public bool IsHot { get => (bool)GetValue(IsHotProperty); set => SetValue(IsHotProperty, value); }
 
+    /// <summary>Something Tack can take is dragged over the bead: an accent halo and rim, and a plus where the count was.</summary>
+    public bool IsDropTarget { get => (bool)GetValue(IsDropTargetProperty); set => SetValue(IsDropTargetProperty, value); }
+
     protected override void OnRender(DrawingContext dc)
     {
         var c = new Point(ActualWidth / 2, ActualHeight / 2);
@@ -59,10 +63,21 @@ internal sealed class OrbVisual : FrameworkElement
         // Soft contact shadow, slightly below the bead.
         dc.DrawEllipse(look.Shadow, null, new Point(c.X, c.Y + 2.5), r + 7, r + 7);
 
+        bool drop = IsDropTarget;
+        if (drop)
+        {
+            // A soft accent halo just outside the rim: "let go here".
+            var accentColor = (accent as SolidColorBrush)?.Color ?? Colors.DeepSkyBlue;
+            var halo = new SolidColorBrush(Color.FromArgb(0x38, accentColor.R, accentColor.G, accentColor.B));
+            halo.Freeze();
+            dc.DrawEllipse(halo, null, c, r + 4, r + 4);
+        }
+
         // Body, sheen and rim.
         dc.DrawEllipse(look.Body, null, c, r, r);
         dc.DrawEllipse(look.Sheen, null, c, r - 0.5, r - 0.5);
-        dc.DrawEllipse(null, IsHot ? look.RimHot : look.Rim, c, r - 0.5, r - 0.5);
+        if (drop) dc.DrawEllipse(null, new Pen(accent, 1.5), c, r - 0.75, r - 0.75);
+        else dc.DrawEllipse(null, IsHot ? look.RimHot : look.Rim, c, r - 0.5, r - 0.5);
 
         // Progress ring: today's finished share of work.
         const double ringR = r - 5.5;
@@ -73,9 +88,16 @@ internal sealed class OrbVisual : FrameworkElement
         else if (p > 0.001) dc.DrawGeometry(null, ringPen, Arc(c, ringR, p));
         else if (Count > 0) dc.DrawEllipse(accent, null, new Point(c.X, c.Y - ringR), 1.5, 1.5); // where progress will start
 
-        // Centre: open count, a tick when everything is done, or a quiet dot when empty.
+        // Centre: a plus while something is dragged over, else the open count, a tick when everything is done,
+        // or a quiet dot when empty.
         int count = Count;
-        if (count > 0)
+        if (drop)
+        {
+            var plus = new Pen(accent, 2.2) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+            dc.DrawLine(plus, new Point(c.X - 6, c.Y), new Point(c.X + 6, c.Y));
+            dc.DrawLine(plus, new Point(c.X, c.Y - 6), new Point(c.X, c.Y + 6));
+        }
+        else if (count > 0)
         {
             string text = count > 99 ? "99+" : count.ToString(CultureInfo.InvariantCulture);
             double size = text.Length >= 3 ? 11 : 14;

@@ -130,6 +130,9 @@
                         <TextBlock Style="{StaticResource Hint}" Text="Hides the orb while a video, game or slideshow fills the screen." />
                     </StackPanel>
                 </Border>
+                <!-- Only while Tack runs as administrator: Windows then blocks drops from other apps. -->
+                <TextBlock x:Name="ElevatedHint" Style="{StaticResource Hint}" Margin="2,8,8,0" Visibility="Collapsed"
+                           Text="Tack is running as administrator, so Windows won't let other apps drop files, links or emails onto the orb. Start Tack normally (not as administrator) to drop onto it." />
 
                 <TextBlock Text="Shortcut" Style="{StaticResource SectionLabel}" />
                 <Border Style="{StaticResource Card}">
@@ -140,10 +143,25 @@
                                     Click="HotkeyButton_Click" ToolTip="Click, then press a new shortcut. Backspace turns it off." />
                         </Grid>
                         <TextBlock x:Name="HotkeyStatus" Style="{StaticResource Hint}" Margin="0,-4,0,10" Visibility="Collapsed" />
+                        <Border Height="1" Background="{DynamicResource DividerBrush}" />
+                        <!-- Fixed: plain text, so it reads as a key to press rather than a button to change. -->
+                        <Grid Margin="0,9">
+                            <TextBlock Text="Search tasks and notes" VerticalAlignment="Center" FontSize="13" />
+                            <TextBlock x:Name="SearchKey" Text="Ctrl+F" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,11,0"
+                                       FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       AutomationProperties.Name="Ctrl+F, in the panel" />
+                        </Grid>
+                        <Border Height="1" Background="{DynamicResource DividerBrush}" />
+                        <Grid Margin="0,9">
+                            <TextBlock Text="Open what was dropped on a task" VerticalAlignment="Center" FontSize="13" />
+                            <TextBlock x:Name="AttachmentKey" Text="Ctrl+O" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,11,0"
+                                       FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       AutomationProperties.Name="Ctrl+O, on a task with a paperclip" />
+                        </Grid>
                     </StackPanel>
                 </Border>
 
-                <TextBlock Text="Appearance" Style="{StaticResource SectionLabel}" />
+                <TextBlock Text="Look" Style="{StaticResource SectionLabel}" />
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <Grid Margin="0,8">
@@ -165,10 +183,40 @@
                                   IsChecked="{Binding Settings.Glass}" />
                         <TextBlock x:Name="GlassHint" Style="{StaticResource Hint}" Text="Turn off for a solid, high-contrast panel." />
                         <Border Height="1" Background="{DynamicResource DividerBrush}" />
+                        <!-- How solid the panel's background is (only the background: text and controls stay as they are).
+                             One value with frosted glass and one without; the tick marks the default. -->
+                        <StackPanel Margin="0,9,0,8">
+                            <Grid>
+                                <TextBlock Text="Panel background" VerticalAlignment="Center" FontSize="13" />
+                                <Button x:Name="BackgroundReset" Style="{StaticResource TextButton}" HorizontalAlignment="Right" Margin="0,-4,-8,-4"
+                                        Content="Default" Click="BackgroundReset_Click" Visibility="Hidden"
+                                        ToolTip="Back to the theme's own background" AutomationProperties.Name="Panel background: back to the default" />
+                            </Grid>
+                            <Grid Margin="0,4,0,0">
+                                <!-- In whole percent see-through, so a screen reader says "47", not "0.47". -->
+                                <Slider x:Name="BackgroundSlider" Style="{StaticResource SettingSlider}" Minimum="0" Maximum="75"
+                                        SmallChange="5" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True"
+                                        ValueChanged="BackgroundSlider_ValueChanged"
+                                        AutomationProperties.Name="Panel background, solid to see-through" />
+                                <Border x:Name="BackgroundTick" Width="2" Height="6" CornerRadius="1" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                        Margin="0,0,0,-3" Background="{DynamicResource TextTertiaryBrush}" IsHitTestVisible="False" />
+                            </Grid>
+                            <Grid Margin="0,3,0,0">
+                                <TextBlock Text="Solid" Style="{StaticResource Caption}" />
+                                <TextBlock Text="See-through" Style="{StaticResource Caption}" HorizontalAlignment="Right" />
+                            </Grid>
+                            <TextBlock x:Name="BackgroundHint" Style="{StaticResource Hint}" Margin="0,4,0,0" Visibility="Collapsed" />
+                        </StackPanel>
+                        <Border Height="1" Background="{DynamicResource DividerBrush}" />
                         <Grid Margin="0,8">
                             <TextBlock Text="Accent" VerticalAlignment="Center" FontSize="13" />
                             <StackPanel x:Name="Swatches" Orientation="Horizontal" HorizontalAlignment="Right" />
                         </Grid>
+                        <Border Height="1" Background="{DynamicResource DividerBrush}" />
+                        <CheckBox x:Name="FadeToggle" Style="{StaticResource ToggleSwitch}" Content="Fade when idle" Margin="0,9,0,8"
+                                  IsChecked="{Binding Settings.FadeWhenIdle}" />
+                        <TextBlock Style="{StaticResource Hint}"
+                                   Text="The orb and a pinned panel fade to half after a few seconds without the pointer, and come back as soon as you point at them." />
                     </StackPanel>
                 </Border>
                 <TextBlock Style="{StaticResource Hint}" Margin="2,8,8,0"

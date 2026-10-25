@@ -11,14 +11,14 @@ internal enum SessionMode
     Click,
 }
 
-internal enum HitKind { None, Center, Item, EmptySlot, Display }
+internal enum HitKind { None, Center, Item, EmptySlot, Display, File }
 
 internal readonly record struct Hit(HitKind Kind, NodeRef Node = default, int Display = -1)
 {
     public static readonly Hit Nothing = new(HitKind.None);
 }
 
-internal enum LauncherKey { Escape, Next, Previous, Activate, PickDisplay, Digit }
+internal enum LauncherKey { Escape, Next, Previous, Activate, PickDisplay, Digit, Recents }
 
 internal enum Outcome { None, Changed, Launch, Close }
 
@@ -67,8 +67,11 @@ internal sealed class LauncherSession
     /// <summary>The group whose shortcuts are fanned out, if any.</summary>
     public int? OpenGroup { get; private set; }
 
-    /// <summary>The shortcut whose display picker is showing, if any.</summary>
+    /// <summary>The shortcut whose display picker is showing, if any (an app, a folder, or one of an app's recent files).</summary>
     public NodeRef? Selector { get; private set; }
+
+    /// <summary>The app whose recent files are showing, if any (only with recent files turned on).</summary>
+    public NodeRef? Recents { get; private set; }
 
     /// <summary>A short note shown in the launcher (e.g. why a shortcut can't open).</summary>
     public string? Message { get; private set; }
@@ -132,6 +135,10 @@ internal sealed class LauncherSession
                 {
                     case HitKind.Display when Selector is { } sel && _scene.Entry(sel) is { } e:
                         return Launch(sel, e, hit.Display, viaGesture: true);
+                    case HitKind.File:
+                        Highlight = hit;
+                        _pointer = p;
+                        return Activate(hit.Node, viaGesture: true);
                     case HitKind.Item:
                         Highlight = hit;
                         _pointer = p;
@@ -179,8 +186,10 @@ internal sealed class LauncherSession
         if (Mode == SessionMode.Gesture && _pending is { } pending && now - _pendingSince >= SwitchDwellMs)
         {
             _pending = null;
-            OpenGroup = null;
+            // (A group's shortcut is only ever passed over while its group is open: it stays open.)
+            OpenGroup = pending.IsChild ? pending.Slot : null;
             Selector = null;
+            Recents = null;
             Highlight = new Hit(_scene.Entry(pending) == null ? HitKind.EmptySlot : HitKind.Item, pending);
             _hotSince = now;
             _dwellArmed = true;
@@ -188,11 +197,37 @@ internal sealed class LauncherSession
             return SessionResult.Changed;
         }
         if (Mode is not (SessionMode.Gesture or SessionMode.Click) || !_dwellArmed) return SessionResult.Nothing;
-        if (Highlight.Kind != HitKind.Item || Selector == Highlight.Node || !_scene.CanPickDisplay(Highlight.Node)) return SessionResult.Nothing;
+        if (Highlight.Kind != HitKind.Item) return SessionResult.Nothing;
+        var node = Highlight.Node;
         long dwell = Mode == SessionMode.Gesture ? GestureDwellMs : ClickDwellMs;
         if (now - _hotSince < dwell) return SessionResult.Nothing;
-        Selector = Highlight.Node;
+
+        // With recent files on, resting on an app shows them (like a group's shortcuts); an app with none, or
+        // anything else, still offers the display picker. Dragging on past an app reveals its picker at once (Hover).
+        if (_scene.MayHaveRecents(node))
+        {
+            // (Its display picker, revealed by dragging on past it, stays: that was asked for.)
+            if (Recents == node || Selector == node) return SessionResult.Nothing;
+            var files = _scene.RecentsOf(node);
+            if (files == null) return SessionResult.Nothing; // still being read: a later tick looks again
+            if (files.Count > 0)
+            {
+                Recents = node;
+                Selector = null;
+                return SessionResult.Changed;
+            }
+        }
+        if (Selector == node || !_scene.CanPickDisplay(node)) return SessionResult.Nothing;
+        Selector = node;
+        if (Recents != null && Recents != node) Recents = null;
         return SessionResult.Changed;
+    }
+
+    /// <summary>An app's recent files have been read (once per opening; none is an answer too).</summary>
+    public SessionResult SetRecents(NodeRef owner, IReadOnlyList<RecentFile> files)
+    {
+        _scene.SetRecents(owner, files);
+        return Recents == owner.Owner ? SessionResult.Changed : SessionResult.Nothing;
     }
 
     // ================= Clicks on the open launcher =================
@@ -217,6 +252,7 @@ internal sealed class LauncherSession
             case HitKind.Display when Selector is { } sel && _scene.Entry(sel) is { } e:
                 return Launch(sel, e, hit.Display, viaGesture: false);
             case HitKind.Item:
+            case HitKind.File:
                 Highlight = hit;
                 return Activate(hit.Node, viaGesture: false);
             case HitKind.EmptySlot:
@@ -227,20 +263,23 @@ internal sealed class LauncherSession
             case HitKind.Center:
                 return Close(restoreFocus: true);
             default:
-                // Inside the picker's frame but between tiles: nothing. Anywhere else: like clicking outside.
+                // Inside the picker's frame but between tiles (or the recent files' caption): nothing. Anywhere else:
+                // like clicking outside.
                 if (Selector is { } s && _scene.SelectorFor(s).Contains(p)) return SessionResult.Nothing;
+                if (Recents is { } r && _scene.RecentsBox(r).Contains(p)) return SessionResult.Nothing;
                 return Close(restoreFocus: true);
         }
     }
 
-    /// <summary>Right-click a shortcut: choose its display without making that the default.</summary>
+    /// <summary>Right-click a shortcut (or a recent file): choose its display without making that the default.</summary>
     public SessionResult SecondaryClick(PxPoint p)
     {
         if (Mode != SessionMode.Click) return SessionResult.Nothing;
         var hit = HitTest(p, generous: false);
-        if (hit.Kind != HitKind.Item || !_scene.CanPickDisplay(hit.Node)) return SessionResult.Nothing;
+        if (hit.Kind is not (HitKind.Item or HitKind.File) || !_scene.CanPickDisplay(hit.Node)) return SessionResult.Nothing;
         Highlight = hit;
         Selector = hit.Node;
+        if (hit.Kind == HitKind.Item) Recents = null; // the app's displays, not its files
         Message = null;
         return SessionResult.Changed;
     }
@@ -251,7 +290,7 @@ internal sealed class LauncherSession
         if (Mode != SessionMode.Click || _scene.Entry(node) == null) return SessionResult.Nothing;
         _dwellArmed = false;
         Message = null;
-        Highlight = new Hit(HitKind.Item, node);
+        Highlight = new Hit(node.IsFile ? HitKind.File : HitKind.Item, node);
         return Activate(node, viaGesture: false);
     }
 
@@ -279,7 +318,13 @@ internal sealed class LauncherSession
                 if (Selector is { } sel)
                 {
                     Selector = null;
-                    Highlight = new Hit(HitKind.Item, sel);
+                    Highlight = new Hit(sel.IsFile ? HitKind.File : HitKind.Item, sel);
+                    return SessionResult.Changed;
+                }
+                if (Recents is { } rec)
+                {
+                    Recents = null;
+                    Highlight = new Hit(HitKind.Item, rec);
                     return SessionResult.Changed;
                 }
                 if (OpenGroup is { } g)
@@ -304,21 +349,26 @@ internal sealed class LauncherSession
                         if (grp.Children is { Count: > 0 }) Highlight = new Hit(HitKind.Item, new NodeRef(Highlight.Node.Slot, 0));
                         return SessionResult.Changed;
                     case HitKind.Item:
+                    case HitKind.File:
                         return Activate(Highlight.Node, viaGesture: false);
                     default:
                         return Cycle(1);
                 }
 
             case LauncherKey.PickDisplay:
-                if (Highlight.Kind != HitKind.Item || !_scene.CanPickDisplay(Highlight.Node)) return SessionResult.Nothing;
+                if (Highlight.Kind is not (HitKind.Item or HitKind.File) || !_scene.CanPickDisplay(Highlight.Node)) return SessionResult.Nothing;
                 Selector = Highlight.Node;
                 Highlight = new Hit(HitKind.Display, default, Math.Max(0, _scene.OrbDisplay()));
                 return SessionResult.Changed;
+
+            case LauncherKey.Recents:
+                return ShowRecents();
 
             case LauncherKey.Digit when digit >= 1 && digit <= LauncherConfig.SlotCount:
                 var node = new NodeRef(digit - 1);
                 if (_scene.Entry(node) == null) return SessionResult.Nothing;
                 Selector = null;
+                Recents = null;
                 OpenGroup = null;
                 Highlight = new Hit(HitKind.Item, node);
                 return Key(LauncherKey.Activate);
@@ -328,7 +378,34 @@ internal sealed class LauncherSession
         }
     }
 
-    /// <summary>Arrow keys and Tab move around the current ring: the picker's displays, a group's shortcuts, or the primary ring.</summary>
+    /// <summary>R: the highlighted app's recent files (again: back to the app). The first one is highlighted.</summary>
+    private SessionResult ShowRecents()
+    {
+        if (Highlight.Kind is not (HitKind.Item or HitKind.File)) return SessionResult.Nothing;
+        var app = Highlight.Node.Owner;
+        if (!_scene.MayHaveRecents(app)) return SessionResult.Nothing;
+        if (Recents == app)
+        {
+            Recents = null;
+            Highlight = new Hit(HitKind.Item, app);
+            return SessionResult.Changed;
+        }
+        var files = _scene.RecentsOf(app);
+        string label = _scene.Entry(app)?.Label ?? "";
+        if (files is not { Count: > 0 })
+        {
+            Highlight = new Hit(HitKind.Item, app);
+            Message = files == null ? $"Looking for {label}'s recent files…" : $"No recent files for {label}.";
+            IsWarning = false;
+            return SessionResult.Changed;
+        }
+        Selector = null;
+        Recents = app;
+        Highlight = new Hit(HitKind.File, app.WithFile(0));
+        return SessionResult.Changed;
+    }
+
+    /// <summary>Arrow keys and Tab move around the current ring: the picker's displays, an app's recent files, a group's shortcuts, or the primary ring.</summary>
     private SessionResult Cycle(int dir)
     {
         if (Selector != null)
@@ -337,6 +414,14 @@ internal sealed class LauncherSession
             if (n == 0) return SessionResult.Nothing;
             int at = Highlight.Kind == HitKind.Display ? Highlight.Display : (dir > 0 ? -1 : n);
             Highlight = new Hit(HitKind.Display, default, ((at + dir) % n + n) % n);
+            return SessionResult.Changed;
+        }
+        if (Recents is { } owner && Highlight.Kind == HitKind.File)
+        {
+            var files = _scene.FilesOf(owner);
+            if (files.Count == 0) return SessionResult.Nothing;
+            int at = Math.Clamp(Highlight.Node.File, 0, files.Count - 1);
+            Highlight = new Hit(HitKind.File, files[((at + dir) % files.Count + files.Count) % files.Count]);
             return SessionResult.Changed;
         }
 
@@ -348,6 +433,7 @@ internal sealed class LauncherSession
         int next = i < 0 ? (dir > 0 ? 0 : ring.Count - 1) : ((i + dir) % ring.Count + ring.Count) % ring.Count;
         Highlight = new Hit(HitKind.Item, ring[next]);
         if (!ring[next].IsChild && OpenGroup != ring[next].Slot) OpenGroup = null;
+        if (Recents != null && Recents != ring[next]) Recents = null;
         return SessionResult.Changed;
     }
 
@@ -368,6 +454,7 @@ internal sealed class LauncherSession
         {
             OpenGroup = OpenGroup == node.Slot && !viaGesture ? null : node.Slot;
             Selector = null;
+            Recents = null;
             return SessionResult.Changed;
         }
         if (_scene.ProblemOf(node) is { } problem)
@@ -380,7 +467,7 @@ internal sealed class LauncherSession
                 return Launch(node, e, _scene.PreferredDisplay(e), viaGesture);
             case LaunchMode.Ask when _scene.CanPickDisplay(node):
                 Selector = node;
-                Highlight = new Hit(HitKind.Item, node);
+                Highlight = new Hit(node.IsFile ? HitKind.File : HitKind.Item, node);
                 Mode = SessionMode.Click;
                 return new SessionResult(Outcome.Changed, TakeFocus: viaGesture);
             default:
@@ -419,6 +506,7 @@ internal sealed class LauncherSession
     {
         Mode = SessionMode.Closed;
         Selector = null;
+        Recents = null;
         OpenGroup = null;
         Highlight = Hit.Nothing;
         return new SessionResult(Outcome.Close, RestoreFocus: restoreFocus);
@@ -427,7 +515,7 @@ internal sealed class LauncherSession
     /// <summary>Updates highlight, open group and picker for the pointer. True when anything visible changed.</summary>
     private bool Hover(Hit hit, PxPoint p, long now)
     {
-        var before = (Highlight, OpenGroup, Selector, Message);
+        var before = (Highlight, OpenGroup, Selector, Recents, Message);
         bool gesture = Mode == SessionMode.Gesture;
 
         if (hit.Kind == HitKind.Item)
@@ -444,11 +532,20 @@ internal sealed class LauncherSession
                 else if (gesture) OpenGroup = null;
             }
             if (Selector is { } s && s != hit.Node) Selector = null;
+            // In a gesture, reaching another shortcut puts its recent files away (only possible once it's taken
+            // over: see HitTest). With clicks they stay until another shortcut is rested on or chosen.
+            if (gesture && Recents is { } r && r != hit.Node) Recents = null;
 
-            // Dragging on past a shortcut (outward) reveals its picker at once, without waiting.
-            if (gesture && _scene.CanPickDisplay(hit.Node) && (e is not { IsGroup: true }) &&
+            // Dragging on past a shortcut (outward) reveals its picker at once, without waiting. Not once its recent
+            // files are showing: that's where they are.
+            if (gesture && _scene.CanPickDisplay(hit.Node) && (e is not { IsGroup: true }) && Recents != hit.Node &&
                 p.DistanceTo(_scene.Orb) > _scene.Orb.DistanceTo(_scene.CenterOf(hit.Node)) + _scene.ItemRadius * 0.6)
                 Selector = hit.Node;
+            Message = null;
+        }
+        else if (hit.Kind == HitKind.File)
+        {
+            if (Selector is { } s && s != hit.Node) Selector = null;
             Message = null;
         }
         else if (hit.Kind == HitKind.Center && gesture)
@@ -456,9 +553,10 @@ internal sealed class LauncherSession
             // Back to the orb: start over.
             OpenGroup = null;
             Selector = null;
+            Recents = null;
         }
         Highlight = hit;
-        return before != (Highlight, OpenGroup, Selector, Message);
+        return before != (Highlight, OpenGroup, Selector, Recents, Message);
     }
 
     /// <summary>
@@ -482,6 +580,17 @@ internal sealed class LauncherSession
                 if (new PxRect(t.X - 2, t.Y - 2, t.Width + 4, t.Height + 4).Contains(p)) return new Hit(HitKind.Display, default, i);
             }
             if (_scene.SelectorFor(sel).Contains(p)) return Hit.Nothing;
+        }
+        if (Recents is { } owner)
+        {
+            var rows = _scene.RecentRows(owner);
+            for (int i = 0; i < rows.Count; i++)
+            {
+                var row = rows[i];
+                if (new PxRect(row.X - 1, row.Y, row.Width + 2, row.Height).Contains(p)) return new Hit(HitKind.File, owner.WithFile(i));
+            }
+            if (_scene.RecentsBox(owner).Contains(p)) return Hit.Nothing; // its caption or edge
+            if (generous) return BesideRecents(p, owner, out blocked);
         }
 
         double fromOrb = p.DistanceTo(_scene.Orb);
@@ -523,6 +632,32 @@ internal sealed class LauncherSession
             // With a group open, other shortcuts are chosen by direction only close to the orb.
             if (!Other(kp) || fromOrb <= ring * 0.6) return new Hit(HitKind.Item, kp);
         }
+        return Hit.Nothing;
+    }
+
+    /// <summary>
+    /// A gesture with an app's recent files out: on the way to them the pointer may pass over another shortcut
+    /// (near screen edges the card can't always sit straight beyond its app), so the app stays the one: another
+    /// shortcut takes over only after resting on it (see <see cref="Tick"/>), or by heading back toward the orb.
+    /// </summary>
+    private Hit BesideRecents(PxPoint p, NodeRef owner, out NodeRef? blocked)
+    {
+        blocked = null;
+        double itemR = _scene.ItemRadius, fromOrb = p.DistanceTo(_scene.Orb);
+        if (fromOrb <= _scene.OrbRadius * 1.1) return new Hit(HitKind.Center);
+        if (p.DistanceTo(_scene.CenterOf(owner)) <= itemR * 1.45) return new Hit(HitKind.Item, owner);
+
+        var onShow = (OpenGroup is { } g ? _scene.ChildrenOf(g) : Array.Empty<NodeRef>())
+            .Concat(Enumerable.Range(0, _scene.Slots.Count).Select(i => new NodeRef(i))).ToList();
+        if (Nearest(onShow, p, itemR) is { } other && other != owner)
+        {
+            blocked = other;
+            return Hit.Nothing;
+        }
+        double ring = _scene.Orb.DistanceTo(_scene.Primary[0]);
+        var filled = _scene.FilledPrimary();
+        if (filled.Count > 0 && fromOrb > _scene.OrbRadius * 1.25 && fromOrb <= ring * 0.6 && ByDirection(filled, p) is { } kp)
+            return new Hit(HitKind.Item, kp);
         return Hit.Nothing;
     }
 

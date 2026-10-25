@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Tack.Model;
 using Tack.Services;
+using Tack.Snippets;
 using Tack.Sync;
 
 namespace Tack.Tests;
@@ -61,6 +62,553 @@ internal static class HostileFileTests
         yield return ("second audit, L1: imports no more than a device can pass on", ImportLimits);
         yield return ("second audit, L1: imports skip text longer than any device reads", ImportLongText);
         yield return ("second audit, L2: imported dates are kept only as every device reads them", ImportDates);
+        yield return ("snippets, hostile paste: a 20000x20000 PNG (a few KB of black) is turned down from its header, nothing decoded", PngBomb);
+        yield return ("snippets, hostile paste: a DIB claiming 20000x20000 is turned down before a byte of it is copied", DibBomb);
+        yield return ("snippets, hostile paste: a 20000x20000 bitmap is turned down without drawing it", BitmapBomb);
+        yield return ("snippets, hostile paste: damaged PNGs are refused or kept whole, never an error or half a snippet", CorruptPngs);
+        yield return ("snippets, hostile paste: damaged DIB headers are refused", CorruptDibs);
+        yield return ("snippets, hostile paste: copied files on shares, device paths, cloud placeholders, oversized or misnamed are never read", HostileFiles);
+        yield return ("snippets, hostile snippets.json: entries naming other files or out of range are dropped; only Tack's own files are cleared", HostileIndex);
+        yield return ("snippets, hostile snippets.json: one that can't be read (nor its .bak) clears no file, is kept aside and never written over", UnreadableSnippetIndex);
+        yield return ("snippets, hostile snippets.json: entries past the caps aren't loaded, and their files aren't cleared away", SnippetsPastTheCaps);
+        yield return ("snippets, hostile snippet file: one replaced by a vast, damaged or oversized image shows an empty frame, no error", HostileStoredFile);
+        // Dropping onto the orb: hostile drags (huge lists, javascript: links, device paths, endless streams) are in DropTests.
+        yield return ("attachments.json: a damaged or hand-edited file can't point a paperclip anywhere a drop couldn't; the good entries still load", AttachmentsEntries);
+        yield return ("attachments.json: too large, too deep or too many is bounded, and the backup takes over", AttachmentsBounds);
+        yield return ("attachments.json: one that can't be read (nor its .bak) sweeps no saved email, is kept aside and never written over", UnreadableAttachments);
+    }
+
+    // ---------------------------------------------------------------- attachments.json (local, never synced)
+
+    private static void AttachmentsEntries()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "tack-drop-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var store = new Tack.Drop.Core.AttachmentStore(folder, Tack.Drop.DesktopDrop.IsProgram);
+            string longLabel = "<a href=\"javascript:x\">" + new string('L', 10_000) + "\n second line";
+            string json = $$"""
+            { "version": 99, "future": { "anything": [1, 2, 3] }, "attachments": [
+              { "task": "aaaaaaaaaaaa", "kind": "link", "target": "javascript:alert(1)", "label": "x" },
+              { "task": "aaaaaaaaaaab", "kind": "link", "target": "file://\\\\evil\\share\\x.exe", "label": "x" },
+              { "task": "aaaaaaaaaaac", "kind": "link", "target": "https://user:pw@acc.autodesk.com/", "label": "x" },
+              { "task": "bbbbbbbbbbbb", "kind": "file", "target": "..\\..\\Windows\\notepad.exe", "label": "x", "saved": true },
+              { "task": "bbbbbbbbbbbc", "kind": "file", "target": "C:\\Users\\me\\Desktop\\x.pdf", "label": "x", "saved": true },
+              { "task": "cccccccccccc", "kind": "file", "target": "0123456789ab\\run.exe", "label": "x", "saved": true },
+              { "task": "cccccccccccd", "kind": "file", "target": "0123456789ab\\Mail.eml:payload.exe", "label": "x", "saved": true },
+              { "task": "dddddddddddd", "kind": "program", "target": "C:\\x.exe", "label": "x" },
+              { "task": "../../escape", "kind": "file", "target": "C:\\x.pdf", "label": "x" },
+              { "task": "eeeeeeeeeeee", "kind": "file", "target": "\\\\?\\C:\\x.pdf", "label": "x" },
+              { "task": "eeeeeeeeeeef", "kind": "folder", "target": "Projects\\relative", "label": "x" },
+              { "task": "ffffffffffff", "kind": "folder", "target": "C:\\Projects", "label": {{System.Text.Json.JsonSerializer.Serialize(longLabel)}} },
+              { "task": "ffffffffffff", "kind": "link", "target": "https://second.example/", "label": "the same task again" },
+              { "task": "111111111111", "kind": "link", "target": "https://acc.autodesk.com/docs", "label": "ACC", "opened": 3 },
+              { "task": "222222222222", "kind": "file", "target": "0123456789ab\\Mail.eml", "label": "Mail.eml", "saved": true },
+              { "task": "333333333333", "kind": "link", "target": 123, "label": "x" },
+              { "task": "444444444444", "kind": "link", "target": "https://x.example/\ud800", "label": "half a character" },
+              { "task": "555555555555", "kind": "file", "target": "\\\\fileserver\\Projects\\x.pdf", "label": "x.pdf", "saved": "yes" },
+              "a string", null, 7, [ ]
+            ]}
+            """;
+            store.Parse(Encoding.UTF8.GetBytes(json));
+            var kept = store.All.ToDictionary(e => e.TaskId, e => e.Attachment);
+            Check.Sequence(["ffffffffffff", "111111111111", "222222222222", "555555555555"], kept.Keys.ToList(), "only what a drop could have made, each task once");
+            Check.Equal(Tack.Drop.Core.AttachmentKind.Folder, kept["ffffffffffff"].Kind, "the first entry for a task wins");
+            Check.True(kept["ffffffffffff"].Label.Length <= Tack.Drop.Core.DropLimits.MaxLabel && !kept["ffffffffffff"].Label.Contains('\n'), "a label is one line, bounded");
+            Check.Equal("https://acc.autodesk.com/docs", kept["111111111111"].Target, "an http(s) page");
+            Check.True(kept["222222222222"].Saved, "a saved copy inside the folder");
+            Check.True(!kept["555555555555"].Saved, "\"saved\" means true, nothing else");
+            Check.Equal(@"\\fileserver\Projects\x.pdf", kept["555555555555"].Target, "a network file, as dropped");
+
+            // Written back, only what was kept.
+            store.Save();
+            string written = File.ReadAllText(store.FilePath);
+            Check.True(!written.Contains("javascript:alert", StringComparison.Ordinal) && !written.Contains("notepad", StringComparison.Ordinal) && !written.Contains("future", StringComparison.Ordinal), "nothing refused is written back");
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch { }
+        }
+    }
+
+    private static void AttachmentsBounds()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "tack-drop-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            string path = Path.Combine(folder, Tack.Drop.Core.AttachmentStore.FileName);
+            string Entry(int i) => $$"""{ "task": "t{{i:x10}}", "kind": "link", "target": "https://x.example/{{i}}", "label": "x" }""";
+            File.WriteAllText(path + ".bak", $$"""{ "attachments": [ {{Entry(1)}} ] }""");
+
+            // Too large: never read; the backup is.
+            using (var f = new FileStream(path, FileMode.Create)) f.SetLength(Tack.Drop.Core.DropLimits.MaxFileBytes + 1);
+            var store = new Tack.Drop.Core.AttachmentStore(folder);
+            var errors = new List<string>();
+            store.Load((m, _) => errors.Add(m));
+            Check.Equal(1, store.Count, "too large: the backup instead");
+            Check.True(errors.Count == 1, "and the log says so");
+
+            // Too deep: unreadable as a whole; the backup again.
+            File.WriteAllText(path, "{\"attachments\": [" + new string('[', 200) + new string(']', 200) + "]}");
+            store.Load();
+            Check.Equal(1, store.Count, "too deep: the backup");
+
+            // Not an attachments file at all.
+            File.WriteAllText(path, "[1, 2, 3]");
+            store.Load();
+            Check.Equal(1, store.Count, "not one: the backup");
+
+            // Too many: the first ones, up to the cap.
+            File.WriteAllText(path, "{ \"attachments\": [" + string.Join(",", Enumerable.Range(0, Tack.Drop.Core.DropLimits.MaxAttachments + 1000).Select(Entry)) + "] }");
+            store.Load();
+            Check.Equal(Tack.Drop.Core.DropLimits.MaxAttachments, store.Count, "never more than the cap");
+            Check.True(store.For("t0000000000") != null && store.For($"t{Tack.Drop.Core.DropLimits.MaxAttachments:x10}") == null, "the first ones");
+            Check.True(!store.Add("tffffffffff", new Tack.Drop.Core.Attachment(Tack.Drop.Core.AttachmentKind.Link, "https://y.example/", "y")), "and no more added");
+
+            // Neither file: nothing, and nothing created.
+            File.Delete(path);
+            File.Delete(path + ".bak");
+            store.Load();
+            Check.True(store.Count == 0 && !File.Exists(path) && !Directory.Exists(store.Folder), "no attachments, no file made");
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch { }
+        }
+    }
+
+    private static void UnreadableAttachments()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "tack-drop-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var store = new Tack.Drop.Core.AttachmentStore(folder);
+            string id = "abcdefabcdef", mail = Path.Combine(store.Folder, id, "Site visit.msg");
+            Directory.CreateDirectory(Path.GetDirectoryName(mail)!);
+            File.WriteAllText(mail, "pretend");
+            Check.True(store.Add("bbbbbbbbbbbb", Tack.Drop.Core.Attachment.Clean(Tack.Drop.Core.AttachmentKind.File, id + "\\Site visit.msg", "Site visit.msg", true, _ => false)!), "kept");
+            store.Save();
+            Directory.SetLastWriteTimeUtc(Path.GetDirectoryName(mail)!, DateTime.UtcNow.AddDays(-3)); // dropped days ago
+            string path = store.FilePath;
+            foreach (var (name, text, bak) in new[]
+            {
+                ("cut short, its .bak too", "{ \"attachments\": ", "{ \"attachments\": "),
+                ("a top-level array (another shape)", "[{\"task\":\"bbbbbbbbbbbb\"}]", "[]"),
+                ("too large, no .bak", "{\"attachments\":[]}" + new string(' ', (int)Tack.Drop.Core.DropLimits.MaxFileBytes), null),
+            })
+            {
+                File.WriteAllText(path, text);
+                if (bak != null) File.WriteAllText(path + ".bak", bak);
+                else File.Delete(path + ".bak");
+                var again = new Tack.Drop.Core.AttachmentStore(folder);
+                again.Load();
+                Check.True(again.LeftAlone && again.Count == 0, $"{name}: unreadable, so left alone");
+                Check.Equal(0, again.SweepOrphans(DateTime.UtcNow.AddMinutes(1)), $"{name}: nothing swept");
+                Check.True(File.Exists(mail), $"{name}: the saved email stays");
+                Check.True(!again.Add("cccccccccccc", new Tack.Drop.Core.Attachment(Tack.Drop.Core.AttachmentKind.Link, "https://y.example/", "y")), $"{name}: nothing added");
+                again.Save();
+                Check.True(File.ReadAllText(path) == text, $"{name}: never written over");
+                var copies = Directory.GetFiles(folder, Tack.Drop.Core.AttachmentStore.FileName + ".unreadable-*");
+                Check.True(copies.Count(c => File.ReadAllText(c) == text) == (text.Length > 20 * 1024 * 1024 ? 0 : 1), $"{name}: kept aside, once");
+                new Tack.Drop.Core.AttachmentStore(folder).Load();
+                Check.Equal(copies.Length, Directory.GetFiles(folder, Tack.Drop.Core.AttachmentStore.FileName + ".unreadable-*").Length, $"{name}: no second copy at the next start");
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch { }
+        }
+    }
+
+    // ---------------------------------------------------------------- Snippets (Tack for Windows only)
+    // Images pasted into Notes and kept on this PC: the clipboard, files copied in Explorer, snippets.json
+    // and the snippets folder are all input. Nothing here syncs, but a bad image must never take Tack down,
+    // eat its memory, or reach anything but Tack's own files.
+
+    private static void PngBomb()
+    {
+        Ui.Run(_ =>
+        {
+            byte[] bomb = SnippetTests.CraftPng(20000, 20000); // 1.6 GB once drawn
+            Check.True(bomb.Length < 1 << 20, $"small on the clipboard ({bomb.Length:N0} bytes)");
+            foreach (var (name, data) in new[]
+            {
+                ("on the clipboard", SnippetTests.Clip(("PNG", SnippetTests.Stream(bomb)))),
+                ("from this process", (System.Windows.IDataObject)SnippetTests.Plain(("PNG", SnippetTests.Stream(bomb)))),
+            })
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var found = SnippetImage.FromPaste(data);
+                Check.Equal(PasteProblem.TooBig, found.Problem, $"{name}: turned down as too big");
+                Check.Equal(0, found.Images.Count, $"{name}: nothing kept");
+                long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+                Check.True(allocated < 2 << 20, $"{name}: from its header, nothing decoded ({allocated:N0} bytes)");
+                Check.True(clock.ElapsedMilliseconds < 2000, $"{name}: at once ({clock.ElapsedMilliseconds} ms)");
+            }
+
+            // The same as a file copied in Explorer, and as a kept snippet's file replaced by it.
+            using var dir = new SnippetTests.Temp();
+            string file = Path.Combine(dir.Path, "bomb.png");
+            File.WriteAllBytes(file, bomb);
+            Check.Equal(PasteProblem.TooBig, SnippetImage.FromPaste(SnippetTests.Clip((System.Windows.DataFormats.FileDrop, new[] { file }))).Problem, "copied in Explorer");
+            Check.True(SnippetImage.Load(file) == null && SnippetImage.Load(file, (2000, 1000)) == null, "never shown");
+        });
+    }
+
+    private static void DibBomb()
+    {
+        Ui.Run(_ =>
+        {
+            // A header claiming 20000x20000 at 32 bits (1.6 GB), with a kilobyte behind it.
+            var dib = SnippetDib(width: 20000, height: 20000, bits: 32, extra: 1024);
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            var found = SnippetImage.FromPaste(SnippetTests.Clip((System.Windows.DataFormats.Dib, SnippetTests.Stream(dib))));
+            Check.Equal(PasteProblem.TooBig, found.Problem, "turned down as too big");
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            Check.True(allocated < 1 << 20, $"before it's copied ({allocated:N0} bytes)");
+
+            // Within the limit, but cut short: what's there is less than the header says.
+            var shortOne = SnippetDib(width: 1000, height: 1000, bits: 24, extra: 1024);
+            Check.Equal(PasteProblem.Unreadable, SnippetImage.FromPaste(SnippetTests.Clip((System.Windows.DataFormats.Dib, SnippetTests.Stream(shortOne)))).Problem, "cut short: unreadable");
+        });
+    }
+
+    private static void BitmapBomb()
+    {
+        Ui.Run(_ =>
+        {
+            // 20000x20000 that's never been drawn: drawing it would take 1.6 GB.
+            var bomb = new System.Windows.Media.Imaging.TransformedBitmap(SnippetTests.Picture(20, 20), new System.Windows.Media.ScaleTransform(1000, 1000));
+            bomb.Freeze();
+            Check.Equal(20000, bomb.PixelWidth, "20000 wide");
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var found = SnippetImage.FromPaste(SnippetTests.Plain((System.Windows.DataFormats.Bitmap, bomb)));
+            Check.Equal(PasteProblem.TooBig, found.Problem, "turned down as too big");
+            Check.True(clock.ElapsedMilliseconds < 2000, $"without drawing it ({clock.ElapsedMilliseconds} ms)");
+        });
+    }
+
+    private static void CorruptPngs()
+    {
+        Ui.Run(errors =>
+        {
+            byte[] good = SnippetTests.Png(SnippetTests.Picture(200, 150));
+            var random = new Random(7);
+            byte[] Noise(int n)
+            {
+                var b = new byte[n];
+                random.NextBytes(b);
+                return b;
+            }
+            byte[] badCrc = (byte[])good.Clone();
+            badCrc[29] ^= 0xFF; // in the IHDR chunk's CRC
+            var cases = new (string Name, byte[] Bytes, bool MayKeep)[]
+            {
+                ("garbage after the signature", [.. good.Take(8), .. Noise(400)], false),
+                ("a header and nothing else", good.Take(33).ToArray(), false),
+                ("image data that isn't compressed data", SnippetTests.CraftPng(300, 200, idat: Noise(600)), true), // Windows' decoder makes something of it
+                ("no size", SnippetTests.CraftPng(0, 0), false),
+                ("a negative size", SnippetTests.CraftPng(-5, 10), false),
+                ("cut short", good.Take(good.Length / 2).ToArray(), true),
+                ("a damaged checksum", badCrc, true),
+                ("a JPEG on the PNG format", SnippetJpeg(), false),
+                ("empty", [], false),
+            };
+            using var dir = new SnippetTests.Temp();
+            var store = new SnippetStore(dir.Path);
+            var ws = new Workspace(new Settings(), new Hlc("desk0001"), WorkspaceData.Empty);
+            var host = new SnippetTests.Host();
+            var notes = SnippetTests.Notes(ws, store, host);
+            foreach (var (name, bytes, mayKeep) in cases)
+            {
+                var found = SnippetImage.FromPaste(SnippetTests.Clip(("PNG", SnippetTests.Stream(bytes))));
+                Check.True(found.IsImage, $"{name}: taken as an image (not pasted as anything else)");
+                if (found.Images.Count == 0)
+                {
+                    Check.True(found.Problem is PasteProblem.Unreadable or PasteProblem.TooBig, $"{name}: refused ({found.Problem})");
+                }
+                else
+                {
+                    Check.True(mayKeep, $"{name}: refused");
+                    // Kept only whole: it decodes all the way, and has its thumbnail.
+                    var kept = found.Images.Single();
+                    Check.True(kept.Thumb != null, $"{name}: kept with a thumbnail");
+                    var decoded = SnippetTests.Decode(kept.Bytes);
+                    decoded.CopyPixels(new byte[decoded.PixelWidth * 4 * decoded.PixelHeight], decoded.PixelWidth * 4, 0);
+                }
+                int count = store.Count;
+                Check.True(notes.Paste(SnippetTests.Clip(("PNG", SnippetTests.Stream(bytes)))), $"{name}: Notes takes the paste");
+                Check.Equal(count + found.Images.Count, store.Count, $"{name}: nothing half-kept");
+                if (found.Images.Count == 0) Check.Equal("Couldn't read that image", host.Toasts.LastOrDefault(), $"{name}: and says so");
+            }
+            Check.True(!Directory.Exists(store.Folder) || Directory.GetFiles(store.Folder).All(f => f.EndsWith(".png", StringComparison.Ordinal)), "no temp file left behind");
+            Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+        });
+    }
+
+    private static void CorruptDibs()
+    {
+        Ui.Run(_ =>
+        {
+            var cases = new (string Name, byte[] Dib)[]
+            {
+                ("an OS/2 header", SnippetDib(12, 12, 24, size: 12)),
+                ("no width", SnippetDib(0, 10, 24)),
+                ("no height", SnippetDib(10, 0, 24)),
+                ("the most negative height", SnippetDib(10, int.MinValue, 24)),
+                ("two planes", SnippetDib(10, 10, 24, planes: 2)),
+                ("7 bits a pixel", SnippetDib(10, 10, 7)),
+                ("a JPEG inside", SnippetDib(10, 10, 24, compression: 4)),
+                ("a PNG inside", SnippetDib(10, 10, 24, compression: 5)),
+                ("a billion colours in its table", SnippetDib(10, 10, 8, colors: 1_000_000_000)),
+                ("run-length data of 4 GB", SnippetDib(10, 10, 8, compression: 1, imageSize: uint.MaxValue)),
+                ("bit fields on 24 bits", SnippetDib(10, 10, 24, compression: 3)),
+                ("half a header", SnippetDib(10, 10, 24).Take(20).ToArray()),
+            };
+            foreach (var (name, dib) in cases)
+            {
+                var found = SnippetImage.FromPaste(SnippetTests.Clip((System.Windows.DataFormats.Dib, SnippetTests.Stream(dib))));
+                Check.True(found.Images.Count == 0 && found.Problem is PasteProblem.Unreadable or PasteProblem.TooBig, $"{name}: refused ({found.Problem})");
+            }
+        });
+    }
+
+    private static void HostileFiles()
+    {
+        Ui.Run(_ =>
+        {
+            using var dir = new SnippetTests.Temp();
+            PasteProblem Problem(params string[] files) => SnippetImage.FromPaste(SnippetTests.Clip((System.Windows.DataFormats.FileDrop, files))).Problem;
+
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            foreach (string path in new[] { @"\\fileserver\bim\clash.png", @"\\?\C:\Windows\clash.png", @"\\.\PhysicalDrive0\x.png", @"C:clash.png", "clash.png", @"//fileserver/bim/clash.png" })
+                Check.Equal(PasteProblem.NotOnThisPc, Problem(path), $"{path}: never read");
+            Check.True(clock.ElapsedMilliseconds < 1000, $"without trying the network ({clock.ElapsedMilliseconds} ms)");
+            Check.True(!SnippetImage.IsOnThisPc(@"\\fileserver\bim\clash.png") && SnippetImage.IsOnThisPc(Path.Combine(dir.Path, "x.png")), "this PC's own drive, yes; a share, no");
+
+            string big = Path.Combine(dir.Path, "big.png");
+            using (var fs = File.Create(big)) fs.SetLength(SnippetImage.MaxEncodedBytes + 1);
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            Check.Equal(PasteProblem.TooBig, Problem(big), "a file over 50 MB: too big");
+            Check.True(GC.GetAllocatedBytesForCurrentThread() - before < 1 << 20, "without reading it");
+
+            string cloud = Path.Combine(dir.Path, "cloud.png");
+            File.WriteAllBytes(cloud, SnippetTests.Png(SnippetTests.Picture(20, 20)));
+            File.SetAttributes(cloud, FileAttributes.Offline);
+            Check.Equal(PasteProblem.NotOnThisPc, Problem(cloud), "a file that isn't downloaded: never fetched");
+            File.SetAttributes(cloud, FileAttributes.Normal);
+
+            string misnamed = Path.Combine(dir.Path, "photo.png");
+            File.WriteAllBytes(misnamed, SnippetJpeg());
+            Check.Equal(PasteProblem.Unreadable, Problem(misnamed), "a JPEG called .png: only the PNG decoder is tried, and it says no");
+            Directory.CreateDirectory(Path.Combine(dir.Path, "folder.png"));
+            Check.Equal(PasteProblem.Unreadable, Problem(Path.Combine(dir.Path, "folder.png")), "a folder called .png");
+            Check.Equal(PasteProblem.Unreadable, Problem(Path.Combine(dir.Path, "gone.png")), "a file that's gone");
+
+            clock.Restart();
+            var many = Enumerable.Range(0, 50_000).Select(i => Path.Combine(dir.Path, $"{i}.txt")).ToArray();
+            Check.True(!SnippetImage.FromPaste(SnippetTests.Clip((System.Windows.DataFormats.FileDrop, many))).IsImage, "50,000 text files: nothing for Notes");
+            Check.True(clock.ElapsedMilliseconds < 1000, $"and quickly: only the first thousand names are read ({clock.ElapsedMilliseconds} ms)");
+            var lastOfMany = many.Take(999).Append(Path.Combine(dir.Path, "x.png")).Append(Path.Combine(dir.Path, "y.png")).ToArray();
+            Check.Equal(PasteProblem.Unreadable, Problem(lastOfMany), "the thousandth name is read (and that file is gone)");
+        });
+    }
+
+    private static void HostileIndex()
+    {
+        using var dir = new SnippetTests.Temp();
+        string folder = Path.Combine(dir.Path, SnippetStore.FolderName), index = Path.Combine(dir.Path, SnippetStore.IndexName);
+        Directory.CreateDirectory(folder);
+        static string Id(int n) => n.ToString("x32");
+        byte[] png = SnippetTests.Png(SnippetTests.Picture(20, 20));
+        for (int n = 1; n <= 12; n++) File.WriteAllBytes(Path.Combine(folder, Id(n) + ".png"), png);
+        string tack = Path.Combine(dir.Path, "tack.json"), mine = Path.Combine(folder, "keep.txt");
+        File.WriteAllText(tack, "{\"version\":1}");
+        File.WriteAllText(mine, "mine");
+
+        static Dictionary<string, object?> Entry(string id, string sheet = "sheet0000001", string? file = null, object? created = null, object? width = null) => new()
+        {
+            ["id"] = id,
+            ["sheetId"] = sheet,
+            ["file"] = file ?? id + ".png",
+            ["created"] = created ?? "2026-10-24T09:05:00.000+01:00",
+            ["size"] = 1,
+            ["width"] = width ?? 20,
+            ["height"] = 20,
+        };
+        var extra = Entry(Id(8));
+        extra["extra"] = new { deep = new[] { 1, 2 } };
+        var entries = new List<object?>
+        {
+            Entry(Id(1)),
+            Entry("../../tack", file: "../../tack.json"),
+            Entry(Id(2), file: @"..\..\tack.json"),
+            Entry(Id(3), sheet: "bad id!"),
+            Entry(Id(4), created: "yesterday"),
+            Entry(Id(5), width: 0),
+            Entry(Id(6), width: "20"),
+            Entry(Id(0xabcd).ToUpperInvariant()),
+            Entry(Id(1)), // twice
+            Entry(Id(99)), // no file
+            "just a string",
+            42,
+            null,
+            extra,
+        };
+        File.WriteAllText(index, JsonSerializer.Serialize(new { version = 1, snippets = entries }));
+
+        var store = new SnippetStore(dir.Path);
+        Check.Equal(2, store.Count, "only the two good entries (unknown fields are fine)");
+        Check.True(store.Of("sheet0000001").Select(s => s.Id).SequenceEqual([Id(1), Id(8)]), "those two");
+        Check.Equal((long)png.Length, store.Of("sheet0000001")[0].Size, "sized by the file itself, not the entry");
+        Check.True(File.Exists(tack) && File.ReadAllText(tack) == "{\"version\":1}", "tack.json beside it untouched");
+        Check.True(File.Exists(mine), "someone's own file in the folder untouched");
+        Check.True(!File.Exists(Path.Combine(folder, Id(2) + ".png")) && File.Exists(Path.Combine(folder, Id(1) + ".png")), "Tack's own files nothing names are cleared away");
+
+        // A thousand entries: fifty read.
+        for (int n = 1; n <= 1000; n++) File.WriteAllBytes(Path.Combine(folder, Id(n) + ".png"), png);
+        File.WriteAllText(index, JsonSerializer.Serialize(new { version = 1, snippets = Enumerable.Range(1, 1000).Select(n => Entry(Id(n))) }));
+        Check.Equal(SnippetStore.MaxCount, new SnippetStore(dir.Path).Count, "a thousand entries: fifty");
+
+        // Too big, too deep, or not JSON: nothing read, no error, and someone's own files stay.
+        foreach (var (name, text) in new[]
+        {
+            ("over 256 KB", "{\"version\":1,\"snippets\":[]," + new string(' ', 300_000) + "}"),
+            ("nested 10,000 deep", "{\"version\":1,\"x\":" + new string('[', 10_000) + new string(']', 10_000) + "}"),
+            ("not JSON", "snippets!"),
+        })
+        {
+            File.Delete(index + ".bak");
+            File.WriteAllText(index, text);
+            Check.Equal(0, new SnippetStore(dir.Path).Count, $"{name}: nothing read");
+            Check.True(File.Exists(mine) && File.Exists(tack), $"{name}: nothing else touched");
+        }
+
+        // A later version's index is left exactly as it is, files and all.
+        File.WriteAllBytes(Path.Combine(folder, Id(1) + ".png"), png);
+        string later = JsonSerializer.Serialize(new { version = 2, snippets = new[] { Entry(Id(1)) } });
+        File.WriteAllText(index, later);
+        var newer = new SnippetStore(dir.Path);
+        Check.Equal(0, newer.Count, "a later version: not read");
+        Check.Equal(SnippetRefusal.CantSave, newer.Add("sheet0000001", new SnippetPng(png, 20, 20, null), SnippetTests.At(9, 0)).Refusal, "nor written over");
+        newer.Prune(_ => false);
+        Check.True(File.ReadAllText(index) == later && File.Exists(Path.Combine(folder, Id(1) + ".png")), "left exactly as it was");
+    }
+
+    private static void UnreadableSnippetIndex()
+    {
+        Ui.Run(_ =>
+        {
+            using var dir = new SnippetTests.Temp();
+            var store = new SnippetStore(dir.Path);
+            var png = new SnippetPng(SnippetTests.Png(SnippetTests.Picture(20, 20)), 20, 20, null);
+            var a = store.Add("sheet0000001", png, SnippetTests.At(9, 0)).Snippet!;
+            var b = store.Add("sheet0000001", png, SnippetTests.At(9, 1)).Snippet!;
+            foreach (var (name, text, bak) in new[]
+            {
+                ("a top-level array (a later shape, or damage), its .bak too", "[]", "[]"),
+                ("cut short, its .bak zeroed", "{ \"version\": 1, \"snippets\": [", "\0\0\0"),
+                ("over 256 KB, no .bak", "{\"version\":1,\"snippets\":[]," + new string(' ', 300_000) + "}", null),
+            })
+            {
+                File.WriteAllText(store.IndexPath, text);
+                if (bak != null) File.WriteAllText(store.IndexPath + ".bak", bak);
+                else File.Delete(store.IndexPath + ".bak");
+                var again = new SnippetStore(dir.Path);
+                Check.True(again.LeftAlone && again.Count == 0, $"{name}: unreadable, so left alone");
+                Check.True(File.Exists(store.PathOf(a)) && File.Exists(store.PathOf(b)), $"{name}: every PNG stays");
+                Check.Equal(SnippetRefusal.CantSave, again.Add("sheet0000001", png, SnippetTests.At(9, 2)).Refusal, $"{name}: nothing added over it");
+                again.Prune(_ => false);
+                Check.True(File.ReadAllText(store.IndexPath) == text && File.Exists(store.PathOf(a)), $"{name}: never written over, nothing cleared");
+                var copies = Directory.GetFiles(dir.Path, SnippetStore.IndexName + ".unreadable-*");
+                Check.Equal(1, copies.Count(c => File.ReadAllText(c) == text), $"{name}: kept aside");
+                Check.True(new SnippetStore(dir.Path).LeftAlone, $"{name}: still left alone at the next start");
+                Check.Equal(copies.Length, Directory.GetFiles(dir.Path, SnippetStore.IndexName + ".unreadable-*").Length, $"{name}: once, not at every start");
+            }
+        });
+    }
+
+    private static void SnippetsPastTheCaps()
+    {
+        Ui.Run(_ =>
+        {
+            using var dir = new SnippetTests.Temp();
+            string folder = Path.Combine(dir.Path, SnippetStore.FolderName), index = Path.Combine(dir.Path, SnippetStore.IndexName);
+            Directory.CreateDirectory(folder);
+            byte[] png = SnippetTests.Png(SnippetTests.Picture(20, 20));
+            static string Id(int n) => n.ToString("x32");
+            int over = SnippetStore.MaxCount + 5;
+            for (int n = 1; n <= over; n++) File.WriteAllBytes(Path.Combine(folder, Id(n) + ".png"), png);
+            File.WriteAllText(index, JsonSerializer.Serialize(new
+            {
+                version = 1,
+                snippets = Enumerable.Range(1, over).Select(n => new { id = Id(n), sheetId = "sheet0000001", file = Id(n) + ".png", created = "2026-10-24T09:05:00.000+01:00", size = 1, width = 20, height = 20 }),
+            }));
+            var store = new SnippetStore(dir.Path);
+            Check.Equal(SnippetStore.MaxCount, store.Count, "fifty loaded");
+            Check.Equal(over, Directory.GetFiles(folder, "*.png").Length, "the five past the cap keep their files");
+        });
+    }
+
+    private static void HostileStoredFile()
+    {
+        Ui.Run(errors =>
+        {
+            using var dir = new SnippetTests.Temp();
+            var store = new SnippetStore(dir.Path);
+            var ws = new Workspace(new Settings(), new Hlc("desk0001"), WorkspaceData.Empty);
+            var png = new SnippetPng(SnippetTests.Png(SnippetTests.Picture(60, 40)), 60, 40, null);
+            var a = store.Add(ws.ActiveSheet.Id, png, SnippetTests.At(9, 0)).Snippet!;
+            var b = store.Add(ws.ActiveSheet.Id, png, SnippetTests.At(9, 1)).Snippet!;
+            var c = store.Add(ws.ActiveSheet.Id, png, SnippetTests.At(9, 2)).Snippet!;
+            File.WriteAllBytes(store.PathOf(a), SnippetTests.CraftPng(20000, 20000));
+            File.WriteAllBytes(store.PathOf(b), [1, 2, 3]);
+            using (var fs = File.Create(store.PathOf(c))) fs.SetLength(SnippetImage.MaxEncodedBytes + 1);
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            foreach (var s in new[] { a, b, c }) Check.True(SnippetImage.Load(store.PathOf(s)) == null, $"{s.Id}: not shown");
+            Check.True(GC.GetAllocatedBytesForCurrentThread() - before < 4 << 20, "without reading the big one or drawing the vast one");
+
+            var host = new SnippetTests.Host();
+            var notes = SnippetTests.Notes(ws, store, host);
+            using var window = Ui.Host(notes);
+            var thumbs = Ui.Descendants<System.Windows.Controls.Button>(notes).Where(t => System.Windows.Automation.AutomationProperties.GetName(t).StartsWith("Snippet ", StringComparison.Ordinal)).ToList();
+            Check.Equal(3, thumbs.Count, "each shows as an empty frame");
+            Check.True(thumbs.All(t => t.Background is not System.Windows.Media.ImageBrush), "with no image");
+            Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+        });
+    }
+
+    /// <summary>A DIB header (and <paramref name="extra"/> bytes behind it) saying whatever it's told to.</summary>
+    private static byte[] SnippetDib(int width, int height, int bits, int extra = 64, int size = 40, short planes = 1, int compression = 0, int colors = 0, uint imageSize = 0)
+    {
+        var dib = new byte[Math.Max(size, 40) + extra];
+        using var w = new BinaryWriter(new MemoryStream(dib));
+        w.Write(size);
+        w.Write(width);
+        w.Write(height);
+        w.Write(planes);
+        w.Write((short)bits);
+        w.Write(compression);
+        w.Write(imageSize);
+        w.Write(0);
+        w.Write(0);
+        w.Write(colors);
+        w.Write(0);
+        return dib;
+    }
+
+    private static byte[] SnippetJpeg()
+    {
+        var encoder = new System.Windows.Media.Imaging.JpegBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(SnippetTests.Picture(40, 30)));
+        using var ms = new MemoryStream();
+        encoder.Save(ms);
+        return ms.ToArray();
     }
 
     // ---------------------------------------------------------------- M1

@@ -1,5 +1,27 @@
 # Tack Focus changelog
 
+## 0.5.0 (25 October 2026)
+
+Search, the same as Tack for Windows', and sharing to Tack from any app on Android.
+
+- **Search.** Tap the search button beside Settings (on a phone), or press **Ctrl+F** (⌘F), and type:
+  open tasks, finished tasks and notes from every space are listed as you type, grouped Tasks, Done
+  and Notes, each with its space while you have spaces. Case and accents don't matter, and a note
+  matches anywhere in it, not just its title. ↑ ↓ and Enter (or a tap) go there: its space and page,
+  the task scrolled to and lit up for a moment, or the sheet with the match selected. Esc closes it
+  and puts the focus back. On a narrow phone the header's buttons sit a little closer, so the space's
+  name keeps its room. Tack for Windows finds exactly the same things.
+- **Share to Tack (Android).** An installed Tack Focus now appears in Android's share sheet. Share a
+  page, a link or some text from any app and a card says what came ("From Share" over the first
+  task); tap *Add* and it's a task in the space on show, with *Undo*, or *Dismiss* to drop it. A
+  link from any web page can open Tack Focus the way the share sheet does, so nothing is ever added
+  without that tap. A page is its title with its link, and text of several lines is a task per
+  line, as when you paste a list (up to 20 lines, as many as one drop onto Tack's orb). Whatever
+  was shared stays on the device and is only ever kept as task text. Android may take a day to add Tack Focus to the share sheet after the update;
+  reinstalling adds it at once. iPhone doesn't let web apps receive shares.
+- Tasks made on a PC by dropping something onto Tack's orb, and sheets holding snippets, arrive here
+  as their text, as always: the files, links, emails and pictures behind them stay on that PC.
+
 ## 0.4.3 (24 October 2026)
 
 Sync stands up better to damaged and hostile files, and is gentler on Microsoft. From a second

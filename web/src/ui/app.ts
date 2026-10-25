@@ -1,5 +1,6 @@
 import { encode } from '../model/hlc';
-import { MAX_PASTE_LINES } from '../model/limits';
+import { MAX_PASTE_LINES, MAX_TASK_TEXT } from '../model/limits';
+import { addShared, MAX_SHARE_LINES, previewShare, type Shared } from '../model/share';
 import { ALL } from '../model/spaces';
 import { pastedLines } from '../model/text';
 import { dayKey, msUntilMidnight } from '../model/time';
@@ -15,6 +16,7 @@ import { installKind, onInstallChange, promptInstall, watchInstall } from './ins
 import { animate, EASE_OUT, POP } from './motion';
 import { NotesView } from './notes';
 import { Orb } from './orb';
+import { SearchUi } from './search';
 import { Settings } from './settings';
 import { openMenu, type MenuItem } from './sheet';
 import { SpaceUi } from './spaces';
@@ -50,6 +52,9 @@ export class App {
   private readonly tabs: Record<Mode, HTMLButtonElement>;
   private readonly glow: HTMLElement;
   private readonly gear = h('button.icon-button.settings-open', { type: 'button', 'aria-label': 'Settings', title: 'Settings (,)', onclick: () => this.settings.open() }, svg(icons.gear));
+  /** Search, beside Settings on a phone (wide screens have Ctrl+F). */
+  private readonly searchButton = h('button.icon-button.search-open', { type: 'button', 'aria-label': 'Search', title: 'Search (Ctrl+F)', 'aria-haspopup': 'dialog', onclick: () => this.search.open() }, svg(icons.search));
+  private readonly search: SearchUi;
   private readonly spaces: SpaceUi;
   /** Once there's a space besides Main: the title shows the space on show and switches it. */
   private readonly spaceTitle: HTMLButtonElement;
@@ -82,6 +87,7 @@ export class App {
       activeChanged: () => this.renderSheetActions(),
     });
     this.settings = new Settings(ws, store, this.toasts, sync, this.spaces);
+    this.search = new SearchUi(ws, { spaces: this.spaces, tasks: this.tasks, notes: this.notes, setMode: (mode) => this.setMode(mode) });
 
     // ---- composer: the fastest way into Tack
     this.input = h('input.composer-input', {
@@ -162,7 +168,7 @@ export class App {
         h('h1.title', {}, h('span.t-tasks', { text: 'Tasks' }), h('span.t-notes', { text: 'Notes' }), h('span.t-wide', { text: 'Tack' })),
         this.subtitle,
       ),
-      h('div.actions', {}, this.sheetDelete, this.gear),
+      h('div.actions', {}, this.sheetDelete, this.searchButton, this.gear),
     );
     // A small dot on Settings when sync needs you (and only then: syncing itself is silent).
     const attention = () => {
@@ -412,13 +418,29 @@ export class App {
   }
 
   /**
-   * Nothing on screen that a reload would drop: no task being edited, no sheet open, and a task
-   * half typed in the box is kept as its draft (which comes back with the page).
+   * Nothing on screen that a reload would drop: no task being edited, no sheet open, a task half
+   * typed in the box kept as its draft (which comes back with the page), and, in view, no share
+   * waiting for Add and no Undo on offer for one just added (the app opened for it, untouched: an
+   * update would otherwise reload it away before your eyes; out of view, a waiting share is kept
+   * in this tab and offered again by the new page).
    */
   get settled(): boolean {
     const text = this.input.value;
-    return (!text.trim() || loadDraft() === text) && !this.tasks.isEditing && !document.querySelector('dialog[open]');
+    return (
+      (!text.trim() || loadDraft() === text) &&
+      !this.tasks.isEditing &&
+      !document.querySelector('dialog[open]') &&
+      !(
+        document.visibilityState === 'visible' &&
+        ((this.shareUndo && this.toasts.offers(this.shareUndo)) || (this.shareAsk && this.toasts.asking(this.shareAsk)))
+      )
+    );
   }
+
+  /** The Undo of the last share added (see `settled`). */
+  private shareUndo: (() => void) | null = null;
+  /** A share's card, while it waits for Add or Dismiss (see `settled`). */
+  private shareAsk: object | null = null;
 
   // ================================================================== summary
 
@@ -546,6 +568,54 @@ export class App {
 
   // ================================================================== launch and keys
 
+  /**
+   * Something shared from another app (Android's share sheet, see main.ts). Anyone can write a
+   * link to /?share, so nothing is added by itself: a card says what came ("From Share · 3 tasks"
+   * over the first of them) and only Add makes the tasks, in the space on show (from All, Main), as
+   * a paste adds them, with Undo. Dismiss (or anything that takes the card's place) drops it. `handled` runs once it's
+   * been answered, or turned away with a message, so a reload doesn't bring it back.
+   */
+  receiveShare(shared: Shared, handled: () => void = () => {}): void {
+    const preview = previewShare(shared);
+    if (preview.kind !== 'ready') {
+      handled();
+      this.toasts.show(
+        preview.kind === 'too-many'
+          ? `Share up to ${MAX_SHARE_LINES} lines at once`
+          : preview.kind === 'too-long'
+            ? `A task can be up to ${MAX_TASK_TEXT.toLocaleString('en')} characters`
+            : 'Nothing to add from Share',
+      );
+      return;
+    }
+    const n = preview.lines.length;
+    this.shareAsk = this.toasts.ask(
+      n > 1 ? `From Share · ${n} tasks` : 'From Share',
+      preview.lines[0]!,
+      'Add',
+      () => {
+        this.shareAsk = null;
+        handled();
+        this.addShare(shared);
+      },
+      () => {
+        this.shareAsk = null;
+        handled();
+      },
+    );
+  }
+
+  /** Add, on the share's card. */
+  private addShare(shared: Shared): void {
+    const result = addShared(this.ws, shared, this.spaces.here);
+    if (result.kind !== 'added') return;
+    if (this.mode !== 'tasks') this.setMode('tasks', false);
+    if (this.tasks.el.scrollTop > 0) this.tasks.el.scrollTo({ top: 0 });
+    const n = result.added.length;
+    this.shareUndo = result.undo;
+    this.toasts.show(n === 1 ? 'Added from Share' : `Added ${n} tasks from Share`, result.undo);
+  }
+
   /** Home-screen shortcuts: /?new opens straight into the task box, /?notes into Notes. */
   private handleLaunchIntent(): void {
     const params = new URLSearchParams(location.search);
@@ -559,7 +629,16 @@ export class App {
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
-    if (e.defaultPrevented || document.querySelector('dialog[open]')) return;
+    if (e.defaultPrevented) return;
+    // Ctrl+F (⌘F): Tack's own search, even while typing. Over Settings and the other sheets,
+    // the browser's own find, as before.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+      if (document.querySelector('dialog[open]:not(.search-sheet)')) return;
+      e.preventDefault();
+      this.search.open();
+      return;
+    }
+    if (document.querySelector('dialog[open]')) return;
     const typing = isEditable(document.activeElement);
     const mod = e.ctrlKey || e.metaKey;
     // Alt+0: All; Alt+1…9: the spaces in order. Even while typing (the draft stays). Only the

@@ -12,7 +12,9 @@ using Tack.Controls;
 using Tack.Interop;
 using Tack.Model;
 using Tack.Services;
+using Tack.Snippets;
 using Tack.Sync;
+using Tack.Views;
 
 namespace Tack.Windows;
 
@@ -20,7 +22,7 @@ namespace Tack.Windows;
 /// The expanded state: a compact acrylic panel with Tasks and Notes.
 /// It knows nothing about the orb; AppShell decides where and when it appears.
 /// </summary>
-public partial class PanelWindow : Window
+public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndoToast
 {
     private const int WM_SIZING = 0x0214;
     private const int WM_ENTERSIZEMOVE = 0x0231;
@@ -28,20 +30,26 @@ public partial class PanelWindow : Window
 
     private const double HeaderHeight = 48;
     private const double SettingsMinHeight = 470; // settings never open in a cramped panel
+    private const double SearchMinHeight = 400; // nor search's results
 
     private readonly Workspace _ws;
     private readonly SpaceView _view;
     private readonly AppShell _shell;
     private readonly DispatcherTimer _toastTimer;
     private IntPtr _hwnd;
-    private Action? _undo;
+    private readonly UndoSlot _undo = new(); // the toast's Undo, and what waits for it to lapse
+    private SnippetViewer? _viewer;
     private bool _settingsOpen;
     private bool _userResized;
     private bool _sizeChangePending;
+    private GlideTiming? _sizeChangeInStep; // the pending request is a row folding away: glide in step with it
     private IReadOnlyList<SpaceTab> _stripTabs = [];
     private int _stripLimit = SpaceView.MaxListed; // spaces the strip draws ("More spaces" draws as many again)
     private bool _syncingStrip; // the strip is being brought in line with the space on show, not clicked
     private double _heldHeight; // > 0: Tasks keeps this height after a space switch, until the panel next opens
+    private bool _searchOpen;
+    private double _searchHeight; // the panel's height while search is open (kept, so results never resize it)
+    private IInputElement? _beforeSearch; // where the caret was when search opened: Esc puts it back
 
     /// <summary>
     /// Set by the shell: the panel grows and shrinks upward from its bottom edge (the orb is in the
@@ -55,8 +63,11 @@ public partial class PanelWindow : Window
     /// <summary>Raised after the user finishes dragging or resizing the panel.</summary>
     public event Action? UserMovedOrResized;
 
-    /// <summary>Raised when the panel would like a different size: tab switch, settings, or the task list grew or shrank.</summary>
-    public event Action? PreferredSizeChanged;
+    /// <summary>
+    /// Raised when the panel would like a different size: tab switch, settings, or the task list grew or
+    /// shrank. With a timing when the change is a row folding away: the panel's glide keeps in step with it.
+    /// </summary>
+    internal event Action<GlideTiming?>? PreferredSizeChanged;
 
     internal PanelWindow(Workspace ws, SpaceView view, AppShell shell)
     {
@@ -72,9 +83,20 @@ public partial class PanelWindow : Window
 
         TasksPage.Initialize(ws, view, this);
         TasksPage.ContentHeightChanged += () => { if (IsTasksAutoSized) RequestPreferredSize(); };
-        NotesPage.Initialize(ws, view, this);
+        TasksPage.RowFolding += ms => { if (IsTasksAutoSized) RequestPreferredSize(new GlideTiming(WindowBoundsAnimator.Clock, ms, EaseIn: true)); };
+        NotesPage.Initialize(ws, view, this, shell.Snippets);
         SettingsPage.Initialize(ws, view, shell, this);
+        SearchPage.Initialize(ws, view);
+        SearchPage.Opened += JumpTo;
+        SearchPage.Counted += text => Announce(text, "Tack.Search");
+        SearchPage.Chosen += text => Announce(text, "Tack.Search");
+        SearchPage.CountChanged += text =>
+        {
+            SearchCount.Text = text;
+            SearchBox.Padding = new Thickness(30, 0, string.IsNullOrEmpty(text) ? 12 : 44, 0);
+        };
 
+        _undo.Settled += () => UndoSettled?.Invoke();
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
         _toastTimer.Tick += (_, _) => HideToast();
 
@@ -94,13 +116,25 @@ public partial class PanelWindow : Window
         IsVisibleChanged += (_, _) =>
         {
             if (IsVisible) RevealShownSpace();
-            else _heldHeight = 0; // folded away: it fits its list again next time
+            else
+            {
+                _heldHeight = 0; // folded away: it fits its list again next time
+                CloseSearch(restoreFocus: false);
+                CloseViewer();
+            }
         };
+        // The menu's Paste on Tasks (Ctrl+V and Shift+Insert are caught in OnPreviewKeyDown).
+        CommandManager.AddPreviewExecutedHandler(this, (_, e) =>
+        {
+            if (e.Command == ApplicationCommands.Paste && PasteImageOnTasks()) e.Handled = true;
+        });
     }
 
     public IntPtr Handle => _hwnd;
 
     public bool IsSettingsOpen => _settingsOpen;
+
+    public bool IsSearchOpen => _searchOpen;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -135,6 +169,7 @@ public partial class PanelWindow : Window
                 {
                     _heldHeight = 0;
                     RememberManualSize();
+                    if (_searchOpen) _searchHeight = ActualHeight; // search keeps the size you gave it
                 }
                 UserMovedOrResized?.Invoke();
                 break;
@@ -142,13 +177,122 @@ public partial class PanelWindow : Window
         return IntPtr.Zero;
     }
 
-    /// <summary>Acrylic on Windows 11; an opaque surface otherwise or when the user turns glass off.</summary>
+    /// <summary>
+    /// Acrylic on Windows 11; an opaque surface otherwise or when the user turns glass off. A panel that's
+    /// see-through without glass, or faded when idle, is clear instead: nothing behind it but what's on screen.
+    /// </summary>
     public void ApplyGlass(bool glass)
     {
         if (_hwnd == IntPtr.Zero) return;
-        bool active = WindowEffects.ApplyPanelChrome(_hwnd, glass, dark: !ThemeManager.IsLight);
-        Surface.SetResourceReference(Border.BackgroundProperty, active ? "GlassTintBrush" : "SolidSurfaceBrush");
+        bool clear = WantsClear(glass);
+        // In this order (DWM drops the acrylic otherwise): no longer clear before the frame and glass come back;
+        // clear only once they're gone.
+        if (!clear && _clear) WindowEffects.SetClear(_hwnd, _clear = false);
+        _glassActive = WindowEffects.ApplyPanelChrome(_hwnd, glass, dark: !ThemeManager.IsLight, clear);
+        if (clear && !_clear) WindowEffects.SetClear(_hwnd, _clear = true);
+        ApplyBackground();
     }
+
+    private bool _glassActive;
+    private bool _clear;
+    private bool _faded;
+
+    /// <summary>
+    /// Nothing behind the panel: while faded when idle, or see-through without glass (Windows 11, where the
+    /// slider is; blur-behind itself shows a window's own transparency since Windows 8).
+    /// </summary>
+    private bool WantsClear(bool glass) =>
+        _faded || (WindowEffects.SupportsSystemBackdrop && !glass && _ws.Settings.PanelBackgroundSolid is < 1);
+
+    /// <summary>
+    /// The background under everything (Settings → Look → Panel background): the theme's tint over the glass,
+    /// or its solid surface, made as solid as the setting says. Only this layer: text and controls never fade.
+    /// At the default (no setting) it's the palette's own brush, exactly as it has always been.
+    /// </summary>
+    public void ApplyBackground()
+    {
+        string key = _glassActive ? "GlassTintBrush" : "SolidSurfaceBrush";
+        double? opacity = _glassActive ? _ws.Settings.PanelBackgroundGlass : _ws.Settings.PanelBackgroundSolid;
+        // Without the system backdrop (Windows 10) there's nothing behind the panel to show through.
+        if (opacity is not double o || !WindowEffects.SupportsSystemBackdrop)
+        {
+            Surface.SetResourceReference(Border.BackgroundProperty, key);
+            return;
+        }
+        var color = (TryFindResource(key) as SolidColorBrush)?.Color ?? Colors.Black;
+        color.A = (byte)Math.Round(o * 255);
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        Surface.Background = brush;
+    }
+
+    /// <summary>Settings → Look → Panel background moved: a new tint, or (without glass, to or from solid) a new chrome too.</summary>
+    public void BackgroundChanged()
+    {
+        if (WantsClear(_ws.Settings.Glass) != _clear) ApplyGlass(_ws.Settings.Glass);
+        else ApplyBackground();
+    }
+
+    /// <summary>
+    /// The background's opacity before you change it, with glass or without, in the current theme: the
+    /// theme's tint (about half) over the glass, solid without. Where Settings → Look's slider starts.
+    /// </summary>
+    public double DefaultBackground(bool glass) =>
+        glass && TryFindResource("GlassTintBrush") is SolidColorBrush tint ? Math.Round(tint.Color.A / 255.0, 2) : 1;
+
+    /// <summary>
+    /// Fade when idle: the whole panel at half opacity, see-through (as a solid panel at half strength: frosted
+    /// glass can't be half there), and back. Back is always at once; the fade itself eases out unless
+    /// <paramref name="animate"/> is false (Windows' animation effects are off). The glass can't fade, so it
+    /// isn't asked to: the panel as the screen showed it (glass and all) is laid over the faded panel and
+    /// fades away, so the first frame is what was there and every one after is a step from it to the faded
+    /// look, never a flash of the solid surface between.
+    /// </summary>
+    public void SetFaded(bool faded, bool animate)
+    {
+        if (faded == _faded) return;
+        _faded = faded;
+        EndFadePicture();
+        if (faded)
+        {
+            var before = animate && IsVisible && _glassActive && !_clear ? ScreenGeometry.Capture(ScreenGeometry.GetWindowRect(_hwnd)) : null;
+            ApplyGlass(_ws.Settings.Glass);
+            if (before != null)
+            {
+                Anim.Set(Root, OpacityProperty, IdleOpacity);
+                FadePicture.Source = before;
+                FadePicture.Visibility = Visibility.Visible;
+                Anim.Fade(FadePicture, 0, 320, EndFadePicture, from: 1);
+            }
+            else if (animate) Anim.Fade(Root, IdleOpacity, 320, from: 1);
+            else Anim.Set(Root, OpacityProperty, IdleOpacity);
+        }
+        else
+        {
+            Anim.Set(Root, OpacityProperty, 1);
+            ApplyGlass(_ws.Settings.Glass);
+        }
+    }
+
+    /// <summary>The picture a fade starts from, gone (the fade is over, or came back first).</summary>
+    private void EndFadePicture()
+    {
+        if (FadePicture.Source == null) return;
+        Anim.Set(FadePicture, OpacityProperty, 1);
+        FadePicture.Visibility = Visibility.Collapsed;
+        FadePicture.Source = null;
+    }
+
+    public bool IsFaded => _faded;
+
+    /// <summary>True while nothing is drawn behind the panel (see-through without glass, or faded).</summary>
+    internal bool IsClear => _clear;
+
+    /// <summary>True while the frosted glass is drawn (Windows 11, glass on, not faded).</summary>
+    internal bool IsGlassActive => _glassActive;
+
+    /// <summary>How opaque the orb and a pinned panel are while faded when idle.</summary>
+    public const double IdleOpacity = 0.5;
 
     // ---- Size: each tab remembers its own; Tasks fits its list until you resize it ----
 
@@ -165,16 +309,15 @@ public partial class PanelWindow : Window
             ? new Size(s.NotesWidth, s.NotesHeight)
             : new Size(s.TasksWidth, s.TasksHeight ?? (_heldHeight > 0 ? Math.Min(_heldHeight, Math.Max(Settings.MinHeight, maxAutoHeight)) : FitTasksHeight(s.TasksWidth, maxAutoHeight)));
         if (_settingsOpen && size.Height < SettingsMinHeight) size.Height = SettingsMinHeight;
+        if (_searchOpen) size.Height = _searchHeight;
         return size;
     }
 
     /// <summary>How tall the panel must be to show the whole task list at this width (clamped).</summary>
     private double FitTasksHeight(double width, double maxHeight)
     {
-        TasksPage.Measure(new Size(width, double.PositiveInfinity));
         double strip = Strip.Visibility == Visibility.Visible ? Strip.Height + Strip.Margin.Top + Strip.Margin.Bottom : 0;
-        double natural = Math.Ceiling(HeaderHeight + strip + TasksPage.DesiredSize.Height);
-        TasksPage.InvalidateMeasure(); // hand layout back to the window
+        double natural = Math.Ceiling(HeaderHeight + strip + TasksPage.FittedHeight(width));
         return Math.Clamp(natural, Settings.MinHeight, Math.Max(Settings.MinHeight, maxHeight));
     }
 
@@ -213,14 +356,17 @@ public partial class PanelWindow : Window
     }
 
     /// <summary>Coalesces bursts of changes (e.g. every frame of a row animation) into one request per layout pass.</summary>
-    private void RequestPreferredSize()
+    private void RequestPreferredSize(GlideTiming? inStep = null)
     {
+        if (inStep != null) _sizeChangeInStep = inStep;
         if (_sizeChangePending) return;
         _sizeChangePending = true;
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             _sizeChangePending = false;
-            PreferredSizeChanged?.Invoke();
+            var timing = _sizeChangeInStep;
+            _sizeChangeInStep = null;
+            PreferredSizeChanged?.Invoke(timing);
         });
     }
 
@@ -245,6 +391,11 @@ public partial class PanelWindow : Window
     public void FocusDefault()
     {
         if (IsSettingsOpen) return;
+        if (_searchOpen)
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, () => { if (_searchOpen) SearchBox.Focus(); });
+            return;
+        }
         Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
         {
             if (_ws.Settings.Tab == "notes") NotesPage.FocusEditor();
@@ -257,6 +408,7 @@ public partial class PanelWindow : Window
     public void SelectTab(string tab, bool animate = true)
     {
         CloseSettings(animate: false);
+        CloseSearch(restoreFocus: false);
         if (tab != _ws.Settings.Tab) _heldHeight = 0; // the panel takes the other tab's size anyway
         _ws.Settings.Tab = tab;
         bool notes = tab == "notes";
@@ -291,7 +443,7 @@ public partial class PanelWindow : Window
         UpdateLayout();
         var tab = _ws.Settings.Tab == "notes" ? NotesTab : TasksTab;
         double x = tab.TranslatePoint(new Point(tab.ActualWidth / 2 - TabIndicator.Width / 2, 0), Header).X;
-        TabIndicator.Opacity = IsSettingsOpen ? 0 : 1;
+        TabIndicator.Opacity = IsSettingsOpen || _searchOpen ? 0 : 1;
         if (animate) Anim.To(TabIndicator, Canvas.LeftProperty, x, 220);
         else Anim.Set(TabIndicator, Canvas.LeftProperty, x);
     }
@@ -316,6 +468,7 @@ public partial class PanelWindow : Window
     public void OpenSettings()
     {
         if (_settingsOpen) return;
+        CloseSearch(restoreFocus: false);
         _settingsOpen = true;
 
         // The panel is see-through, so the page underneath must step out of the way.
@@ -361,6 +514,118 @@ public partial class PanelWindow : Window
         if (animate) FocusDefault();
     }
 
+    // ---- Search (Ctrl+F) ----
+
+    /// <summary>
+    /// Opens search: its box over the tabs, its results over the page (the page steps out of the way,
+    /// as for Settings). The query from last time is kept, selected, so typing replaces it. Again
+    /// while it's open: the box takes the caret back.
+    /// </summary>
+    public void OpenSearch()
+    {
+        if (_searchOpen)
+        {
+            SearchBox.Focus();
+            SearchBox.SelectAll();
+            return;
+        }
+        var before = Keyboard.FocusedElement;
+        CloseSettings(animate: false);
+        _beforeSearch = before is DependencyObject d && IsAncestorOf(d) ? before : null;
+        _searchOpen = true;
+        _searchHeight = Math.Max(IsLoaded ? ActualHeight : Height, SearchMinHeight);
+
+        var page = CurrentPage;
+        Anim.Fade(page, 0, 90, () => { if (_searchOpen) page.Visibility = Visibility.Hidden; });
+        Tabs.Visibility = Visibility.Hidden;
+        TabIndicator.Opacity = 0;
+        SearchBar.Visibility = Visibility.Visible;
+        Anim.Fade(SearchBar, 1, 140, from: 0);
+        SearchPage.Visibility = Visibility.Visible;
+        Anim.Fade(SearchPage, 1, 160, from: 0);
+        Anim.Slide(SearchPage, 0, 10, 220);
+        UpdateStrip();
+        SearchBox.Focus();
+        SearchBox.SelectAll();
+        SearchPage.SetQuery(SearchBox.Text);
+        SearchPage.Flush();
+        RequestPreferredSize();
+    }
+
+    /// <summary>Closes search; with <paramref name="restoreFocus"/>, the caret goes back where it was (Esc).</summary>
+    public void CloseSearch(bool restoreFocus)
+    {
+        if (!_searchOpen) return;
+        _searchOpen = false;
+        SearchPage.Clear();
+        SearchPage.Visibility = Visibility.Collapsed;
+        SearchBar.Visibility = Visibility.Collapsed;
+        SearchCount.Text = "";
+        SearchBox.Padding = new Thickness(30, 0, 12, 0);
+        Tabs.Visibility = Visibility.Visible;
+        var page = CurrentPage;
+        page.Visibility = Visibility.Visible;
+        if (IsVisible) Anim.Fade(page, 1, 140, from: 0.4);
+        else Anim.Set(page, OpacityProperty, 1);
+        UpdateStrip();
+        MoveIndicator(animate: false);
+        RequestPreferredSize();
+        var back = _beforeSearch;
+        _beforeSearch = null;
+        if (!restoreFocus) return;
+        if (back is UIElement { IsVisible: true, Focusable: true } el) Dispatcher.BeginInvoke(DispatcherPriority.Input, () => el.Focus());
+        else FocusDefault();
+    }
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_searchOpen) SearchPage.SetQuery(SearchBox.Text);
+    }
+
+    private void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers is not (ModifierKeys.None or ModifierKeys.Shift)) return;
+        switch (e.Key)
+        {
+            case Key.Down: SearchPage.Move(1); break;
+            case Key.Up: SearchPage.Move(-1); break;
+            case Key.PageDown: SearchPage.Move(8); break;
+            case Key.PageUp: SearchPage.Move(-8); break;
+            case Key.Enter: SearchPage.OpenCurrent(); break;
+            case Key.Escape: CloseSearch(restoreFocus: true); break;
+            default: return;
+        }
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Opens what search found: its tab, and its space if the space on show doesn't show it (All
+    /// shows everything); then the task, scrolled to and lit up, or the sheet with the match selected.
+    /// </summary>
+    internal void JumpTo(SearchHit hit, string query)
+    {
+        CloseSearch(restoreFocus: false);
+        if (!SearchView.IsLive(_ws, hit.Item))
+        {
+            FocusDefault(); // gone since it was found (by another device, say)
+            return;
+        }
+        var (space, tab, openDone) = SearchView.Plan(_view, _ws.Settings, hit.Item);
+        if (space != null) ShowSpace(space);
+        if (_ws.Settings.Tab != tab) SelectTab(tab, animate: false);
+        if (openDone) _ws.Settings.DoneExpanded = true;
+        switch (hit.Item)
+        {
+            case TaskItem task:
+                TasksPage.Reveal(task);
+                break;
+            case NoteSheet sheet:
+                _view.ActiveSheet = sheet;
+                NotesPage.Reveal(sheet, Search.FindIn(sheet.Text, query));
+                break;
+        }
+    }
+
     // ---- Spaces strip ----
 
     /// <summary>
@@ -379,10 +644,10 @@ public partial class PanelWindow : Window
     }
 
     /// <summary>Tells screen readers something that changed out of their sight (a space switched by a key, a task moved).</summary>
-    internal void Announce(string text)
+    internal void Announce(string text, string activity = "Tack.Spaces")
     {
         if ((UIElementAutomationPeer.FromElement(this) ?? UIElementAutomationPeer.CreatePeerForElement(this)) is { } peer)
-            peer.RaiseNotificationEvent(AutomationNotificationKind.ActionCompleted, AutomationNotificationProcessing.ImportantMostRecent, text, "Tack.Spaces");
+            peer.RaiseNotificationEvent(AutomationNotificationKind.ActionCompleted, AutomationNotificationProcessing.ImportantMostRecent, text, activity);
     }
 
     private void OnViewChanged(object? sender, PropertyChangedEventArgs e)
@@ -461,7 +726,7 @@ public partial class PanelWindow : Window
     /// <summary>The strip shows once a second space exists (not over Settings): All, then each space, then +.</summary>
     private void UpdateStrip()
     {
-        var visibility = _view.HasSpaces && !_settingsOpen ? Visibility.Visible : Visibility.Collapsed;
+        var visibility = _view.HasSpaces && !_settingsOpen && !_searchOpen ? Visibility.Visible : Visibility.Collapsed;
         if (Strip.Visibility != visibility)
         {
             Strip.Visibility = visibility;
@@ -648,36 +913,150 @@ public partial class PanelWindow : Window
 
     // ---- Toast + undo ----
 
-    public void ShowToast(string message, Action? undo = null)
+    /// <summary>The toast's Undo is still on offer (deleted tasks can come back).</summary>
+    public bool HasPendingUndo => _undo.CanUndo;
+
+    /// <summary>Whether <paramref name="undo"/> is the Undo on offer right now.</summary>
+    public bool Offers(Action undo) => _undo.Holds(undo);
+
+    /// <summary>
+    /// The Undo that was on offer no longer is: it lapsed, was used, or another toast took its place.
+    /// Raised before a used Undo runs; anything that depends on it waits for the dispatcher.
+    /// </summary>
+    public event Action? UndoSettled;
+
+    void Drop.IUndoToast.ShowToast(string message, Action? undo) => ShowToast(message, undo);
+
+    void Drop.IUndoToast.Announce(string text) => Announce(text, "Tack.Drop");
+
+    /// <summary>
+    /// Shows a toast, with Undo when <paramref name="undo"/> is given. <paramref name="lapsed"/> runs once that Undo
+    /// can't be used any more: the toast went, or another took its place (a discarded snippet's file goes then).
+    /// </summary>
+    public void ShowToast(string message, Action? undo = null, Action? lapsed = null)
     {
-        _undo = undo;
+        _undo.Hold(undo, lapsed);
         ToastText.Text = message;
         ToastUndo.Visibility = undo != null ? Visibility.Visible : Visibility.Collapsed;
         Toast.Visibility = Visibility.Visible;
-        Anim.Fade(Toast, 1, 140, from: 0);
-        Anim.Slide(Toast, 0, 10, 220);
+        _toastUp = true;
+        // A picture of it slides and fades in; the live toast takes over once it's still.
+        ToastStandIn.Take();
+        ToastStandIn.Stand();
+        Anim.Fade(ToastPicture, 1, 140, from: 0);
+        var (_, slide) = Anim.Transforms(ToastPicture);
+        Anim.To(slide, TranslateTransform.YProperty, 0, 220, from: 10, completed: () =>
+        {
+            if (_toastUp && ToastStandIn.IsStanding) ToastStandIn.Live(keep: true); // kept for the fade out
+        });
         _toastTimer.Stop();
         _toastTimer.Start();
+        ToastChanged?.Invoke();
     }
 
     private void HideToast()
     {
         _toastTimer.Stop();
-        _undo = null;
-        if (Toast.Visibility == Visibility.Visible)
-            Anim.Fade(Toast, 0, 160, () => { if (_undo == null) Toast.Visibility = Visibility.Collapsed; });
+        _undo.Lapse();
+        if (!_toastUp) return;
+        ToastStandIn.Stand();
+        Anim.Fade(ToastPicture, 0, 160, () =>
+        {
+            if (_undo.CanUndo) return; // another toast took its place meanwhile
+            _toastUp = false;
+            ToastStandIn.Live(keep: false);
+            Toast.Visibility = Visibility.Collapsed;
+            ToastChanged?.Invoke();
+        });
     }
+
+    private bool _toastUp;
+
+    /// <summary>The toast's picture, which stands in for it while it slides and fades (see <see cref="StandIn"/>).</summary>
+    internal StandIn ToastStandIn => _toastStandIn ??= new StandIn(Toast, ToastHost, ToastPicture);
+
+    private StandIn? _toastStandIn;
+
+    /// <summary>True while the undo toast is up (the panel doesn't fade when idle meanwhile).</summary>
+    public bool IsToastShown => _toastUp;
+
+    /// <summary>Raised when the toast comes up or has gone.</summary>
+    public event Action? ToastChanged;
 
     public bool Undo()
     {
-        if (_undo == null) return false;
-        var undo = _undo;
+        if (_undo.Take() is not { } undo) return false;
         HideToast();
         undo();
         return true;
     }
 
+    /// <summary>Undo, when <paramref name="undo"/> is still the one on offer (the bubble by the orb asks this way).</summary>
+    public bool UndoIf(Action undo) => _undo.Holds(undo) && Undo();
+
     private void ToastUndo_Click(object sender, RoutedEventArgs e) => Undo();
+
+    /// <summary>Tack is quitting: a toast's Undo lapses with it.</summary>
+    internal void EndToast() => _undo.Lapse();
+
+    void INotesHost.Announce(string text) => Announce(text);
+
+    void INotesHost.EndUndo()
+    {
+        if (_undo.CanUndo) HideToast();
+    }
+
+    // ---- Snippets ----
+
+    /// <summary>A snippet is open full size: the panel mustn't fold away while it has the focus.</summary>
+    internal bool IsViewerOpen => _viewer != null;
+
+    /// <summary>The snippet viewer closed; true when that was because something else was clicked.</summary>
+    internal event Action<bool>? ViewerClosed;
+
+    void INotesHost.ViewSnippet(string path, Snippet snippet)
+    {
+        CloseViewer();
+        var viewer = SnippetViewer.Open(this, _hwnd, path, snippet);
+        if (viewer == null)
+        {
+            ShowToast("Couldn't open that snippet");
+            return;
+        }
+        _viewer = viewer;
+        viewer.Closed += (_, _) =>
+        {
+            if (_viewer == viewer) _viewer = null;
+            if (!viewer.ClosedByClickAway && IsVisible)
+            {
+                Activate();
+                FocusDefault();
+            }
+            ViewerClosed?.Invoke(viewer.ClosedByClickAway);
+        };
+    }
+
+    internal void CloseViewer() => _viewer?.CloseSoon();
+
+    /// <summary>
+    /// Ctrl+V on Tasks with an image (and no text) on the clipboard: it goes to Notes as a snippet on the sheet
+    /// on show, and Notes comes forward to show it. Anything with text pastes as it always has.
+    /// </summary>
+    private bool PasteImageOnTasks()
+    {
+        if (_settingsOpen || _searchOpen || _ws.Settings.Tab != "tasks" || !NotesPage.TakesImages) return false;
+        var found = SnippetImage.FromPaste(NotesPage.ReadClipboard());
+        if (!found.IsImage) return false;
+        if (found.Images.Count > 0) SelectTab("notes");
+        NotesPage.Keep(found, fromTasks: true);
+        return true;
+    }
+
+    private static bool IsPasteKey(KeyEventArgs e) =>
+        (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control) || (e.Key == Key.Insert && Keyboard.Modifiers == ModifierKeys.Shift);
+
+    /// <summary>A task's paperclip (or Ctrl+O): opens what was dropped onto the orb for it, or says why it can't.</summary>
+    internal void OpenAttachment(TaskItem task) => _shell.Drop.Open(task, message => ShowToast(message));
 
     /// <summary>Alt+F4 and friends fold the panel away instead of destroying it.</summary>
     protected override void OnClosing(CancelEventArgs e)
@@ -694,10 +1073,15 @@ public partial class PanelWindow : Window
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
+        if (IsPasteKey(e) && PasteImageOnTasks())
+        {
+            e.Handled = true;
+            return;
+        }
         // Alt+0 shows All, Alt+1..9 the first nine spaces, wherever the caret is (a draft stays as it is).
         // Only once there are spaces: until then Alt+digits do what they always did.
         if (Keyboard.Modifiers == ModifierKeys.Alt && e.Key == Key.System && e.SystemKey is >= Key.D0 and <= Key.D9
-            && _view.HasSpaces && !_settingsOpen)
+            && _view.HasSpaces && !_settingsOpen && !_searchOpen)
         {
             if (_view.SpaceForKey(e.SystemKey - Key.D0) is { } id) ShowSpace(id);
             e.Handled = true;
@@ -710,6 +1094,7 @@ public partial class PanelWindow : Window
                 case Key.D1 or Key.NumPad1: SelectTab("tasks"); e.Handled = true; return;
                 case Key.D2 or Key.NumPad2: SelectTab("notes"); e.Handled = true; return;
                 case Key.OemComma: OpenSettings(); e.Handled = true; return;
+                case Key.F: OpenSearch(); e.Handled = true; return;
                 // Text boxes keep their own undo; once they have nothing left, Ctrl+Z undoes the last delete.
                 case Key.Z when (Keyboard.FocusedElement is not TextBox box || !box.CanUndo) && Undo(): e.Handled = true; return;
             }
@@ -721,7 +1106,8 @@ public partial class PanelWindow : Window
     {
         if (e.Key == Key.Escape && !e.Handled)
         {
-            if (IsSettingsOpen) CloseSettings();
+            if (_searchOpen) CloseSearch(restoreFocus: true);
+            else if (IsSettingsOpen) CloseSettings();
             else _shell.Collapse();
             e.Handled = true;
         }

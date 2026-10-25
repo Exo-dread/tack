@@ -208,6 +208,29 @@ internal static class NativeMethods
     [DllImport("dwmapi.dll")]
     public static extern int DwmGetColorizationColor(out uint color, [MarshalAs(UnmanagedType.Bool)] out bool opaqueBlend);
 
+    public const uint DWM_BB_ENABLE = 0x1;
+    public const uint DWM_BB_BLURREGION = 0x2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DWM_BLURBEHIND
+    {
+        public uint dwFlags;
+        [MarshalAs(UnmanagedType.Bool)] public bool fEnable;
+        public IntPtr hRgnBlur;
+        [MarshalAs(UnmanagedType.Bool)] public bool fTransitionOnMaximized;
+    }
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmEnableBlurBehindWindow(IntPtr hWnd, ref DWM_BLURBEHIND blurBehind);
+
+    // ---- gdi32 ----
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DeleteObject(IntPtr obj);
+
     // ---- shell32 ----
     [DllImport("shell32.dll")]
     public static extern UIntPtr SHAppBarMessage(uint message, ref APPBARDATA data);
@@ -219,6 +242,20 @@ internal static class NativeMethods
     [DllImport("kernel32.dll", EntryPoint = "K32EmptyWorkingSet")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool EmptyWorkingSet(IntPtr hProcess);
+
+    // ---- Clipboard and drag memory (snippets, dropping onto the orb): sizes and headers are read before anything is copied ----
+    [DllImport("kernel32.dll")]
+    public static extern UIntPtr GlobalSize(IntPtr hMem);
+
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GlobalLock(IntPtr hMem);
+
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GlobalUnlock(IntPtr hMem);
+
+    [DllImport("ole32.dll")]
+    public static extern void ReleaseStgMedium(ref System.Runtime.InteropServices.ComTypes.STGMEDIUM medium);
 
     // ================= Radial launcher (optional module; nothing below runs unless it's turned on) =================
 
@@ -286,6 +323,51 @@ internal static class NativeMethods
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetMonitorInfoW")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetMonitorInfoEx(IntPtr hMonitor, ref MONITORINFOEX info);
+
+    public const int ENUM_CURRENT_SETTINGS = -1;
+    public const uint SRCCOPY = 0x00CC0020;
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetDC(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    public static extern int ReleaseDC(IntPtr hwnd, IntPtr dc);
+
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateCompatibleDC(IntPtr dc);
+
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateCompatibleBitmap(IntPtr dc, int width, int height);
+
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr SelectObject(IntPtr dc, IntPtr obj);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool BitBlt(IntPtr dst, int x, int y, int width, int height, IntPtr src, int srcX, int srcY, uint rop);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DeleteDC(IntPtr dc);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct DEVMODE
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+        public ushort dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+        public uint dmFields;
+        public int dmPositionX, dmPositionY;
+        public uint dmDisplayOrientation, dmDisplayFixedOutput;
+        public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+        public ushort dmLogPixels;
+        public uint dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
+        public uint dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "EnumDisplaySettingsW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool EnumDisplaySettings(string device, int mode, ref DEVMODE devMode);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -366,6 +448,105 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern int GetAwarenessFromDpiAwarenessContext(IntPtr context);
 
+    // ---- Launcher: recent files (read only while the launcher opens, and only with "Recent files" on) ----
+
+    public const int ADLT_RECENT = 0;
+    public const uint SIGDN_NORMALDISPLAY = 0;
+    public const uint SIGDN_FILESYSPATH = 0x80058000;
+    public const int ASSOCF_NOTRUNCATE = 0x20;
+    public const int ASSOCSTR_EXECUTABLE = 2;
+    public const uint SHGFI_SMALLICON = 0x000000001;
+    public const uint SHGFI_USEFILEATTRIBUTES = 0x000000010;
+    public const uint FILE_ATTRIBUTE_NORMAL = 0x80;
+    public const uint FILE_READ_ATTRIBUTES = 0x80;
+    public const uint FILE_SHARE_READ_WRITE_DELETE = 0x7;
+    public const uint OPEN_EXISTING = 3;
+    public const uint FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
+    public const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+    public const uint FSCTL_GET_REPARSE_POINT = 0x000900A8;
+    public const uint IO_REPARSE_TAG_APPEXECLINK = 0x8000001B;
+
+    public static readonly Guid CLSID_ApplicationDocumentLists = new("86bec222-30f2-47e0-9f25-60d11cd75c28");
+    public static readonly Guid BHID_EnumItems = new("94f60519-2850-4924-aa5a-d15e84868039");
+
+    /// <summary>System.AppUserModel.ID and System.Link.TargetParsingPath (propkey.h).</summary>
+    public static readonly PROPERTYKEY PKEY_AppUserModel_ID = new(new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), 5);
+    public static readonly PROPERTYKEY PKEY_Link_TargetParsingPath = new(new Guid("B9B4B3FC-2B51-4A42-B5D8-324146AFCF25"), 2);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct PROPERTYKEY(Guid fmtid, uint pid)
+    {
+        public readonly Guid FormatId = fmtid;
+        public readonly uint PropertyId = pid;
+    }
+
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode, EntryPoint = "AssocQueryStringW")]
+    public static extern int AssocQueryString(int flags, int str, string assoc, string? extra, StringBuilder? output, ref uint length);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern int SHCreateItemFromParsingName(string path, IntPtr bindContext, ref Guid riid,
+        [MarshalAs(UnmanagedType.Interface)] out IShellItem2 item);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "CreateFileW")]
+    public static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFile(string name, uint access, uint share, IntPtr security,
+        uint disposition, uint flags, IntPtr template);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DeviceIoControl(Microsoft.Win32.SafeHandles.SafeFileHandle device, uint code, IntPtr inBuffer, uint inSize,
+        byte[] outBuffer, uint outSize, out uint returned, IntPtr overlapped);
+
+    // ================= Dropping onto the orb (nothing below runs until something is dragged over it) =================
+
+    public const short CF_TEXT = 1;
+    public const short CF_UNICODETEXT = 13;
+    public const short CF_HDROP = 15;
+    public const int STGM_READ = 0x0;
+    public const int STGM_READWRITE = 0x2;
+    public const int STGM_SHARE_EXCLUSIVE = 0x10;
+    public const int STGM_SHARE_DENY_WRITE = 0x20;
+    public const int STGM_CREATE = 0x1000;
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "DragQueryFileW")]
+    public static extern uint DragQueryFile(IntPtr hDrop, uint index, [Out] char[]? file, uint size);
+
+    // GlobalSize, GlobalLock, GlobalUnlock and ReleaseStgMedium: under kernel32 above (snippets read the clipboard with them too).
+
+    [DllImport("ole32.dll", CharSet = CharSet.Unicode)]
+    public static extern int StgCreateDocfile(string name, int mode, int reserved, out IStorage storage);
+
+    [DllImport("ole32.dll", CharSet = CharSet.Unicode)]
+    public static extern int StgOpenStorage(string name, IntPtr priority, int mode, IntPtr exclude, int reserved, out IStorage storage);
+
+    /// <summary>Windows' own list of file types that run code (programs, scripts, shortcuts): what Attachment Manager warns about.</summary>
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool AssocIsDangerous(string association);
+
+    /// <summary>
+    /// A structured storage (the compound file inside an Outlook .msg). Only OpenStream, CreateStream, CopyTo
+    /// and Commit are called; the rest are declared to keep the vtable in order (objidl.h).
+    /// </summary>
+    [ComImport, Guid("0000000B-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IStorage
+    {
+        [PreserveSig] int CreateStream([MarshalAs(UnmanagedType.LPWStr)] string name, int mode, int reserved1, int reserved2, out System.Runtime.InteropServices.ComTypes.IStream stream);
+        [PreserveSig] int OpenStream([MarshalAs(UnmanagedType.LPWStr)] string name, IntPtr reserved1, int mode, int reserved2, out System.Runtime.InteropServices.ComTypes.IStream stream);
+        [PreserveSig] int CreateStorage([MarshalAs(UnmanagedType.LPWStr)] string name, int mode, int reserved1, int reserved2, out IStorage storage);
+        [PreserveSig] int OpenStorage([MarshalAs(UnmanagedType.LPWStr)] string name, IntPtr priority, int mode, IntPtr exclude, int reserved, out IStorage storage);
+        [PreserveSig] int CopyTo(int excludeCount, IntPtr exclude, IntPtr snbExclude, IStorage destination);
+        [PreserveSig] int MoveElementTo([MarshalAs(UnmanagedType.LPWStr)] string name, IStorage destination, [MarshalAs(UnmanagedType.LPWStr)] string newName, int flags);
+        [PreserveSig] int Commit(int flags);
+        [PreserveSig] int Revert();
+        [PreserveSig] int EnumElements(int reserved1, IntPtr reserved2, int reserved3, out IntPtr enumerator);
+        [PreserveSig] int DestroyElement([MarshalAs(UnmanagedType.LPWStr)] string name);
+        [PreserveSig] int RenameElement([MarshalAs(UnmanagedType.LPWStr)] string oldName, [MarshalAs(UnmanagedType.LPWStr)] string newName);
+        [PreserveSig] int SetElementTimes([MarshalAs(UnmanagedType.LPWStr)] string name, IntPtr created, IntPtr accessed, IntPtr modified);
+        [PreserveSig] int SetClass(ref Guid clsid);
+        [PreserveSig] int SetStateBits(int bits, int mask);
+        [PreserveSig] int Stat(out System.Runtime.InteropServices.ComTypes.STATSTG stat, int flags);
+    }
+
     public static long GetExStyle(IntPtr hwnd) => GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();
     public static void SetExStyle(IntPtr hwnd, long style) => SetWindowLongPtr(hwnd, GWL_EXSTYLE, new IntPtr(style));
     public static long GetStyle(IntPtr hwnd) => GetWindowLongPtr(hwnd, GWL_STYLE).ToInt64();
@@ -373,4 +554,58 @@ internal static class NativeMethods
 
     public static int LoWord(IntPtr value) => unchecked((short)(long)value);
     public static int HiWord(IntPtr value) => unchecked((short)((long)value >> 16));
+}
+
+// ---- Shell COM interfaces (shobjidl_core.h), for the launcher's recent files. Read-only use: nothing is added or removed. ----
+
+/// <summary>An app's Jump List, by its AppUserModelID (the list Windows keeps; Tack only reads it).</summary>
+[ComImport, Guid("3c594f9f-9f30-47a1-979a-c9e83d3d0a06"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IApplicationDocumentLists
+{
+    [PreserveSig] int SetAppID([MarshalAs(UnmanagedType.LPWStr)] string appId);
+    [PreserveSig] int GetList(int listType, uint itemsDesired, ref Guid riid, [MarshalAs(UnmanagedType.IUnknown)] out object list);
+}
+
+[ComImport, Guid("92CA9DCD-5622-4BBA-A805-5E9F541BD8C9"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IObjectArray
+{
+    [PreserveSig] int GetCount(out uint count);
+    [PreserveSig] int GetAt(uint index, ref Guid riid, [MarshalAs(UnmanagedType.IUnknown)] out object item);
+}
+
+[ComImport, Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IShellItem
+{
+    [PreserveSig] int BindToHandler(IntPtr bindContext, ref Guid handler, ref Guid riid, out IntPtr result);
+    [PreserveSig] int GetParent(out IntPtr parent);
+    [PreserveSig] int GetDisplayName(uint form, out IntPtr name);
+    [PreserveSig] int GetAttributes(uint mask, out uint attributes);
+    [PreserveSig] int Compare(IntPtr other, uint hint, out int order);
+}
+
+/// <summary>IShellItem's methods, then IShellItem2's up to GetString (COM interop needs the whole vtable in order).</summary>
+[ComImport, Guid("7e9fb0d3-919f-4307-ab2e-9b1860310c93"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IShellItem2
+{
+    [PreserveSig] int BindToHandler(IntPtr bindContext, ref Guid handler, ref Guid riid, [MarshalAs(UnmanagedType.IUnknown)] out object result);
+    [PreserveSig] int GetParent(out IntPtr parent);
+    [PreserveSig] int GetDisplayName(uint form, out IntPtr name);
+    [PreserveSig] int GetAttributes(uint mask, out uint attributes);
+    [PreserveSig] int Compare(IntPtr other, uint hint, out int order);
+    [PreserveSig] int GetPropertyStore(int flags, ref Guid riid, out IntPtr store);
+    [PreserveSig] int GetPropertyStoreWithCreateObject(int flags, IntPtr createObject, ref Guid riid, out IntPtr store);
+    [PreserveSig] int GetPropertyStoreForKeys(IntPtr keys, uint count, int flags, ref Guid riid, out IntPtr store);
+    [PreserveSig] int GetPropertyDescriptionList(ref NativeMethods.PROPERTYKEY key, ref Guid riid, out IntPtr list);
+    [PreserveSig] int Update(IntPtr bindContext);
+    [PreserveSig] int GetProperty(ref NativeMethods.PROPERTYKEY key, IntPtr value);
+    [PreserveSig] int GetCLSID(ref NativeMethods.PROPERTYKEY key, out Guid clsid);
+    [PreserveSig] int GetFileTime(ref NativeMethods.PROPERTYKEY key, out long fileTime);
+    [PreserveSig] int GetInt32(ref NativeMethods.PROPERTYKEY key, out int value);
+    [PreserveSig] int GetString(ref NativeMethods.PROPERTYKEY key, out IntPtr value);
+}
+
+[ComImport, Guid("70629033-e363-4a28-a567-0db78006e6d7"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IEnumShellItems
+{
+    [PreserveSig] int Next(uint count, [MarshalAs(UnmanagedType.Interface)] out IShellItem2 item, out uint fetched);
 }

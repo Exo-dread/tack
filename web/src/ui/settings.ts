@@ -174,6 +174,7 @@ export class Settings {
           {},
           ...[
             ['N or /', 'New task'],
+            ['Ctrl+F', 'Search tasks and notes'],
             ['Enter / Ctrl+Enter', 'Add task / add it as your focus'],
             ['1 / 2', 'Tasks / Notes'],
             ['↑ ↓', 'Move between tasks'],
