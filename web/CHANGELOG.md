@@ -1,6 +1,6 @@
 # Tack Focus changelog
 
-## Unreleased
+## 0.5.0 (25 October 2026)
 
 Search, the same as Tack for Windows', and sharing to Tack from any app on Android.
 

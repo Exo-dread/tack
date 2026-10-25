@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.7.0 (2026-10-25)
 
 Get things into Tack without leaving the app you're in, and find them again: drop onto the orb,
 snippets in Notes, search, and recent files in the launcher. Everything new is either off until you
