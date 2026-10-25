@@ -28,6 +28,7 @@ public partial class SettingsView : UserControl
     public SettingsView()
     {
         InitializeComponent();
+        ElevatedHint.Visibility = Elevation.IsAdmin ? Visibility.Visible : Visibility.Collapsed;
     }
 
     internal void Initialize(Workspace ws, SpaceView view, AppShell shell, PanelWindow panel)

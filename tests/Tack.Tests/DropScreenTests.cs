@@ -33,7 +33,24 @@ internal static class DropScreenTests
         yield return ("drop on screen: the orb shows a plus and an accent halo while it's a target, and is exactly as before when it isn't", OrbHighlight);
         yield return ("drop on screen: the bubble keeps Undo inside it and its words in one line each, in light and dark", BubbleLayout);
         yield return ("tasks on screen: a task with an attachment shows a paperclip Narrator can name, in the list, Done and the focus card; others none", Paperclips);
+        yield return ("settings on screen: running as administrator, Settings says other apps can't drop onto the orb; otherwise nothing shows", ElevatedHint);
     }
+
+    /// <summary>Windows keeps other apps' drags from an app running as administrator; Settings says why drops don't land.</summary>
+    private static void ElevatedHint() => Ui.Run(_ =>
+    {
+        try
+        {
+            Elevation.Override = true;
+            Check.Equal(Visibility.Visible, new SettingsView().ElevatedHint.Visibility, "as administrator, the hint shows");
+            Elevation.Override = false;
+            Check.Equal(Visibility.Collapsed, new SettingsView().ElevatedHint.Visibility, "otherwise it doesn't");
+        }
+        finally
+        {
+            Elevation.Override = null;
+        }
+    });
 
     // ================= Stand-ins =================
 

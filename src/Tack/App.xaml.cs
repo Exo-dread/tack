@@ -31,6 +31,7 @@ public partial class App : Application
         string folder = StateStore.ResolveFolder();
         _store = new StateStore(folder);
         Log.Initialize(folder);
+        if (Elevation.IsAdmin) Log.Info("Running as administrator: Windows keeps other apps from dropping onto the orb.");
 
         DispatcherUnhandledException += OnDispatcherException;
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>

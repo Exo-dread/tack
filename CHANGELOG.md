@@ -10,7 +10,8 @@ turn it on or out of sight until you use it; until then Tack looks and behaves a
   browser or a few lines of text onto the orb: it lights up and says what it will add, and letting go
   makes a task of each (up to 20), in the space on show, with Undo right beside the orb. An email
   becomes a task named by its subject, a file by its name, a page by its title. The app you dragged
-  from keeps the focus, and nothing is ever moved out of it.
+  from keeps the focus, and nothing is ever moved out of it. If Tack runs as administrator, Windows won't let
+  other apps drop onto it; Settings says so.
 - **A paperclip opens what you dropped.** Tasks made by a drop show a small paperclip (and take
   Ctrl+O, or Open in their menu) that opens the file, folder or page, or the copy of the email Tack
   kept. What a task points to stays on this PC, in `attachments.json` and an `attachments` folder

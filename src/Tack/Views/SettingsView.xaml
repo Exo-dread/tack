@@ -130,6 +130,9 @@
                         <TextBlock Style="{StaticResource Hint}" Text="Hides the orb while a video, game or slideshow fills the screen." />
                     </StackPanel>
                 </Border>
+                <!-- Only while Tack runs as administrator: Windows then blocks drops from other apps. -->
+                <TextBlock x:Name="ElevatedHint" Style="{StaticResource Hint}" Margin="2,8,8,0" Visibility="Collapsed"
+                           Text="Tack is running as administrator, so Windows won't let other apps drop files, links or emails onto the orb. Start Tack normally (not as administrator) to drop onto it." />
 
                 <TextBlock Text="Shortcut" Style="{StaticResource SectionLabel}" />
                 <Border Style="{StaticResource Card}">
