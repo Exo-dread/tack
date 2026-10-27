@@ -42,8 +42,9 @@ internal readonly record struct SessionResult(Outcome Outcome, LaunchRequest? La
 internal sealed class LauncherSession
 {
     /// <summary>
-    /// Resting on a shortcut this long (gesture) counts as a rest: with Shift held, its display picker opens;
-    /// without, an app's recent files show (when that's on). Passing by never opens anything.
+    /// Resting on a shortcut this long (gesture) counts as a rest: with Shift held (pressed afresh, not the
+    /// Shift still down from the Shift+press), its display picker opens; without, an app's recent files show
+    /// (when that's on). Passing by never opens anything.
     /// </summary>
     public const long GestureDwellMs = 260;
 
@@ -56,6 +57,10 @@ internal sealed class LauncherSession
     // The highlight came from the pointer resting on a shortcut: only then can a rest open something (see
     // Tick). A highlight moved with the keyboard never does; M, Shift+Enter and R do that.
     private bool _dwellArmed;
+    // Shift has been seen up since the Shift+press that opened the launcher. Until then a held Shift is just the
+    // one that started the gesture (or the Shift+click), not a request for displays: resting with it still down
+    // would be the hover popup by another name, and would hide an app's recent files.
+    private bool _shiftWasUp;
     private PxPoint? _pointer;
     private Hit _down = Hit.Nothing;
 
@@ -93,6 +98,7 @@ internal sealed class LauncherSession
         _press = press;
         _hotSince = now;
         _dwellArmed = false;
+        _shiftWasUp = false;
         Highlight = Hit.Nothing;
         return SessionResult.Changed;
     }
@@ -183,11 +189,14 @@ internal sealed class LauncherSession
     /// <summary>
     /// The time passed (the controller ticks only while open): after a rest on a shortcut, opens its display
     /// picker while Shift is held, or shows an app's recent files (when that's on) while it isn't; and lets a
-    /// rest on another shortcut close an open group (gesture). The picker never opens from a rest alone.
+    /// rest on another shortcut close an open group (gesture). The picker never opens from a rest alone, nor
+    /// from the Shift still held from the Shift+press: only once Shift has been let go and pressed again.
     /// </summary>
     /// <param name="shift">Shift is held down right now (read by the controller as it ticks).</param>
     public SessionResult Tick(long now, bool shift = false)
     {
+        if (!shift) _shiftWasUp = true;
+        else if (!_shiftWasUp) shift = false; // still the Shift of the Shift+press: not asked for yet
         if (Mode == SessionMode.Gesture && _pending is { } pending && now - _pendingSince >= SwitchDwellMs)
         {
             _pending = null;

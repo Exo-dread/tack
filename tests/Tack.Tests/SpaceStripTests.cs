@@ -177,7 +177,9 @@ internal static class SpaceStripTests
         var panel = shell.Panel;
         foreach (string theme in new[] { "light", "dark" })
         {
-            foreach (string accent in AccentPalette.Presets.Select(p => p.Value))
+            // The presets, plus hand-edited mid-tone accents (and this PC's own Windows accent as "system"),
+            // where white text used to pass a 3:1 rule meant for ticks but not 4.5:1 for a 12 px label.
+            foreach (string accent in AccentPalette.Presets.Select(p => p.Value).Concat(new[] { "#009FAA", "#E74856", "#8E8CD8", "#0099BC", "#C239B3" }))
             {
                 shell.Ws.Settings.Theme = theme;
                 shell.Ws.Settings.Accent = accent;
@@ -188,8 +190,8 @@ internal static class SpaceStripTests
                 var fill = ((SolidColorBrush)Part(main, "Sel").Background).Color;
                 Check.Equal((Color)Application.Current.Resources["AccentColor"], fill, $"{theme} {accent}: with the accent");
                 var text = ((SolidColorBrush)System.Windows.Documents.TextElement.GetForeground(Part(main, "Sel"))).Color;
-                Check.Equal(((SolidColorBrush)Application.Current.Resources["OnAccentBrush"]).Color, text, $"{theme} {accent}: its name in the accent's text colour");
-                Check.True(Ratio(text, fill) >= 3, $"{theme} {accent}: which reads ({Ratio(text, fill):F2}:1)");
+                Check.True(Application.Current.Resources["OnAccentTextBrush"] is SolidColorBrush onText && onText.Color == text, $"{theme} {accent}: its name in the accent's text colour");
+                Check.True(Ratio(text, fill) >= 4.5, $"{theme} {accent}: which reads as text ({Ratio(text, fill):F2}:1)");
                 foreach (var other in shell.Pills.Where(p => p != main))
                     Check.Equal(0.0, Part(other, "Sel").Opacity, $"{theme} {accent}: {other.Content} not filled");
             }

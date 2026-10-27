@@ -16,10 +16,11 @@ display map waits until you ask for it, and there's an installer for those who'd
   clears in once it's there. With Windows' animation effects off, it shows and hides at once.
 - **Calmer tab switch.** Tasks and Notes cross-fade: the page you leave fades out as the other slides in.
 - **The launcher's display map waits to be asked.** Resting on an app or folder, or dragging on past
-  it, no longer opens the map of your displays by itself. Hold **Shift** while you rest on it (keep
-  holding it after a Shift+drag, or press it in the open ring), or right-click it; M and Shift+Enter
-  still work. Let go of Shift before resting and nothing pops up: releasing on the shortcut just opens
-  it, and with Recent files on, a rest without Shift shows the app's files as before.
+  it, no longer opens the map of your displays by itself. Press **Shift** while you rest on it (after a
+  Shift+drag, let go of Shift and press it again: the Shift you started with doesn't count), or
+  right-click it; M and Shift+Enter still work. Otherwise nothing pops up: releasing on the shortcut
+  just opens it, and with Recent files on, a rest shows the app's files as before, Shift still held or
+  not.
 - **An installer, for those who'd rather install Tack than unzip it.** Each release now also has
   `Tack-x.y.z-setup.exe`: the same self-contained Tack.exe, installed for everyone in
   `C:\Program Files\Tack` or just for you in `%LOCALAPPDATA%\Programs\Tack` (no administrator), with a

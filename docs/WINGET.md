@@ -31,7 +31,10 @@ is how winget finds it in Apps & features for `upgrade` and `uninstall`; `Elevat
 `elevatesSelf` for the machine scope. With the installer there's no `tack` command on PATH, but
 `winget upgrade` closes a running Tack itself (and starts it again), and uninstalling removes *Start
 with Windows* when it pointed at the installed Tack: the two notes at the end of this page are for the
-zip only. `tools/winget-manifest.ps1` still writes the zip manifest; add the installer entries by hand
+zip only. (winget waits for the setup process alone. A script that runs a silent upgrade itself should
+do the same, `$p = Start-Process setup.exe -ArgumentList ... -PassThru; $p.WaitForExit()`: PowerShell's
+`Start-Process -Wait` also waits for the Tack that setup starts again, so it returns only once Tack is
+quit.) `tools/winget-manifest.ps1` still writes the zip manifest; add the installer entries by hand
 for now, then `winget validate` as below.
 
 ## Writing the manifests

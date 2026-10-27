@@ -563,9 +563,10 @@ internal static class LauncherTests
         var app = At(s, 1);
         Drag(s, app);
         Check.True(s.Selector == null, "not straight away");
-        s.Tick(16 * 6 + 100, shift: true); // the drag ended at 96 ms
+        s.Tick(16 * 6 + 60, shift: false); // the drag ended at 96 ms; Shift let go on the way
+        s.Tick(16 * 6 + 100, shift: true);
         Check.True(s.Selector == null, "not before the rest");
-        // Shift still held (as it was for the Shift+drag) while resting on the app: the picker appears.
+        // Shift pressed again while resting on the app: the picker appears.
         s.Tick(16 * 6 + LauncherSession.GestureDwellMs + 1, shift: true);
         Check.Equal(new NodeRef(1), s.Selector ?? new NodeRef(-1), "resting on the app with Shift held reveals the display picker");
         var tile = s.Scene.TilesFor(new NodeRef(1))[1].Center;
@@ -578,6 +579,7 @@ internal static class LauncherTests
         // With the picker showing, releasing on the app itself (not a display) still uses its default.
         var s2 = Session(displays: ds);
         Drag(s2, At(s2, 1));
+        s2.Tick(16 * 6 + 40, shift: false);
         s2.Tick(16 * 6 + LauncherSession.GestureDwellMs + 1, shift: true);
         Check.Equal(new NodeRef(1), s2.Selector ?? new NodeRef(-1), "picker showing");
         Check.True(s2.Release(At(s2, 1), 2000).Launch is { Display: null }, "release on the app: default behaviour");
@@ -635,9 +637,29 @@ internal static class LauncherTests
         pass.Tick(1000 + 16 * 8 + 10, shift: true);
         Check.True(pass.Selector == null, "passing by with Shift held: no picker");
 
+        // Gesture: Shift still down from the Shift+press, never let go, resting on an app: no picker. Holding
+        // the gesture's own Shift isn't asking for displays (it would be a hover popup with a delay).
+        var still = Session(displays: ds);
+        Drag(still, At(still, 1));
+        for (long t = 100; t < 3000; t += 40) still.Tick(t, shift: true);
+        Check.True(still.Selector == null, "gesture: Shift held from the press, resting: no picker");
+        // Let go and press it again while resting there: now it's asked for.
+        still.Tick(3040, shift: false);
+        still.Tick(3080, shift: true);
+        Check.Equal(new NodeRef(1), still.Selector ?? new NodeRef(-1), "Shift pressed again on the resting app: the picker");
+
+        // Click mode opened with Shift+click, Shift never let go: no picker from a rest either.
+        var stillClick = Session(displays: ds);
+        stillClick.Begin(stillClick.Scene.Orb, 0);
+        stillClick.Release(stillClick.Scene.Orb, 80);
+        stillClick.Move(At(stillClick, 1), 1000);
+        for (long t = 100; t < 4000; t += 40) stillClick.Tick(t, shift: true);
+        Check.True(stillClick.Selector == null, "click mode: Shift held since the Shift+click, resting: no picker");
+
         // Gesture: Shift held for the rest, then let go: the picker stays (it was asked for).
         var held = Session(displays: ds);
         Drag(held, At(held, 1));
+        held.Tick(16 * 6 + 40, shift: false);
         held.Tick(16 * 6 + LauncherSession.GestureDwellMs + 1, shift: true);
         held.Tick(16 * 6 + LauncherSession.GestureDwellMs + 500, shift: false);
         Check.Equal(new NodeRef(1), held.Selector ?? new NodeRef(-1), "letting go of Shift afterwards keeps the picker");
@@ -661,6 +683,7 @@ internal static class LauncherTests
         // Click mode: Shift held while resting opens it (after the rest, not while passing by).
         var b = Open();
         b.Move(At(b, 1), 1000);
+        b.Tick(1000, shift: false); // the Shift of the Shift+click let go
         b.Tick(1000 + LauncherSession.ClickDwellMs - 40, shift: true);
         Check.True(b.Selector == null, "not before the rest");
         b.Tick(1000 + LauncherSession.ClickDwellMs + 1, shift: true);

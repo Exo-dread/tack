@@ -66,12 +66,29 @@ internal static class AccentPalette
         resources["AccentSoftBrush"] = Frozen(Color.FromArgb(0x2E, accent.R, accent.G, accent.B));
         resources["AccentFaintBrush"] = Frozen(Color.FromArgb(0x16, accent.R, accent.G, accent.B));
         resources["AccentBorderBrush"] = Frozen(Color.FromArgb(0x8C, accent.R, accent.G, accent.B));
-        resources["OnAccentBrush"] = Frozen(PrefersWhiteText(accent) ? Colors.White : Color.FromRgb(0x10, 0x12, 0x16));
+        resources["OnAccentBrush"] = Frozen(PrefersWhiteText(accent) ? Colors.White : NearBlack);
+        resources["OnAccentTextBrush"] = Frozen(TextOn(accent));
+    }
+
+    private static readonly Color NearBlack = Color.FromRgb(0x10, 0x12, 0x16);
+
+    /// <summary>
+    /// Text (a label) filled with the accent: white or near-black, whichever reads better. Words need more
+    /// than the 3:1 that's enough for a tick, so a mid-tone accent (a teal or a red, say) gets near-black.
+    /// </summary>
+    public static Color TextOn(Color background) =>
+        Contrast(Colors.White, background) >= Contrast(NearBlack, background) ? Colors.White : NearBlack;
+
+    /// <summary>WCAG contrast ratio of two opaque colours (1 to 21).</summary>
+    public static double Contrast(Color a, Color b)
+    {
+        double x = RelativeLuminance(a), y = RelativeLuminance(b);
+        return (Math.Max(x, y) + 0.05) / (Math.Min(x, y) + 0.05);
     }
 
     /// <summary>
-    /// White ticks and text on the accent when they reach 3:1 contrast (as Windows does on its
-    /// deeper light-theme accents); near-black on the bright dark-theme ones.
+    /// White ticks and glyphs on the accent when they reach 3:1 contrast (as Windows does on its
+    /// deeper light-theme accents); near-black on the bright dark-theme ones. Text uses <see cref="TextOn"/>.
     /// </summary>
     public static bool PrefersWhiteText(Color background) => 1.05 / (RelativeLuminance(background) + 0.05) >= 3.0;
 

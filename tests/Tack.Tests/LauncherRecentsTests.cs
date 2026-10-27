@@ -712,7 +712,8 @@ internal static class LauncherRecentsTests
         var beyond = s.Scene.Orb.Offset(s.Scene.Orb.AngleTo(app), s.Scene.Orb.DistanceTo(app) + s.Scene.ItemRadius * 0.9);
         DragOn(s, app, beyond);
         Check.True(s.Selector == null && s.Recents == null, "dragging on past Revit reveals nothing by itself");
-        // Shift still held while resting there: the displays, not the files (Shift asks for them).
+        // Shift let go and pressed again while resting there: the displays, not the files (Shift asks for them).
+        s.Tick(_t += 40, shift: false);
         Rest(s, LauncherSession.GestureDwellMs + 40, shift: true);
         Check.True(s.Recents == null && s.Selector == RevitNode, "a rest with Shift held: the picker, no files over it");
         Rest(s, 1000);
@@ -721,6 +722,12 @@ internal static class LauncherRecentsTests
         DragOn(s, beyond, tile);
         var r = s.Release(tile, _t + 16);
         Check.True(r.Outcome == Outcome.Launch && r.Launch!.Display == 1 && r.Launch.Entry.Document == null, "and opens Revit on that display");
+
+        // Shift still down from the Shift+press, never let go: the files, not the displays.
+        var held = Session(displays: ds);
+        Drag(held, At(held, 1));
+        Rest(held, LauncherSession.GestureDwellMs + 40, shift: true);
+        Check.True(held.Recents == RevitNode && held.Selector == null, "Shift held from the press: the files, no picker");
 
         // Shift let go before the rest: the files, as without a second display.
         var files = Session(displays: ds);

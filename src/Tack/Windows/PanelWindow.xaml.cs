@@ -231,12 +231,26 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
     /// <summary>
     /// While the panel opens over frosted glass: its background the theme's solid surface instead of the tint. DWM draws no
     /// acrylic for a window that hasn't been on screen since it was shown (a thumbnail of it gets a flat grey instead), so
-    /// the panel grows solid and the glass clears in once it's there (<see cref="ReleaseSolid"/>).
+    /// the panel grows solid and the glass clears in once it's there (<see cref="ReleaseSolid"/>). Folding, the glass fades
+    /// to solid over <paramref name="ms"/> first (opening, the panel isn't on screen yet: at once).
     /// </summary>
-    internal void HoldSolid()
+    internal void HoldSolid(double ms = 0)
     {
         if (!IsGlassActive || _clear) return;
-        Surface.Background = new SolidColorBrush((TryFindResource("SolidSurfaceBrush") as SolidColorBrush)?.Color ?? Colors.Black);
+        var solid = (TryFindResource("SolidSurfaceBrush") as SolidColorBrush)?.Color ?? Colors.Black;
+        if (ms <= 0)
+        {
+            Surface.Background = new SolidColorBrush(solid);
+        }
+        else
+        {
+            // From the glass's tint as it is now (folding): a short fade, not a snap.
+            var from = (Surface.Background as SolidColorBrush)?.Color ?? Colors.Transparent;
+            var brush = new SolidColorBrush(from);
+            Surface.Background = brush;
+            brush.BeginAnimation(SolidColorBrush.ColorProperty,
+                new System.Windows.Media.Animation.ColorAnimation(solid, Anim.Ms(ms)) { EasingFunction = Anim.EaseOut });
+        }
         _solidHeld = true;
     }
 
@@ -463,6 +477,7 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
         page.Height = page.ActualHeight;
         page.HorizontalAlignment = HorizontalAlignment.Left;
         page.VerticalAlignment = VerticalAlignment.Top;
+        Panel.SetZIndex(page, -1); // under the page arriving, whichever comes first in the panel
         Anim.Fade(page, 0, 110, () => { if (_leaving == page) EndLeaving(); }, from: 1);
     }
 
@@ -478,6 +493,7 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
         page.ClearValue(HeightProperty);
         page.ClearValue(HorizontalAlignmentProperty);
         page.ClearValue(VerticalAlignmentProperty);
+        page.ClearValue(Panel.ZIndexProperty);
     }
 
     private void Tab_Checked(object sender, RoutedEventArgs e)

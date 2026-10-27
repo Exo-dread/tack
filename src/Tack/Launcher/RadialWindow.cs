@@ -193,7 +193,7 @@ internal sealed class RadialWindow : Window
         ShortcutKind.Group => LauncherConfig.CountOf(e.Children?.Count ?? 0),
         ShortcutKind.Url => e.Target,
         _ => (_scene.MultipleDisplays && e.CanTargetDisplay
-                ? $"{e.Target}\nRight-click or keep dragging outward to choose a display."
+                ? $"{e.Target}\nRight-click it, or press Shift as you rest on it, to choose a display."
                 : e.Target) +
             (_scene.RecentFilesOn && e.KindValue == ShortcutKind.App && WinPath.Extension(e.Target.Trim().Trim('"')) == ".exe"
                 ? "\nRest on it, or press R, for its recent files." : ""),

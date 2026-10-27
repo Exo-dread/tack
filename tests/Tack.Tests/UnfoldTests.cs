@@ -56,7 +56,12 @@ internal static class UnfoldTests
             lastIn = Unfold.EaseIn(t);
         }
         // Opening decelerates (most of the way early: it's there when you look); folding accelerates into the orb.
-        Check.True(Unfold.EaseOut(0.5) > 0.85 && Unfold.EaseIn(0.5) < 0.15, "decelerating out, accelerating in");
+        Check.True(Unfold.EaseOut(0.5) > 0.85 && Unfold.EaseIn(0.5) < 0.3, "decelerating out, accelerating in");
+        // ...but not so late that a fold seems to wait before it goes: a quarter of the way by halfway (cubic
+        // was an eighth: the panel's far edge moved under 2 px in the first 50 ms, and it was still 7/8 opaque
+        // halfway), and visibly moving within the first third.
+        Check.True(Unfold.EaseIn(0.5) >= 0.2, $"a fold under way by halfway ({Unfold.EaseIn(0.5):F3})");
+        Check.True(Unfold.EaseIn(1 / 3.0) * (1 - Unfold.Small) * 568 >= 5, "a 568 px panel's far edge moves 5 px or more in a fold's first third");
         Check.True(Unfold.FoldMs < Unfold.OpenMs && Unfold.OpenMs <= 260, "a fold is quicker than an opening; both short");
     }
 }

@@ -30,6 +30,8 @@ internal static class LookTests
         yield return ("fade when idle: off, nothing waits and nothing fades; on, the orb and panel fade once the pointer has been away, and come back at once", FadeWhenIdle);
         yield return ("fade when idle: never while in use, a menu or the toast is up, or with the pointer still over it; animated only if Windows animates", FadeNotWhenBusy);
         yield return ("fade when idle on screen: the panel goes half see-through, then whole again with its own background", PanelFades);
+        yield return ("tab switch on screen: the page left fades under the new one, Tasks to Notes and Notes to Tasks alike", LeavingPageUnder);
+        yield return ("fold over glass on screen: the glass fades to the solid surface (not a snap), and is the glass again after", SolidFades);
         yield return ("peek on screen: the picture that stands in for the bubble while it moves is the very same pixels", PeekPicture);
         yield return ("toast on screen: a picture slides in for it, the very same pixels, and the live toast (Undo and all) takes over", ToastPicture);
         yield return ("drop bubble on screen: a picture stands in for it as it comes and goes, the very same pixels, of what it says now", BubblePicture);
@@ -181,6 +183,52 @@ internal static class LookTests
                 Check.Equal(((SolidColorBrush)panel.FindResource(key)).Color, brush.Color, $"glass {glass}: {key}");
                 Check.Equal(1.0, panel.Root.Opacity, $"glass {glass}: whole");
             }
+            Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+        });
+    }
+
+    private static void LeavingPageUnder()
+    {
+        Ui.Run(errors =>
+        {
+            using var shell = new Shell();
+            shell.ShowOffScreen();
+            var panel = shell.Panel;
+            panel.SelectTab("tasks", animate: false);
+            Ui.Pump();
+            foreach (var (to, arriving, leaving) in new[] { ("notes", (UIElement)panel.NotesPage, (UIElement)panel.TasksPage), ("tasks", panel.TasksPage, panel.NotesPage) })
+            {
+                panel.SelectTab(to);
+                Check.True(leaving.Visibility == Visibility.Visible && !leaving.IsHitTestVisible, $"to {to}: the page left is still fading");
+                Check.True(DrawOrder(leaving).CompareTo(DrawOrder(arriving)) < 0, $"to {to}: under the page arriving ({DrawOrder(leaving)} vs {DrawOrder(arriving)})");
+                Ui.WaitUntil(() => leaving.Visibility == Visibility.Collapsed, 2000);
+                Check.True(leaving.ReadLocalValue(System.Windows.Controls.Panel.ZIndexProperty) == DependencyProperty.UnsetValue, $"to {to}: and as it was once gone");
+            }
+            Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+        });
+    }
+
+    /// <summary>Where a child of a panel is drawn: by Z index, then by its place among the children (later is on top).</summary>
+    private static (int Z, int Index) DrawOrder(UIElement e) =>
+        (System.Windows.Controls.Panel.GetZIndex(e), ((System.Windows.Controls.Panel)VisualTreeHelper.GetParent(e)).Children.IndexOf(e));
+
+    private static void SolidFades()
+    {
+        Ui.Run(errors =>
+        {
+            using var shell = new Shell(s => s.Glass = true);
+            shell.ShowOffScreen();
+            var panel = shell.Panel;
+            Ui.Pump();
+            if (!panel.IsGlassActive) return; // no glass on this Windows: nothing to fade
+            var tint = ((SolidColorBrush)panel.Surface.Background).Color;
+            var solid = ((SolidColorBrush)panel.FindResource("SolidSurfaceBrush")).Color;
+            panel.HoldSolid(Unfold.SolidFadeMs);
+            Check.Equal(tint, ((SolidColorBrush)panel.Surface.Background).Color, "the fold's solid starts from the glass as it was");
+            Ui.WaitUntil(() => ((SolidColorBrush)panel.Surface.Background).Color == solid, 1000);
+            Check.Equal(solid, ((SolidColorBrush)panel.Surface.Background).Color, "and fades to the solid surface");
+            panel.ReleaseSolid(0);
+            Check.Equal(tint, ((SolidColorBrush)panel.Surface.Background).Color, "then the glass again");
             Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
         });
     }

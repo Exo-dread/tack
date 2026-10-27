@@ -240,7 +240,8 @@ internal sealed class LauncherModule : IOrbLauncher, IDisposable
             Apply(_session.Key(LauncherKey.Escape));
             return;
         }
-        // Shift is read the same way (no hook): held while resting on a shortcut, it opens the display picker.
+        // Shift is read the same way (no hook): pressed while resting on a shortcut, it opens the display picker (the session
+        // ignores the Shift still held from the Shift+press until it has been let go once).
         bool shift;
         try { shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0; }
         catch { shift = false; }

@@ -39,6 +39,12 @@ internal sealed class Unfold
     /// <summary>Over glass, the glass clears in this long once the panel has grown (ms).</summary>
     public const double SettleMs = 140;
 
+    /// <summary>
+    /// Folding over glass, the glass turns into the solid surface over this long (ms) before the thumbnail takes over
+    /// (see <see cref="Fold"/>): a quick fade rather than a snap.
+    /// </summary>
+    public const double SolidFadeMs = 30;
+
     /// <summary>The scale the panel grows from and folds to.</summary>
     public const double Small = 0.85;
 
@@ -118,6 +124,7 @@ internal sealed class Unfold
     /// </summary>
     public void Fold(PanelWindow panel, Int32Rect rect, (int X, int Y) origin, Action hide)
     {
+        long called = Stopwatch.GetTimestamp();
         int run = Interlocked.Increment(ref _run);
         var place = new Placement(rect, origin);
         void Folded()
@@ -141,12 +148,13 @@ internal sealed class Unfold
         _opening = false;
         ReleaseSolid(0);
         // The thumbnail over the panel, the very same picture. DWM drops a window's acrylic once it's cloaked (its thumbnail
-        // gets a flat grey): over glass, the panel turns solid first, and is cloaked a couple of frames later, once it's drawn so.
+        // gets a flat grey): over glass, the panel fades to solid first (quickly, not a snap), and is cloaked a couple of
+        // frames after that's drawn.
         bool glass = panel.IsGlassActive && !panel.IsClear;
         if (glass)
         {
             _solid = panel;
-            panel.HoldSolid();
+            panel.HoldSolid(SolidFadeMs);
         }
         if (!Begin(panel.Handle, place, 1, 1))
         {
@@ -155,7 +163,10 @@ internal sealed class Unfold
             return;
         }
         _cloaked = panel.Handle; // cloaked by the motion's thread, once the thumbnail covers it
-        Step(run, place, FoldMs, t => (Lerp(1, Small, EaseIn(t)), 1 - EaseIn(t)), Folded, waitFrames: glass ? 2 : 1, cloak: panel.Handle);
+        // The fold's clock runs from now, not from when the waits are over: its start is the slow end of the curve, so
+        // nothing is lost by it, and the fold doesn't seem to hesitate.
+        Step(run, place, FoldMs, t => (Lerp(1, Small, EaseIn(t)), 1 - EaseIn(t)), Folded,
+            waitFrames: glass ? 2 : 1, waitMs: glass ? SolidFadeMs : 0, cloak: panel.Handle, clockFrom: called);
     }
 
     /// <summary>Stops at once: no thumbnail, the panel uncloaked (a full-screen app, or shown or hidden without animation).</summary>
@@ -197,17 +208,22 @@ internal sealed class Unfold
     /// Plays a motion on a thread of its own: once per refresh, the thumbnail at <paramref name="at"/>(t) (t from 0 to 1 over
     /// <paramref name="ms"/>), then a wait for DWM's next frame; <paramref name="done"/> on the UI thread at the end. It starts
     /// after <paramref name="waitFrames"/> of DWM's frames (for the thumbnail to be on screen, or WPF to draw a change), with
-    /// its clock <paramref name="leadMs"/> ahead. With <paramref name="cloak"/>, that window is cloaked then, as the clock
-    /// starts (the thumbnail covering it), so the two are never both seen. A newer motion (or Cancel) stops it.
+    /// its clock <paramref name="leadMs"/> ahead. With <paramref name="waitMs"/>, the waits last at least that long too (and
+    /// then <paramref name="waitFrames"/> more), for a change WPF animates. With <paramref name="clockFrom"/> (a
+    /// <see cref="Stopwatch"/> timestamp), the clock runs from then rather than from the end of the waits. With
+    /// <paramref name="cloak"/>, that window is cloaked as the waits end (the thumbnail covering it), so the two are never
+    /// both seen. A newer motion (or Cancel) stops it.
     /// </summary>
     private void Step(int run, Placement place, double ms, Func<double, (double Scale, double Opacity)> at, Action done,
-        int waitFrames = 0, IntPtr cloak = default, double leadMs = 0)
+        int waitFrames = 0, double waitMs = 0, IntPtr cloak = default, double leadMs = 0, long clockFrom = 0)
     {
         var dispatcher = _window!.Dispatcher;
         IntPtr thumb = _thumb;
         var trace = Trace;
         var thread = new Thread(() =>
         {
+            long waitStart = Stopwatch.GetTimestamp();
+            while (waitMs > 0 && Stopwatch.GetElapsedTime(waitStart).TotalMilliseconds < waitMs && Volatile.Read(ref _run) == run) Flush();
             for (int i = 0; i < waitFrames && Volatile.Read(ref _run) == run; i++) Flush();
             if (cloak != IntPtr.Zero)
             {
@@ -215,10 +231,10 @@ internal sealed class Unfold
                 lock (_gate) cloaked = Volatile.Read(ref _run) != run || WindowEffects.Cloak(cloak, true);
                 if (!cloaked) dispatcher.Invoke(() => { if (run == _run) WindowEffects.Cloak(cloak, true); });
             }
-            var clock = Stopwatch.StartNew();
+            long start = clockFrom != 0 ? clockFrom : Stopwatch.GetTimestamp();
             while (Volatile.Read(ref _run) == run)
             {
-                double t = Math.Min(1, (clock.Elapsed.TotalMilliseconds + leadMs) / ms);
+                double t = Math.Min(1, (Stopwatch.GetElapsedTime(start).TotalMilliseconds + leadMs) / ms);
                 var (scale, opacity) = at(t);
                 if (!Apply(run, thumb, place, scale, opacity)) return;
                 trace?.Enqueue(Stopwatch.GetTimestamp());
@@ -318,8 +334,11 @@ internal sealed class Unfold
     /// <summary>Decelerating (cubic), as <see cref="Controls.Anim.EaseOut"/>.</summary>
     internal static double EaseOut(double t) => 1 - Math.Pow(1 - t, 3);
 
-    /// <summary>Accelerating (cubic), as <see cref="Controls.Anim.EaseIn"/>.</summary>
-    internal static double EaseIn(double t) => t * t * t;
+    /// <summary>
+    /// Accelerating (quadratic): gentler than a cubic at the start, so a fold is seen to go at once rather than after a
+    /// pause, and still speeding up into the orb.
+    /// </summary>
+    internal static double EaseIn(double t) => t * t;
 
     /// <summary>The panel's rectangle (physical pixels; the thumbnail's window covers it exactly) and the point it scales about.</summary>
     internal readonly struct Placement

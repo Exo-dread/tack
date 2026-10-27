@@ -58,7 +58,7 @@
                             </Border>
                             <Border x:Name="Sel" CornerRadius="12" BorderThickness="1" Padding="{TemplateBinding Padding}" Opacity="0"
                                     Background="{DynamicResource AccentBrush}" BorderBrush="{DynamicResource AccentBrush}"
-                                    TextElement.Foreground="{DynamicResource OnAccentBrush}" RenderTransformOrigin="0.5,0.5">
+                                    TextElement.Foreground="{DynamicResource OnAccentTextBrush}" RenderTransformOrigin="0.5,0.5">
                                 <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center" />
                             </Border>
                         </Grid>

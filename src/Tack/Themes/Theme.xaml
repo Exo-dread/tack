@@ -22,6 +22,7 @@
     <SolidColorBrush x:Key="AccentFaintBrush" Color="#1660CDFF" />
     <SolidColorBrush x:Key="AccentBorderBrush" Color="#8C60CDFF" />
     <SolidColorBrush x:Key="OnAccentBrush" Color="#101216" />
+    <SolidColorBrush x:Key="OnAccentTextBrush" Color="#101216" />
 
     <!-- ===================================================================
          Base element styles
