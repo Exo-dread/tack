@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.8.0 (2026-10-27)
 
 Smoother and calmer: spaces become pills, the panel opens like an app on a phone, the launcher's
 display map waits until you ask for it, and there's an installer for those who'd rather not unzip.

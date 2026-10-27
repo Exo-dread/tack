@@ -21,7 +21,7 @@ keeps its data in `%LOCALAPPDATA%\Tack` like any other: an upgrade or uninstall 
 
 ### Or the installer
 
-Since the release after 1.7.0 there's also `Tack-x.y.z-setup.exe` (Inno Setup, `installer/Tack.iss`),
+Since 1.8.0 there's also `Tack-x.y.z-setup.exe` (Inno Setup, `installer/Tack.iss`),
 and winget can use that instead of, or beside, the zip. In the installer manifest that's an entry
 with `InstallerType: inno` (winget then knows `/VERYSILENT`, `/LOG` and `/DIR=` by itself), its
 `InstallerUrl` and the hash from `SHA256SUMS.txt`, and two entries if both scopes should be offered:
