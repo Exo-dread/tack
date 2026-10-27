@@ -44,6 +44,7 @@ internal sealed class AppShell : IDisposable
     private readonly DispatcherTimer _midnight;
     private readonly DispatcherTimer _fullscreenRecheck;
     private readonly IdleFade _fade;
+    private readonly Unfold _unfold = new();
     private int _rechecksLeft;
 
     private WindowBoundsAnimator? _panelBounds;
@@ -153,6 +154,9 @@ internal sealed class AppShell : IDisposable
 
     internal PeekWindow Peek => _peek;
 
+    /// <summary>Opening and folding the panel (for tests: its thumbnail, and when DWM was given each step).</summary>
+    internal Unfold Unfold => _unfold;
+
     /// <summary>Images pasted into Notes (on this PC only).</summary>
     internal SnippetStore Snippets { get; }
 
@@ -177,6 +181,7 @@ internal sealed class AppShell : IDisposable
 
         new WindowInteropHelper(_orb).EnsureHandle();
         new WindowInteropHelper(_panel).EnsureHandle();
+        _unfold.Prepare();
         _panelBounds = new WindowBoundsAnimator(_panel, _panel.Handle);
         HwndSource.FromHwnd(_orb.Handle)!.AddHook(BroadcastHook);
 
@@ -283,8 +288,13 @@ internal sealed class AppShell : IDisposable
         _ws.RefreshDay();
         _sync.SyncNow(); // a cheap look at the folder, in case a change slipped past the watcher
 
+        var origin = _orb.IsVisible ? _orb.Center : InitialOrbCenter();
         var rect = ComputePanelRect(out _anchorRight, out _anchorBottom);
         _panel.AnchoredBottom = _anchorBottom;
+        // Opening like an app on a phone: the panel is shown cloaked (laid out, drawn, focused, but not on
+        // screen) while DWM grows a live thumbnail of it out of the orb, and uncloaked once it's whole.
+        bool animate = Unfold.Enabled;
+        WindowEffects.Cloak(_panel.Handle, animate);
         // Move while hidden (so it opens on the right monitor), then pin the exact size once
         // WPF has picked up that monitor's DPI.
         ScreenGeometry.Place(_panel.Handle, rect.X, rect.Y, rect.Width, rect.Height);
@@ -292,7 +302,9 @@ internal sealed class AppShell : IDisposable
         ScreenGeometry.PlaceExact(_panel, _panel.Handle, rect);
         WindowEffects.BringToTopmost(_panel.Handle);
         _panel.Activate();
-        _panel.PlayEntrance(_anchorRight, _anchorBottom);
+        _panel.FocusDefault();
+        if (animate) _unfold.Open(_panel, rect, origin);
+        else _unfold.Cancel();
 
         // A faded orb folds away as it is, and is whole again for when it comes back.
         if (_orb.IsVisible) _orb.PlayDisappear(() => { if (_expanded) { _orb.Hide(); _fade.OrbAwake(); } });
@@ -306,14 +318,21 @@ internal sealed class AppShell : IDisposable
         _panelBounds?.Stop();
         _store.Flush();
 
-        _panel.PlayExit(() =>
+        void Hide()
         {
             if (_expanded) return; // re-opened mid-animation
             _panel.Hide();
             _panel.CloseSettings(animate: false);
             _fade.PanelAwake(); // whole again for when it next opens
             _trimDelay.Start();
-        });
+        }
+        // Folding into the orb (or at once, with Windows' animation effects off).
+        if (Unfold.Enabled && _panel.IsVisible) _unfold.Fold(_panel, ScreenGeometry.GetWindowRect(_panel.Handle), InitialOrbCenter(), Hide);
+        else
+        {
+            _unfold.Cancel();
+            Hide();
+        }
 
         if (!_hiddenForFullscreen)
         {
@@ -482,6 +501,7 @@ internal sealed class AppShell : IDisposable
 
         if (hide)
         {
+            _unfold.Cancel();
             _launcher.ForceClose();
             _drop.Dismiss();
             _peek.Dismiss();

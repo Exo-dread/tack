@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Opens like an app on a phone.** The panel grows out of the orb (wherever the orb is, on any display),
+  fading in as it slows to a stop, and folds back into it a little quicker. DWM moves it, at your
+  display's own refresh rate, whatever Tack is drawing meanwhile, and the add box has the caret from
+  the start, so you can type straight away. Over frosted glass the panel grows solid and the glass
+  clears in once it's there. With Windows' animation effects off, it shows and hides at once.
+- **Calmer tab switch.** Tasks and Notes cross-fade: the page you leave fades out as the other slides in.
+
 ## 1.7.0 (2026-10-25)
 
 Get things into Tack without leaving the app you're in, and find them again: drop onto the orb,

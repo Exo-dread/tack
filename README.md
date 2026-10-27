@@ -55,7 +55,7 @@ and gets out of the way the moment you're done.
   opened last (from its Jump List, or Revit's, AutoCAD's and Navisworks' own lists), to open one with that app.
   It's off by default, and while it's off nothing changes.
 - **Windows 11 glass, light or dark.** Native acrylic, rounded corners, your accent colour, smooth and
-  short animations. Follows Windows' light/dark mode, or pick one. Crisp on every monitor, at any scaling.
+  short animations: the panel grows out of the orb like an app opening on a phone, and folds back into it. Follows Windows' light/dark mode, or pick one. Crisp on every monitor, at any scaling.
   Make the background more solid or more see-through, and, if you like, have Tack fade back while you
   aren't pointing at it.
 - **Sized to fit.** The Tasks panel grows and shrinks with your list (then scrolls), Notes keeps its own

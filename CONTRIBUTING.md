@@ -33,7 +33,7 @@ so both can run side by side (with its own `TackData` folder, as above).
 | `src/Tack/Sync/` | The data model shared with Tack Focus: clocks, sort keys, merges, the `tackFocus` section of tack.json, device files and the sync engine. A port of `web/src/model` and `web/src/sync` that must give exactly the same results |
 | `src/Tack/Services/` | `StateStore` (JSON persistence), `StateFile` (tack.json and records), `FolderSync` and `LocalSyncFolder` (sync through a folder), Import, accent colour, startup registration, log, single instance |
 | `src/Tack/Interop/` | Win32 and DWM: glass, monitors/DPI, hotkey, shell watcher. All P/Invoke is in `NativeMethods.cs` |
-| `src/Tack/Windows/` | The windows: orb, peek bubble, panel, and the bubble beside the orb after a drop; `UndoSlot`, the one Undo every toast offers (a drop's, a snippet's, a delete's) |
+| `src/Tack/Windows/` | The windows: orb, peek bubble, panel, and the bubble beside the orb after a drop; `Unfold`, the panel opening out of the orb and folding back (a DWM thumbnail); `UndoSlot`, the one Undo every toast offers (a drop's, a snippet's, a delete's) |
 | `src/Tack/Drop/` | Dropping onto the orb and the paperclips it leaves: `Core/` reads a drag into tasks (bounded, tested with real data objects and hostile ones) and keeps `attachments.json`; `OleDropData` reads another app's OLE data; `DropModule` ties the orb, its bubble and the panel's toast together |
 | `src/Tack/Launcher/` | The optional radial launcher (off by default): `Core/` is platform-neutral and unit-tested; the rest is its window, settings card and Windows launching/placement. See [docs/LAUNCHER.md](docs/LAUNCHER.md) |
 | `src/Tack/Snippets/` | Images pasted into Notes: reading a paste (sizes checked before anything is decoded or copied), `snippets.json` and the `snippets` folder beside tack.json (never synced), and the full-size viewer |
@@ -73,10 +73,11 @@ dotnet run --project tests/Tack.Tests -c Release            # sync model, tack.j
 cd web; npm test                                            # Tack Focus, including the shared vectors
 ```
 
-Two tools in the same project run a copy of Tack on your screen (its own temp data, `TACK_INSTANCE=uitestLook`,
-nothing typed or clicked): `-- --frames` times every animation frame by frame (see "Smooth enough, in
-software" in [docs/DESIGN.md](docs/DESIGN.md)), and `-- --screens` takes pictures of the panel's looks as the
-screen shows them. Run them before and after a change to motion or the glass.
+Three tools in the same project run a copy of Tack on your screen (its own temp data, `TACK_INSTANCE=uitestLook`
+unless you set another `uitest…` name, nothing typed or clicked): `-- --frames` times every animation frame by
+frame (see "Smooth enough, in software" in [docs/DESIGN.md](docs/DESIGN.md)), `-- --screens` takes pictures of
+the panel's looks as the screen shows them, and `-- --unfold` pictures of the panel opening and folding. Run
+them before and after a change to motion or the glass.
 
 The two apps must merge and sync identically, so Tack for Windows' `Sync` code is checked against
 vectors computed by Tack Focus's own code. If you change `web/src/model` or `web/src/sync`, regenerate
