@@ -19,6 +19,21 @@ winget unpacks the exe into `%LOCALAPPDATA%\Microsoft\WinGet\Packages\Exo-dread.
 `tack` from `%LOCALAPPDATA%\Microsoft\WinGet\Links`. That folder has no `TackData`, so a winget copy
 keeps its data in `%LOCALAPPDATA%\Tack` like any other: an upgrade or uninstall never touches it.
 
+### Or the installer
+
+Since the release after 1.7.0 there's also `Tack-x.y.z-setup.exe` (Inno Setup, `installer/Tack.iss`),
+and winget can use that instead of, or beside, the zip. In the installer manifest that's an entry
+with `InstallerType: inno` (winget then knows `/VERYSILENT`, `/LOG` and `/DIR=` by itself), its
+`InstallerUrl` and the hash from `SHA256SUMS.txt`, and two entries if both scopes should be offered:
+`Scope: machine` with `InstallerSwitches: { Custom: /ALLUSERS }` and `Scope: user` with
+`{ Custom: /CURRENTUSER }`. `ProductCode` is `{125AD659-8D26-4921-B390-2D4E48F99750}_is1`, which
+is how winget finds it in Apps & features for `upgrade` and `uninstall`; `ElevationRequirement` is
+`elevatesSelf` for the machine scope. With the installer there's no `tack` command on PATH, but
+`winget upgrade` closes a running Tack itself (and starts it again), and uninstalling removes *Start
+with Windows* when it pointed at the installed Tack: the two notes at the end of this page are for the
+zip only. `tools/winget-manifest.ps1` still writes the zip manifest; add the installer entries by hand
+for now, then `winget validate` as below.
+
 ## Writing the manifests
 
 For a version that's already released (tagged on main, with its GitHub Release published):

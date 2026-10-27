@@ -73,6 +73,16 @@ and gets out of the way the moment you're done.
 Grab the latest `Tack-x.y.z-win-x64.zip` from [**Releases**](../../releases/latest), unzip it and run
 `Tack.exe`. Nothing to install, and no .NET runtime needed.
 
+**Rather install it?** `Tack-x.y.z-setup.exe` from the same release installs that same Tack.exe with a
+Start menu entry (a desktop one if you tick it) and an entry in **Settings → Apps** to uninstall it.
+It asks first whether to install for everyone, in `C:\Program Files\Tack` (needs an administrator), or
+just for you, in `%LOCALAPPDATA%\Programs\Tack` (no administrator). Running a newer setup upgrades it in
+place, closing Tack first and starting it again. Either way your tasks stay in `%LOCALAPPDATA%\Tack`,
+exactly as with the zip, so you can switch between the two; uninstalling leaves them there too (and
+removes *Start with Windows* only if it pointed at the installed Tack). For IT: `/ALLUSERS` or
+`/CURRENTUSER`, with `/VERYSILENT` for a silent install, and `/MERGETASKS=desktopicon` for the desktop
+shortcut.
+
 - Windows 10 or 11, x64 (developed and tested on Windows 11). Frosted glass needs Windows 11 22H2 or
   later; elsewhere the panel is solid.
 - The exe isn't code-signed yet, so Windows SmartScreen may warn on first launch:
@@ -298,7 +308,7 @@ Requires Windows and the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotn
 
 ```powershell
 dotnet run --project src/Tack                     # run in debug
-./build.ps1 -Version 1.0.0                        # release zips in ./artifacts
+./build.ps1 -Version 1.0.0                        # release zips (and installer, with Inno Setup 6) in ./artifacts
 cd web; npm install; npm run dev                  # Tack Focus at http://localhost:5173 (Node 22)
 ```
 
