@@ -2,18 +2,9 @@
 
 ## Unreleased
 
-- **An installer, for those who'd rather install Tack than unzip it.** Each release now also has
-  `Tack-x.y.z-setup.exe`: the same self-contained Tack.exe, installed for everyone in
-  `C:\Program Files\Tack` or just for you in `%LOCALAPPDATA%\Programs\Tack` (no administrator), with a
-  Start menu entry, an optional desktop shortcut and an entry in Settings → Apps. A newer setup
-  upgrades it in place, closing Tack first (only the installed one) and starting it again. Your tasks
-  stay in `%LOCALAPPDATA%\Tack`, as with the zip, and uninstalling leaves them there. The zip is
-  unchanged.
-- **The launcher's display map waits to be asked.** Resting on an app or folder, or dragging on past
-  it, no longer opens the map of your displays by itself. Hold **Shift** while you rest on it (keep
-  holding it after a Shift+drag, or press it in the open ring), or right-click it; M and Shift+Enter
-  still work. Let go of Shift before resting and nothing pops up: releasing on the shortcut just opens
-  it, and with Recent files on, a rest without Shift shows the app's files as before.
+Smoother and calmer: spaces become pills, the panel opens like an app on a phone, the launcher's
+display map waits until you ask for it, and there's an installer for those who'd rather not unzip.
+
 - **Spaces as pills.** The strip under the header is a row of rounded pills instead of plain text with
   dots: the space on show is filled with your accent colour, the others sit on a quiet fill, and the
   fill moves across with a short fade when you switch (at once if Windows' animation effects are off).
@@ -24,6 +15,18 @@
   the start, so you can type straight away. Over frosted glass the panel grows solid and the glass
   clears in once it's there. With Windows' animation effects off, it shows and hides at once.
 - **Calmer tab switch.** Tasks and Notes cross-fade: the page you leave fades out as the other slides in.
+- **The launcher's display map waits to be asked.** Resting on an app or folder, or dragging on past
+  it, no longer opens the map of your displays by itself. Hold **Shift** while you rest on it (keep
+  holding it after a Shift+drag, or press it in the open ring), or right-click it; M and Shift+Enter
+  still work. Let go of Shift before resting and nothing pops up: releasing on the shortcut just opens
+  it, and with Recent files on, a rest without Shift shows the app's files as before.
+- **An installer, for those who'd rather install Tack than unzip it.** Each release now also has
+  `Tack-x.y.z-setup.exe`: the same self-contained Tack.exe, installed for everyone in
+  `C:\Program Files\Tack` or just for you in `%LOCALAPPDATA%\Programs\Tack` (no administrator), with a
+  Start menu entry, an optional desktop shortcut and an entry in Settings → Apps. A newer setup
+  upgrades it in place, closing Tack first (only the installed one) and starting it again. Your tasks
+  stay in `%LOCALAPPDATA%\Tack`, as with the zip, and uninstalling leaves them there. The zip is
+  unchanged.
 
 ## 1.7.0 (2026-10-25)
 

@@ -113,6 +113,7 @@ so it can't upgrade or uninstall a real install. Install it with `/CURRENTUSER /
 and set `TACK_INSTANCE` in the shell you run it from, so a Tack it starts doesn't just open yours.
 Closing a running Tack (Restart Manager, both in Setup and in the uninstaller) only ever looks at the
 Tack.exe in the install folder, so it can't close a Tack running from anywhere else.
+
 Until a version is released, its changes collect under `## Unreleased` at the top of `CHANGELOG.md`
 (and `web/CHANGELOG.md`); rename that heading to the version when you bump it.
 

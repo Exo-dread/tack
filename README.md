@@ -51,11 +51,13 @@ and gets out of the way the moment you're done.
   A small paperclip on the task opens what you dropped.
 - **A launcher, if you want one.** Turn it on in Settings → Launcher, then Shift+click the orb for a ring
   of your own shortcuts (apps, folders, websites, groups), or Shift+drag to one and let go. Keep Shift held
-  as you rest on an app (or right-click it) to choose the display it opens on. Turn on **Recent files** and resting on an app shows the files it
-  opened last (from its Jump List, or Revit's, AutoCAD's and Navisworks' own lists), to open one with that app.
+  as you rest on an app (or right-click it) to choose the display it opens on. Turn on **Recent files** and
+  resting on an app shows the files it opened last (from its Jump List, or Revit's, AutoCAD's and Navisworks'
+  own lists), to open one with that app.
   It's off by default, and while it's off nothing changes.
 - **Windows 11 glass, light or dark.** Native acrylic, rounded corners, your accent colour, smooth and
-  short animations: the panel grows out of the orb like an app opening on a phone, and folds back into it. Follows Windows' light/dark mode, or pick one. Crisp on every monitor, at any scaling.
+  short animations: the panel grows out of the orb like an app opening on a phone, and folds back into
+  it. Follows Windows' light/dark mode, or pick one. Crisp on every monitor, at any scaling.
   Make the background more solid or more see-through, and, if you like, have Tack fade back while you
   aren't pointing at it.
 - **Sized to fit.** The Tasks panel grows and shrinks with your list (then scrolls), Notes keeps its own
@@ -154,10 +156,10 @@ until there's a second one, Tack looks exactly as it always has.
   <img src="docs/screenshots/spaces-light.png" width="300" alt="The same space in the light theme, with the add box saying Add to Work" />
 </p>
 
-- Once there's a second space, a slim strip of pills under the header lists **All**, **Main**, **Work**, … with
-  the space on show filled in your accent colour. Click one
-  (or press **Alt+1** to **Alt+9** for the spaces in order, **Alt+0** for All) to show it. The keys work
-  even while you're typing a task, and the draft stays. **+** at the end of the strip makes a space.
+- Once there's a second space, a slim strip of pills under the header lists **All**, **Main**, **Work**, …
+  with the space on show filled in your accent colour. Click one (or press **Alt+1** to **Alt+9** for the
+  spaces in order, **Alt+0** for All) to show it. The keys work even while you're typing a
+  task, and the draft stays. **+** at the end of the strip makes a space.
 - A space shows its own tasks and sheets, in the one order you set. New tasks and sheets go into the
   space on show ("Add to Work"); from All, into Main. **All** shows everything, each task with its space.
 - Right-click a task (or a sheet's name) → **Move to ▸** to put it in another space, or press **Ctrl+M**
