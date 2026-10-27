@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **An installer, for those who'd rather install Tack than unzip it.** Each release now also has
+  `Tack-x.y.z-setup.exe`: the same self-contained Tack.exe, installed for everyone in
+  `C:\Program Files\Tack` or just for you in `%LOCALAPPDATA%\Programs\Tack` (no administrator), with a
+  Start menu entry, an optional desktop shortcut and an entry in Settings → Apps. A newer setup
+  upgrades it in place, closing Tack first (only the installed one) and starting it again. Your tasks
+  stay in `%LOCALAPPDATA%\Tack`, as with the zip, and uninstalling leaves them there. The zip is
+  unchanged.
+
 ## 1.7.0 (2026-10-25)
 
 Get things into Tack without leaving the app you're in, and find them again: drop onto the orb,
