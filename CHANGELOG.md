@@ -18,6 +18,12 @@
   dots: the space on show is filled with your accent colour, the others sit on a quiet fill, and the
   fill moves across with a short fade when you switch (at once if Windows' animation effects are off).
   Keys, Alt+0..9, scrolling, + and More spaces work as before.
+- **Opens like an app on a phone.** The panel grows out of the orb (wherever the orb is, on any display),
+  fading in as it slows to a stop, and folds back into it a little quicker. DWM moves it, at your
+  display's own refresh rate, whatever Tack is drawing meanwhile, and the add box has the caret from
+  the start, so you can type straight away. Over frosted glass the panel grows solid and the glass
+  clears in once it's there. With Windows' animation effects off, it shows and hides at once.
+- **Calmer tab switch.** Tasks and Notes cross-fade: the page you leave fades out as the other slides in.
 
 ## 1.7.0 (2026-10-25)
 

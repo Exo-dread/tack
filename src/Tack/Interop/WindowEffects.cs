@@ -10,6 +10,7 @@ internal static class WindowEffects
 {
     private const int DWMWA_TRANSITIONS_FORCEDISABLED = 3;
     private const int DWMWA_EXCLUDED_FROM_PEEK = 12;
+    private const int DWMWA_CLOAK = 13;
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19;
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
@@ -79,6 +80,12 @@ internal static class WindowEffects
         int value = color is { } c ? c.R | (c.G << 8) | (c.B << 16) : unchecked((int)0xFFFFFFFF);
         SetInt(hwnd, DWMWA_BORDER_COLOR, value);
     }
+
+    /// <summary>
+    /// Cloaks the window (or uncloaks it): DWM leaves it off the screen though it's shown, laid out, drawn and
+    /// may have the focus. The panel opens and folds cloaked while DWM moves a thumbnail of it. Any thread may call it.
+    /// </summary>
+    public static bool Cloak(IntPtr hwnd, bool cloaked) => hwnd != IntPtr.Zero && SetInt(hwnd, DWMWA_CLOAK, cloaked ? 1 : 0);
 
     public static void DisableTransitions(IntPtr hwnd, bool disabled) =>
         SetInt(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, disabled ? 1 : 0);

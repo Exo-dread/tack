@@ -129,7 +129,7 @@ internal static class Frames
             }
             if (Experiment.Contains("snap"))
             {
-                await Record(report, "exp: entrance, live", hz, 260, () => panel.PlayEntrance(true, false), shell);
+                await Record(report, "exp: entrance, live", hz, 260, () => { Tack.Controls.Anim.Fade(panel.Chrome, 1, 170, from: 0); Tack.Controls.Anim.Scale(panel.Chrome, 1, 220, Tack.Controls.Anim.EaseOut, from: 0.96); }, shell);
                 await Wait(300);
                 await Record(report, "exp: entrance, snapshot", hz, 260, () => SnapshotEntrance(panel), shell);
                 await Wait(300);
@@ -257,6 +257,9 @@ internal static class Frames
         var probed = new TranslateTransform();
         probe.CurrentTimeInvalidated += (_, _) => OnFrame();
 
+        // The panel opening and folding moves as a DWM thumbnail, stepped by a thread of its own: its steps are frames too.
+        var steps = new System.Collections.Concurrent.ConcurrentQueue<long>();
+        shell.Unfold.Trace = steps;
         var cpu = Process.GetCurrentProcess().TotalProcessorTime;
         var dwm0 = Dwm.Read();
         double t0 = Now();
@@ -273,6 +276,15 @@ internal static class Frames
         double t1 = Now();
         var dwm1 = Dwm.Read();
         double cpuMs = (Process.GetCurrentProcess().TotalProcessorTime - cpu).TotalMilliseconds;
+        shell.Unfold.Trace = null;
+        if (!steps.IsEmpty)
+        {
+            // The thumbnail's steps alone (what moves), then with the UI thread's frames (the orb's own animation).
+            var moved = steps.Select(x => (x * 1000.0 / Stopwatch.Frequency, true)).ToList();
+            report.Add(name + ", DWM steps", hz, t0, moved, t1 - t0, dwm1.Frame - dwm0.Frame, 0, heights.Count);
+            frames.AddRange(moved);
+            frames.Sort((a, b) => a.T.CompareTo(b.T));
+        }
         report.Add(name, hz, t0, frames, t1 - t0, dwm1.Frame - dwm0.Frame, cpuMs, heights.Count);
     }
 
@@ -280,9 +292,9 @@ internal static class Frames
     private static int Look(AppShell shell)
     {
         var hash = new HashCode();
-        foreach (Window w in new Window[] { shell.Orb, shell.Panel, shell.Peek })
+        foreach (Window? w in new Window?[] { shell.Orb, shell.Panel, shell.Peek, shell.Unfold.Window })
         {
-            if (!w.IsVisible) continue;
+            if (w is not { IsVisible: true }) continue;
             var r = ScreenGeometry.GetWindowRect(new System.Windows.Interop.WindowInteropHelper(w).Handle);
             hash.Add(r.X); hash.Add(r.Y); hash.Add(r.Width); hash.Add(r.Height);
             hash.Add(Math.Round(w.Opacity, 4));
@@ -409,9 +421,9 @@ internal static class Frames
         {
             var sb = new StringBuilder();
             sb.AppendLine($"{Label}: {RenderMode}{(Experiment.Length > 0 ? ", trying " + Experiment : "")}; {string.Join("; ", Displays)}");
-            sb.AppendLine($"{"animation",-27} {"Hz",4} {"first",6} {"upd/s",6} {"mean",6} {"p50",6} {"p95",6} {"max",6} {"spread",6} {"held",5} {"ui fps",6} {"cpu ms",7} {"steps",5}");
+            sb.AppendLine($"{"animation",-34} {"Hz",4} {"first",6} {"upd/s",6} {"mean",6} {"p50",6} {"p95",6} {"max",6} {"spread",6} {"held",5} {"ui fps",6} {"cpu ms",7} {"steps",5}");
             foreach (var s in Scenarios)
-                sb.AppendLine($"{s.Name,-27} {s.Hz,4} {s.First,6:F0} {s.UpdatesPerSecond,6:F1} {s.Mean,6:F1} {s.P50,6:F1} {s.P95,6:F1} {s.Max,6:F1} {s.Spread,6:F1} {s.HeldShare,5:P0} {s.UiFps,6:F0} {s.CpuMs / s.Runs,7:F1} {s.GlideHeights,5}");
+                sb.AppendLine($"{s.Name,-34} {s.Hz,4} {s.First,6:F0} {s.UpdatesPerSecond,6:F1} {s.Mean,6:F1} {s.P50,6:F1} {s.P95,6:F1} {s.Max,6:F1} {s.Spread,6:F1} {s.HeldShare,5:P0} {s.UiFps,6:F0} {s.CpuMs / s.Runs,7:F1} {s.GlideHeights,5}");
             sb.AppendLine("first: ms until the first new frame. upd/s, mean/p50/p95/max, spread (std dev): new frames, and ms between them.");
             sb.AppendLine("held: refreshes that showed no new frame mid-animation. ui fps: UI-thread frames. cpu ms: per run. steps: panel heights shown.");
             foreach (var m in Memory) sb.AppendLine($"memory, {m.When}: private {m.PrivateMb:F1} MB, working set {m.WorkingSetMb:F1} MB");

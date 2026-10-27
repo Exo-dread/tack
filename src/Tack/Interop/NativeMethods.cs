@@ -202,6 +202,36 @@ internal static class NativeMethods
     [DllImport("dwmapi.dll")]
     public static extern int DwmSetWindowAttribute(IntPtr hWnd, int attribute, ref int value, int size);
 
+    /// <summary>Waits for DWM's next composition (so what was just drawn or shown is on screen).</summary>
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmFlush();
+
+    // A live picture of one window drawn by DWM in another, scaled and faded by DWM (the panel opening and folding).
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmRegisterThumbnail(IntPtr destination, IntPtr source, out IntPtr thumbnail);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmUnregisterThumbnail(IntPtr thumbnail);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmUpdateThumbnailProperties(IntPtr thumbnail, ref DWM_THUMBNAIL_PROPERTIES properties);
+
+    public const uint DWM_TNP_RECTDESTINATION = 0x1;
+    public const uint DWM_TNP_OPACITY = 0x4;
+    public const uint DWM_TNP_VISIBLE = 0x8;
+    public const uint DWM_TNP_SOURCECLIENTAREAONLY = 0x10;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DWM_THUMBNAIL_PROPERTIES
+    {
+        public uint dwFlags;
+        public RECT rcDestination;
+        public RECT rcSource;
+        public byte opacity;
+        [MarshalAs(UnmanagedType.Bool)] public bool fVisible;
+        [MarshalAs(UnmanagedType.Bool)] public bool fSourceClientAreaOnly;
+    }
+
     [DllImport("dwmapi.dll")]
     public static extern int DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS margins);
 

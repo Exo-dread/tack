@@ -14,7 +14,7 @@ namespace Tack.Tests;
 
 /// <summary>
 /// A copy of Tack in this process, on the real displays (for --frames and --screens): its own data in a temp
-/// folder, no shortcut, never launched at startup, TACK_INSTANCE=uitestLook, per-monitor DPI as Tack.exe's
+/// folder, no shortcut, never launched at startup, TACK_INSTANCE=uitestLook (or a uitest… name already set), per-monitor DPI as Tack.exe's
 /// manifest asks. Nothing is typed or clicked; a script drives it the way Tack's own handlers do.
 /// Starting a copy of Tack with launch at startup off removes HKCU\...\Run "Tack"; the value found is put back.
 /// </summary>
@@ -30,14 +30,17 @@ internal static class TestCopy
     {
         SetProcessDpiAwarenessContext(new IntPtr(-4)); // PER_MONITOR_AWARE_V2
         string? runBefore = ReadRun();
-        Environment.SetEnvironmentVariable("TACK_INSTANCE", "uitestLook");
+        // uitestLook, or another uitest… name already set (so two test copies can run side by side).
+        string name = Environment.GetEnvironmentVariable("TACK_INSTANCE") is { } set && set.StartsWith("uitest", StringComparison.Ordinal)
+            && set.Length <= 40 && set.All(char.IsAsciiLetterOrDigit) ? set : "uitestLook";
+        Environment.SetEnvironmentVariable("TACK_INSTANCE", name);
         using var instance = SingleInstance.TryAcquire();
         if (instance == null)
         {
-            Console.WriteLine("Another uitestLook copy of Tack is running; close it first.");
+            Console.WriteLine($"Another {name} copy of Tack is running; close it first.");
             return 2;
         }
-        string folder = Path.Combine(Path.GetTempPath(), "tack-uitestLook", Guid.NewGuid().ToString("N"));
+        string folder = Path.Combine(Path.GetTempPath(), "tack-" + name, Guid.NewGuid().ToString("N"));
         try
         {
             Directory.CreateDirectory(folder);

@@ -210,6 +210,7 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
     /// </summary>
     public void ApplyBackground()
     {
+        _solidHeld = false;
         string key = _glassActive ? "GlassTintBrush" : "SolidSurfaceBrush";
         double? opacity = _glassActive ? _ws.Settings.PanelBackgroundGlass : _ws.Settings.PanelBackgroundSolid;
         // Without the system backdrop (Windows 10) there's nothing behind the panel to show through.
@@ -223,6 +224,37 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
         var brush = new SolidColorBrush(color);
         brush.Freeze();
         Surface.Background = brush;
+    }
+
+    private bool _solidHeld;
+
+    /// <summary>
+    /// While the panel opens over frosted glass: its background the theme's solid surface instead of the tint. DWM draws no
+    /// acrylic for a window that hasn't been on screen since it was shown (a thumbnail of it gets a flat grey instead), so
+    /// the panel grows solid and the glass clears in once it's there (<see cref="ReleaseSolid"/>).
+    /// </summary>
+    internal void HoldSolid()
+    {
+        if (!IsGlassActive || _clear) return;
+        Surface.Background = new SolidColorBrush((TryFindResource("SolidSurfaceBrush") as SolidColorBrush)?.Color ?? Colors.Black);
+        _solidHeld = true;
+    }
+
+    /// <summary>The glass back: the solid surface eases into the tint over <paramref name="ms"/> (at once if 0).</summary>
+    internal void ReleaseSolid(double ms)
+    {
+        if (!_solidHeld) return;
+        if (ms <= 0 || Surface.Background is not SolidColorBrush { IsFrozen: false } brush)
+        {
+            ApplyBackground();
+            return;
+        }
+        double o = (WindowEffects.SupportsSystemBackdrop ? _ws.Settings.PanelBackgroundGlass : null) ?? -1;
+        var tint = (TryFindResource("GlassTintBrush") as SolidColorBrush)?.Color ?? Colors.Transparent;
+        if (o >= 0) tint.A = (byte)Math.Round(o * 255);
+        var fade = new System.Windows.Media.Animation.ColorAnimation(tint, Anim.Ms(ms)) { EasingFunction = Anim.EaseOut };
+        fade.Completed += (_, _) => { if (_solidHeld && Surface.Background == brush) ApplyBackground(); };
+        brush.BeginAnimation(SolidColorBrush.ColorProperty, fade);
     }
 
     /// <summary>Settings → Look → Panel background moved: a new tint, or (without glass, to or from solid) a new chrome too.</summary>
@@ -371,21 +403,6 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
 
     // ---- Showing and hiding ----
 
-    /// <summary>Plays the entrance: content grows out of the corner the orb sits in.</summary>
-    public void PlayEntrance(bool fromRight, bool fromBottom)
-    {
-        Chrome.RenderTransformOrigin = new Point(fromRight ? 1 : 0, fromBottom ? 1 : 0);
-        Anim.Fade(Chrome, 1, 170, from: 0);
-        Anim.Scale(Chrome, 1, 220, Anim.EaseOut, from: 0.96);
-        FocusDefault();
-    }
-
-    public void PlayExit(Action completed)
-    {
-        Anim.Fade(Chrome, 0, 90);
-        Anim.Scale(Chrome, 0.97, 100, Anim.EaseIn, completed: completed);
-    }
-
     /// <summary>Puts the caret where you'd want to type: the add-task box or the current note.</summary>
     public void FocusDefault()
     {
@@ -406,6 +423,8 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
 
     public void SelectTab(string tab, bool animate = true)
     {
+        bool pageShown = !_settingsOpen && !_searchOpen; // the page you're leaving is on screen (not under Settings or search)
+        EndLeaving();
         CloseSettings(animate: false);
         CloseSearch(restoreFocus: false);
         if (tab != _ws.Settings.Tab) _heldHeight = 0; // the panel takes the other tab's size anyway
@@ -413,20 +432,52 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
         bool notes = tab == "notes";
         (notes ? NotesTab : TasksTab).IsChecked = true;
 
-        UIElement show = notes ? NotesPage : TasksPage, hide = notes ? TasksPage : NotesPage;
+        FrameworkElement show = notes ? NotesPage : TasksPage, hide = notes ? TasksPage : NotesPage;
         if (show.Visibility != Visibility.Visible)
         {
-            hide.Visibility = Visibility.Collapsed;
             show.Visibility = Visibility.Visible;
+            if (animate && pageShown && hide.Visibility == Visibility.Visible && SystemParameters.ClientAreaAnimation) Leave(hide);
+            else hide.Visibility = Visibility.Collapsed;
             if (animate)
             {
-                Anim.Fade(show, 1, 160, from: 0);
-                Anim.Slide(show, notes ? 14 : -14, 0, 220);
+                Anim.Fade(show, 1, 180, from: 0);
+                Anim.Slide(show, notes ? 12 : -12, 0, 220);
             }
         }
         MoveIndicator(animate);
         RequestPreferredSize();
         if (animate) FocusDefault();
+    }
+
+    private FrameworkElement? _leaving; // the page a tab switch is leaving, while it fades
+
+    /// <summary>
+    /// The page a tab switch leaves fades out (quicker than the new one comes in, which slides in over it), held at the size
+    /// it had: the panel's glide to the other tab's size doesn't lay it out again, and nothing of it can be clicked.
+    /// </summary>
+    private void Leave(FrameworkElement page)
+    {
+        _leaving = page;
+        page.IsHitTestVisible = false;
+        page.Width = page.ActualWidth;
+        page.Height = page.ActualHeight;
+        page.HorizontalAlignment = HorizontalAlignment.Left;
+        page.VerticalAlignment = VerticalAlignment.Top;
+        Anim.Fade(page, 0, 110, () => { if (_leaving == page) EndLeaving(); }, from: 1);
+    }
+
+    /// <summary>A page still fading from a tab switch: gone at once, and as it was.</summary>
+    private void EndLeaving()
+    {
+        if (_leaving is not { } page) return;
+        _leaving = null;
+        page.Visibility = Visibility.Collapsed;
+        Anim.Set(page, OpacityProperty, 1);
+        page.IsHitTestVisible = true;
+        page.ClearValue(WidthProperty);
+        page.ClearValue(HeightProperty);
+        page.ClearValue(HorizontalAlignmentProperty);
+        page.ClearValue(VerticalAlignmentProperty);
     }
 
     private void Tab_Checked(object sender, RoutedEventArgs e)
