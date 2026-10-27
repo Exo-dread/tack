@@ -6,7 +6,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Shapes;
 using System.Windows.Threading;
 using Tack.Controls;
 using Tack.Interop;
@@ -744,18 +743,13 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
         for (int i = 0; i < entries.Count; i++)
         {
             var (id, name) = entries[i];
-            if (i > 0)
-            {
-                var dot = new Ellipse { Width = 2.5, Height = 2.5, Margin = new Thickness(1, 1, 1, 0), VerticalAlignment = VerticalAlignment.Center };
-                dot.SetResourceReference(Shape.FillProperty, "TextTertiaryBrush");
-                StripTabs.Children.Add(dot);
-            }
             var tab = new RadioButton
             {
                 Style = (Style)FindResource("SpaceTab"),
                 GroupName = "Spaces",
                 Tag = id,
-                Content = new TextBlock { Text = name, MaxWidth = 96, TextTrimming = TextTrimming.CharacterEllipsis },
+                Content = name, // the pill's template shows it (cut short at 96 px) on the plain and the filled layer
+                Margin = new Thickness(i > 0 ? PillGap : 0, 0, 0, 0),
                 IsChecked = id == _view.Shown,
                 IsTabStop = id == _view.Shown,
                 ToolTip = i <= 9 ? $"{name} (Alt+{i})" : name,
@@ -763,13 +757,14 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
             AutomationProperties.SetName(tab, name);
             if (i <= 9) AutomationProperties.SetAcceleratorKey(tab, $"Alt+{i}");
             tab.Checked += SpaceTab_Checked;
+            tab.Unchecked += SpaceTab_Unchecked;
             tab.Click += SpaceTab_Click;
             StripTabs.Children.Add(tab);
         }
         if (more > 0)
         {
             string left = $"{more:N0} more";
-            var button = new Button { Style = (Style)FindResource("TextButton"), Content = "More spaces…", FontSize = 12, Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(2, 0, 0, 0), ToolTip = left };
+            var button = new Button { Style = (Style)FindResource("SpaceButton"), Content = "More spaces…", Margin = new Thickness(PillGap, 0, 0, 0), ToolTip = left };
             AutomationProperties.SetName(button, $"More spaces, {left}");
             button.Click += MoreSpaces_Click;
             StripTabs.Children.Add(button);
@@ -791,8 +786,42 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
         }
     }
 
+    /// <summary>Room between two pills in the strip.</summary>
+    internal const double PillGap = 6;
+
+    /// <summary>
+    /// The pill on show fills with the accent as it changes: the filled layer cross-fades in (out on the pill
+    /// left) and settles from a touch smaller, short and eased; at once if Windows doesn't animate. Afterwards
+    /// the template's own trigger holds the state, so a theme or accent change mid-way can't leave it wrong.
+    /// </summary>
+    internal static void SettlePill(RadioButton tab, bool on)
+    {
+        if (!tab.IsLoaded || tab.Template?.FindName("Sel", tab) is not Border fill) return;
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            fill.BeginAnimation(OpacityProperty, null);
+            return;
+        }
+        double target = on ? 1 : 0;
+        // From where a change still under way has it, or from the other end.
+        double? from = fill.HasAnimatedProperties ? null : 1 - target;
+        Anim.To(fill, OpacityProperty, target, on ? PillFadeIn : PillFadeOut, Anim.EaseOut, () =>
+        {
+            if (tab.IsChecked == on) fill.BeginAnimation(OpacityProperty, null);
+        }, from);
+        if (on) Anim.Scale(fill, 1, PillSettle, Anim.Spring, from: 0.9);
+    }
+
+    internal const double PillFadeIn = 180, PillFadeOut = 140, PillSettle = 240;
+
+    private void SpaceTab_Unchecked(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton tab) SettlePill(tab, on: false);
+    }
+
     private void SpaceTab_Checked(object sender, RoutedEventArgs e)
     {
+        if (sender is RadioButton tab) SettlePill(tab, on: true);
         if (_syncingStrip || sender is not RadioButton { Tag: string id }) return;
         bool byMouse = InputManager.Current.MostRecentInputDevice is MouseDevice;
         ShowSpace(id);
@@ -813,7 +842,8 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
     private void StripTabs_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         var tabs = StripTabs.Children.OfType<RadioButton>().ToList();
-        int i = Keyboard.FocusedElement is RadioButton focused ? tabs.IndexOf(focused) : -1;
+        // A key comes from the pill with the focus.
+        int i = e.OriginalSource is RadioButton focused ? tabs.IndexOf(focused) : -1;
         if (i < 0 || Keyboard.Modifiers != ModifierKeys.None) return;
         int next = e.Key switch
         {

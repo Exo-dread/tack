@@ -54,8 +54,10 @@ colours, priorities or due dates, and there are still no tags.
 - **One importance order.** A space shows the one global order, filtered. Reordering inside a space moves
   a task past the neighbours you can see and never re-keys tasks in other spaces, so switching to All
   shows the order you'd expect.
-- **Switching is one keystroke.** A slim strip under the header (`All · Main · Work · +`, plain text, the
-  space on show in the primary text colour with an accent underline, no colour per space) and
+- **Switching is one keystroke.** A slim strip of pills under the header (`All`, `Main`, `Work`, `+`: rounded,
+  24 px, on the theme's subtle fill with a hairline; the space on show filled with the accent, its name in the
+  accent's text colour, so it's a filled shape among outlined ones and never colour alone; no colour per
+  space; the fill cross-fades to the new pill as the space changes, if Windows animates) and
   **Alt+1..9 / Alt+0** that work even while you're typing a task (the draft stays). On the phone, the
   title becomes the switcher ("Work ▾").
 - **New things land where you're looking.** The add box says "Add to Work", and a new task or sheet goes

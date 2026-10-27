@@ -22,6 +22,8 @@ internal static class Program
         if (args.Length >= 2 && args[0] == "--recents") return RecentsProbe.Run(args.Skip(1));
         // --render-recents <folder>: not a test, the recent-files card drawn in light and dark (see LauncherRecentsScreenTests).
         if (args.Length >= 2 && args[0] == "--render-recents") return LauncherRecentsScreenTests.Render(args[1]);
+        // --render-pills folder: not a test, pictures of the spaces strip as pills to look at (see SpaceStripTests).
+        if (args.Length >= 2 && args[0] == "--render-pills") return SpaceStripTests.Render(args[1]);
         // --frames [out.json] [--label name] [--rounds n]: not a test, times Tack's animations on this PC's displays (see Frames).
         if (args.Length >= 1 && args[0] == "--frames") return Frames.Run(args[1..]);
         // --screens [folder]: not a test, pictures of the panel's looks as the screen shows them (see Screens).
@@ -31,7 +33,7 @@ internal static class Program
         IsoTime.ZoneOverride = TimeZoneInfo.Utc;
 
         var tests = VectorTests.All().Concat(OrderTests.All()).Concat(StateFileTests.All()).Concat(SyncTests.All()).Concat(HostileFileTests.All())
-            .Concat(SpacesTests.All()).Concat(SpaceViewTests.All()).Concat(ScreenTests.All()).Concat(LauncherTests.All()).Concat(LauncherScreenTests.All()).Concat(LauncherRecentsTests.All()).Concat(LauncherRecentsScreenTests.All())
+            .Concat(SpacesTests.All()).Concat(SpaceViewTests.All()).Concat(SpaceStripTests.All()).Concat(ScreenTests.All()).Concat(LauncherTests.All()).Concat(LauncherScreenTests.All()).Concat(LauncherRecentsTests.All()).Concat(LauncherRecentsScreenTests.All())
             .Concat(GlideTests.All()).Concat(SearchTests.All()).Concat(SearchScreenTests.All()).Concat(LookTests.All()).Concat(SnippetTests.All()).Concat(DropTests.All()).Concat(DropScreenTests.All()).ToList();
         string? only = args.FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal));
         if (only != null) tests = tests.Where(t => t.Name.Contains(only, StringComparison.OrdinalIgnoreCase)).ToList();
