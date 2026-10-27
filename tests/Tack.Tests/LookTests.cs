@@ -196,6 +196,7 @@ internal static class LookTests
             var panel = shell.Panel;
             panel.SelectTab("tasks", animate: false);
             Ui.Pump();
+            if (!SystemParameters.ClientAreaAnimation) return; // animation effects off (CI runners): tabs switch at once
             foreach (var (to, arriving, leaving) in new[] { ("notes", (UIElement)panel.NotesPage, (UIElement)panel.TasksPage), ("tasks", panel.TasksPage, panel.NotesPage) })
             {
                 panel.SelectTab(to);
