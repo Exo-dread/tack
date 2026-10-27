@@ -41,18 +41,26 @@ internal readonly record struct SessionResult(Outcome Outcome, LaunchRequest? La
 /// </summary>
 internal sealed class LauncherSession
 {
-    /// <summary>Hovering a shortcut this long (gesture) reveals the display picker.</summary>
+    /// <summary>
+    /// Resting on a shortcut this long (gesture) counts as a rest: with Shift held (pressed afresh, not the
+    /// Shift still down from the Shift+press), its display picker opens; without, an app's recent files show
+    /// (when that's on). Passing by never opens anything.
+    /// </summary>
     public const long GestureDwellMs = 260;
 
-    /// <summary>The same with ordinary mouse moves: longer, so the picker doesn't pop up while passing by.</summary>
+    /// <summary>The same with ordinary mouse moves: longer, so nothing pops up while passing by.</summary>
     public const long ClickDwellMs = 550;
 
     private readonly LauncherScene _scene;
     private PxPoint _press;
     private long _hotSince;
-    // The highlight came from the pointer resting on a shortcut: only then does its picker appear by itself
-    // (see Tick). A highlight moved with the keyboard never opens it; M and Shift+Enter do that.
+    // The highlight came from the pointer resting on a shortcut: only then can a rest open something (see
+    // Tick). A highlight moved with the keyboard never does; M, Shift+Enter and R do that.
     private bool _dwellArmed;
+    // Shift has been seen up since the Shift+press that opened the launcher. Until then a held Shift is just the
+    // one that started the gesture (or the Shift+click), not a request for displays: resting with it still down
+    // would be the hover popup by another name, and would hide an app's recent files.
+    private bool _shiftWasUp;
     private PxPoint? _pointer;
     private Hit _down = Hit.Nothing;
 
@@ -90,6 +98,7 @@ internal sealed class LauncherSession
         _press = press;
         _hotSince = now;
         _dwellArmed = false;
+        _shiftWasUp = false;
         Highlight = Hit.Nothing;
         return SessionResult.Changed;
     }
@@ -178,11 +187,16 @@ internal sealed class LauncherSession
     }
 
     /// <summary>
-    /// The time passed (the controller ticks only while open): reveals the display picker after a hover, and
-    /// lets a rest on another shortcut close an open group (gesture).
+    /// The time passed (the controller ticks only while open): after a rest on a shortcut, opens its display
+    /// picker while Shift is held, or shows an app's recent files (when that's on) while it isn't; and lets a
+    /// rest on another shortcut close an open group (gesture). The picker never opens from a rest alone, nor
+    /// from the Shift still held from the Shift+press: only once Shift has been let go and pressed again.
     /// </summary>
-    public SessionResult Tick(long now)
+    /// <param name="shift">Shift is held down right now (read by the controller as it ticks).</param>
+    public SessionResult Tick(long now, bool shift = false)
     {
+        if (!shift) _shiftWasUp = true;
+        else if (!_shiftWasUp) shift = false; // still the Shift of the Shift+press: not asked for yet
         if (Mode == SessionMode.Gesture && _pending is { } pending && now - _pendingSince >= SwitchDwellMs)
         {
             _pending = null;
@@ -202,24 +216,22 @@ internal sealed class LauncherSession
         long dwell = Mode == SessionMode.Gesture ? GestureDwellMs : ClickDwellMs;
         if (now - _hotSince < dwell) return SessionResult.Nothing;
 
-        // With recent files on, resting on an app shows them (like a group's shortcuts); an app with none, or
-        // anything else, still offers the display picker. Dragging on past an app reveals its picker at once (Hover).
-        if (_scene.MayHaveRecents(node))
+        // Resting with Shift held: the shortcut's displays (asked for, so they win over its recent files).
+        if (shift)
         {
-            // (Its display picker, revealed by dragging on past it, stays: that was asked for.)
-            if (Recents == node || Selector == node) return SessionResult.Nothing;
-            var files = _scene.RecentsOf(node);
-            if (files == null) return SessionResult.Nothing; // still being read: a later tick looks again
-            if (files.Count > 0)
-            {
-                Recents = node;
-                Selector = null;
-                return SessionResult.Changed;
-            }
+            if (Selector == node || !_scene.CanPickDisplay(node)) return SessionResult.Nothing;
+            Selector = node;
+            Recents = null; // the app's displays, not its files
+            Message = null;
+            return SessionResult.Changed;
         }
-        if (Selector == node || !_scene.CanPickDisplay(node)) return SessionResult.Nothing;
-        Selector = node;
-        if (Recents != null && Recents != node) Recents = null;
+
+        // Resting without Shift: with recent files on, an app shows them (like a group's shortcuts). Nothing
+        // else opens by itself. (A picker already open for it stays: that was asked for.)
+        if (!_scene.MayHaveRecents(node) || Recents == node || Selector == node) return SessionResult.Nothing;
+        var files = _scene.RecentsOf(node);
+        if (files is not { Count: > 0 }) return SessionResult.Nothing; // none, or still being read (a later tick looks again)
+        Recents = node;
         return SessionResult.Changed;
     }
 
@@ -535,12 +547,8 @@ internal sealed class LauncherSession
             // In a gesture, reaching another shortcut puts its recent files away (only possible once it's taken
             // over: see HitTest). With clicks they stay until another shortcut is rested on or chosen.
             if (gesture && Recents is { } r && r != hit.Node) Recents = null;
-
-            // Dragging on past a shortcut (outward) reveals its picker at once, without waiting. Not once its recent
-            // files are showing: that's where they are.
-            if (gesture && _scene.CanPickDisplay(hit.Node) && (e is not { IsGroup: true }) && Recents != hit.Node &&
-                p.DistanceTo(_scene.Orb) > _scene.Orb.DistanceTo(_scene.CenterOf(hit.Node)) + _scene.ItemRadius * 0.6)
-                Selector = hit.Node;
+            // (Passing over a shortcut, or dragging on past it, never opens its display picker: a rest with Shift
+            // held does, or a right-click. See Tick.)
             Message = null;
         }
         else if (hit.Kind == HitKind.File)

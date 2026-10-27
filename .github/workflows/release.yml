@@ -36,16 +36,34 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      # Inno Setup builds Tack-x.y.z-setup.exe. One exact version, checked against its SHA-256 before
+      # it runs (the same hash winget's manifest for JRSoftware.InnoSetup 6.7.1 lists), installed into
+      # the runner's temp folder so a preinstalled copy on the image is never used by accident.
+      - name: Install Inno Setup 6.7.1
+        shell: pwsh
+        env:
+          INNO_URL: https://github.com/jrsoftware/issrc/releases/download/is-6_7_1/innosetup-6.7.1.exe
+          INNO_SHA256: 4d11e8050b6185e0d49bd9e8cc661a7a59f44959a621d31d11033124c4e8a7b0
+        run: |
+          $setup = Join-Path $env:RUNNER_TEMP "innosetup-6.7.1.exe"
+          Invoke-WebRequest -Uri $env:INNO_URL -OutFile $setup -TimeoutSec 120
+          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne $env:INNO_SHA256) { Write-Output "::error::Inno Setup download has SHA-256 $hash"; exit 1 }
+          $dir = Join-Path $env:RUNNER_TEMP "InnoSetup"
+          $p = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/CURRENTUSER", "/DIR=`"$dir`"" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Output "::error::Inno Setup install failed ($($p.ExitCode))"; exit 1 }
+          "ISCC=$(Join-Path $dir 'ISCC.exe')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Build downloads
         shell: pwsh
-        run: ./build.ps1 -Version $env:TAG -Runtime win-x64
+        run: ./build.ps1 -Version $env:TAG -Runtime win-x64 -RequireInstaller -Iscc $env:ISCC
 
       - name: Publish GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $files = Get-ChildItem artifacts -File | Where-Object { $_.Name -like 'Tack-*.zip' -or $_.Name -eq 'SHA256SUMS.txt' }
+          $files = Get-ChildItem artifacts -File | Where-Object { $_.Name -like 'Tack-*.zip' -or $_.Name -like 'Tack-*-setup.exe' -or $_.Name -eq 'SHA256SUMS.txt' }
           # The release text is the version's CHANGELOG.md section; GitHub's commit list if there is none.
           $notes = ./tools/release-notes.ps1 -Version $env:TAG
           if ($notes) {

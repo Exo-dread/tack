@@ -54,8 +54,10 @@ colours, priorities or due dates, and there are still no tags.
 - **One importance order.** A space shows the one global order, filtered. Reordering inside a space moves
   a task past the neighbours you can see and never re-keys tasks in other spaces, so switching to All
   shows the order you'd expect.
-- **Switching is one keystroke.** A slim strip under the header (`All · Main · Work · +`, plain text, the
-  space on show in the primary text colour with an accent underline, no colour per space) and
+- **Switching is one keystroke.** A slim strip of pills under the header (`All`, `Main`, `Work`, `+`: rounded,
+  24 px, on the theme's subtle fill with a hairline; the space on show filled with the accent, its name in the
+  accent's text colour, so it's a filled shape among outlined ones and never colour alone; no colour per
+  space; the fill cross-fades to the new pill as the space changes, if Windows animates) and
   **Alt+1..9 / Alt+0** that work even while you're typing a task (the draft stays). On the phone, the
   title becomes the switcher ("Work ▾").
 - **New things land where you're looking.** The add box says "Add to Work", and a new task or sheet goes
@@ -253,8 +255,11 @@ white documents.
 - **Shape:** native rounded corners and shadow from DWM, a 1 px system border, 7–10 px radii inside.
 - **Type:** Segoe UI Variable (falling back to Segoe UI), 13.5 px body, a semibold display weight for the
   focus task, small-caps style overlines for labels.
-- **Motion:** every animation is between 90 and 260 ms and eased. The panel grows out of the corner the
-  orb was in; ticks draw themselves; rows glide when reordered (FLIP); the tab underline slides.
+- **Motion:** every animation is between 90 and 260 ms and eased. The panel opens like an app on a phone:
+  it grows out of the orb's centre (from 85% to full size, fading in, easing out over 240 ms) and folds
+  back into it a little quicker (180 ms, easing in); DWM moves it (see "Opening and folding" below).
+  Ticks draw themselves; rows glide when reordered (FLIP); the tab underline slides and the pages
+  cross-fade.
   Nothing loops, so nothing animates while you're not interacting. Things with a drop shadow (the peek,
   the undo toast, the bubble beside the orb) slide and fade as a picture of themselves (`Controls/StandIn`):
   drawing in software, WPF would blur the shadow again for every frame. See "Smooth enough, in software" below.
@@ -299,6 +304,7 @@ drop, a snippet shown full size), each doing one job:
 | Peek | Layered, topmost, click-through | Informational only; can't get in the way |
 | Panel | Normal window with DWM backdrop, topmost | Real acrylic, native corners/shadow, resizable |
 | Launcher (optional) | Layered, topmost; created when opened, closed after | Exists only while it's open |
+| Unfold | Layered, topmost, click-through, empty; shown only while the panel opens or folds | DWM draws a thumbnail of the panel in it |
 | Drop bubble | Layered, topmost, `WS_EX_NOACTIVATE`; click-through until it offers Undo | Made the first time something is dragged over the orb |
 | Snippet viewer | Plain window on the panel's display; made when a snippet is opened, closed after | A pasted image at its own pixels |
 
@@ -326,6 +332,24 @@ of the list's height from its first frame, so the panel glides once, in step wit
 ease-in, instead of chasing it. Auto-fit measures the Tasks view at the
 panel's width with unlimited height; a manual resize is recognised by `WM_SIZING` between
 `WM_ENTERSIZEMOVE` and `WM_EXITSIZEMOVE`, so Tack's own resizing never counts as yours.
+
+### Opening and folding
+Software rendering can't scale the live panel smoothly (a full-panel frame is about 13 ms at 150%), and DWM
+draws the panel's glass, shadow and corners for the window's own rectangle, which can't be scaled at all. So
+`Windows/Unfold` lets DWM do it: the panel is placed, shown and focused while *cloaked* (`DWMWA_CLOAK`: laid
+out, drawn and focused, but not on screen), and a DWM thumbnail of it (`DwmRegisterThumbnail`, the live
+picture Alt+Tab uses) is scaled and faded in an empty, click-through window over it. A short-lived thread
+gives DWM the thumbnail's rectangle and opacity once per refresh, waiting on `DwmFlush` in between, so the
+motion keeps the display's own pace whatever the UI thread is doing, costs WPF no frames at all, and stops
+the moment it's done. Once grown, the panel is uncloaked under the thumbnail (the same picture) and the
+thumbnail goes; folding, the panel is cloaked once the thumbnail covers it and hidden when the fold is over
+(hiding moves the focus and redraws, which would cost the fold frames). Changing your mind halfway carries
+on from where the motion has got to. Being a live picture, it shows what you type while it opens.
+
+DWM keeps no acrylic for a window that's cloaked or hasn't been on screen since it was shown (a thumbnail
+of it gets a flat grey), so over frosted glass the panel grows with the theme's solid surface and the
+glass clears in once it's there (140 ms), and turns solid a couple of frames before a fold. With
+Windows' animation effects off (`SystemParameters.ClientAreaAnimation`), the panel shows and hides at once.
 
 ### Theming
 Every neutral colour lives in a palette dictionary (`Themes/Dark.xaml` or `Themes/Light.xaml`, same keys)
@@ -387,6 +411,13 @@ apart, how many of the display's refreshes show no new frame, and the CPU it tak
   panel no faster; `Timeline.DesiredFrameRate` set to the display's rate makes every animation *less* smooth
   (WPF then waits on a coarse timer between frames: small ones drop from 110–140 to about 90); waiting for
   DWM each frame (`DwmFlush`) does too; `BitmapCache` and pictures of the whole panel cost as much as drawing it.
+- Opening and folding the panel moved a picture of its content inside the window (1.7), so DWM's glass,
+  shadow and corners appeared and vanished at once, full size. A picture of the whole panel (glass copied
+  from the screen) scaled in a layered window of its own looked right but cost 15–18 ms a frame and
+  40–60 ms to make; a DWM thumbnail costs nothing a frame. On a 75 Hz desktop at 100%: a new step every
+  refresh (13.1 ms apart, at most 15 ms, no refresh missed) against 75 frames a second with gaps up to
+  28 ms, the first step 58 ms after the click (54 before), and half the CPU (83 ms an opening, 42 a fold,
+  against 167 and 78). `-- --unfold` takes pictures of it as the screen shows it.
 - The panel's size glide (`WindowBoundsAnimator`) has to resize the window each step, since DWM draws the
   acrylic, shadow and corners for the window's own rectangle, and each resize draws the panel. Taking the
   next step as soon as that drawing is done (not waiting for a frame of its own, which drew the panel a
@@ -394,6 +425,7 @@ apart, how many of the display's refreshes show no new frame, and the CPU it tak
   150–190 for an added row (22–26 heights a glide), against 100–130 and 120–155 (14–20 heights).
 
 `-- --screens` takes pictures of the panel's looks as DWM shows them (over a striped window of its own),
+`-- --unfold` pictures of it opening and folding (in each look, from every edge, changing its mind halfway),
 `-- --frames --exp …` tries the rejected options above.
 
 ## Why WPF?

@@ -8,7 +8,7 @@ namespace Tack.Tests;
 /// <summary>
 /// The launcher's recent files: where they're read from (Jump Lists, Revit.ini, AutoCAD's and Navisworks' registry
 /// lists, all as fixtures modelled on a real BIM workstation), how entries are cleaned, how a file is opened with
-/// its app, and the gestures (rest on an app to fan them out; drag on past it for the display picker, as before).
+/// its app, and the gestures (rest on an app to fan them out; rest with Shift held for the display picker).
 /// No real Jump List, registry or disk is touched.
 /// </summary>
 internal static class LauncherRecentsTests
@@ -28,7 +28,7 @@ internal static class LauncherRecentsTests
         yield return ("recent files: hostile lists (huge, 10,000 entries, control characters, odd text) stay bounded and never throw", HostileLists);
         yield return ("recent files: a file opens with its app (the program, the file as its own argument), or itself when Windows opens it with that program", OpenWithApp);
         yield return ("recent files gesture: rest on an app, its files fan out; drag onto one and release opens it with that app", GestureOpensFile);
-        yield return ("recent files gesture: dragging on past an app still opens the display picker; with no files, the rest offers the picker", GesturePickerStillWorks);
+        yield return ("recent files gesture: Shift held on a rest opens the display picker instead; dragging past or resting alone never does", GesturePickerStillWorks);
         yield return ("recent files gesture: while they're read, the rest waits; releasing on the app still opens the app", GestureWhileReading);
         yield return ("recent files gesture: passing over a neighbour keeps them; resting on it, or heading back to the orb, switches", GestureSticky);
         yield return ("recent files gesture: an app in a group shows its files too", GestureInGroup);
@@ -666,9 +666,9 @@ internal static class LauncherRecentsTests
         return _t;
     }
 
-    private static long Rest(LauncherSession s, long ms)
+    private static long Rest(LauncherSession s, long ms, bool shift = false)
     {
-        for (long end = _t + ms; _t < end;) s.Tick(_t += 40);
+        for (long end = _t + ms; _t < end;) s.Tick(_t += 40, shift);
         return _t;
     }
 
@@ -711,31 +711,53 @@ internal static class LauncherRecentsTests
         Drag(s, app);
         var beyond = s.Scene.Orb.Offset(s.Scene.Orb.AngleTo(app), s.Scene.Orb.DistanceTo(app) + s.Scene.ItemRadius * 0.9);
         DragOn(s, app, beyond);
-        Check.Equal(RevitNode, s.Selector ?? new NodeRef(-1), "dragging on past Revit still reveals the display picker at once");
+        Check.True(s.Selector == null && s.Recents == null, "dragging on past Revit reveals nothing by itself");
+        // Shift let go and pressed again while resting there: the displays, not the files (Shift asks for them).
+        s.Tick(_t += 40, shift: false);
+        Rest(s, LauncherSession.GestureDwellMs + 40, shift: true);
+        Check.True(s.Recents == null && s.Selector == RevitNode, "a rest with Shift held: the picker, no files over it");
         Rest(s, 1000);
-        Check.True(s.Recents == null && s.Selector == RevitNode, "and a rest there keeps the picker (no files over it)");
+        Check.True(s.Recents == null && s.Selector == RevitNode, "letting go of Shift keeps the picker");
         var tile = s.Scene.TilesFor(RevitNode)[1].Center;
         DragOn(s, beyond, tile);
         var r = s.Release(tile, _t + 16);
         Check.True(r.Outcome == Outcome.Launch && r.Launch!.Display == 1 && r.Launch.Entry.Document == null, "and opens Revit on that display");
 
-        // Notes has no recent files: the rest offers the display picker, as without the option.
+        // Shift still down from the Shift+press, never let go: the files, not the displays.
+        var held = Session(displays: ds);
+        Drag(held, At(held, 1));
+        Rest(held, LauncherSession.GestureDwellMs + 40, shift: true);
+        Check.True(held.Recents == RevitNode && held.Selector == null, "Shift held from the press: the files, no picker");
+
+        // Shift let go before the rest: the files, as without a second display.
+        var files = Session(displays: ds);
+        Drag(files, At(files, 1));
+        Rest(files, LauncherSession.GestureDwellMs + 40);
+        Check.True(files.Recents == RevitNode && files.Selector == null, "a rest without Shift: the files, no picker");
+
+        // Notes has no recent files: a rest alone offers nothing; with Shift, the picker.
         var n = Session(displays: ds);
         Drag(n, At(n, 5));
-        Rest(n, LauncherSession.GestureDwellMs + 40);
-        Check.True(n.Recents == null && n.Selector == new NodeRef(5), "no recent files: the picker after the rest");
+        Rest(n, 1000);
+        Check.True(n.Recents == null && n.Selector == null, "no recent files, no Shift: nothing pops up");
+        Rest(n, 80, shift: true);
+        Check.True(n.Recents == null && n.Selector == new NodeRef(5), "with Shift: the picker");
 
-        // A folder never has recent files: its picker, as before.
+        // A folder never has recent files: its picker with Shift held.
         var f = Session(displays: ds);
         Drag(f, At(f, 4));
         Rest(f, LauncherSession.GestureDwellMs + 40);
-        Check.True(f.Recents == null && f.Selector == new NodeRef(4), "a folder: the picker");
+        Check.True(f.Selector == null, "a folder, no Shift: nothing");
+        Rest(f, 80, shift: true);
+        Check.True(f.Recents == null && f.Selector == new NodeRef(4), "a folder with Shift: the picker");
 
-        // With the option off, resting on Revit is exactly as before: the picker.
+        // With the option off, resting on Revit opens nothing; with Shift held, the picker.
         var off = Session(SessionConfig(recents: false), displays: ds, read: false);
         Drag(off, At(off, 1));
-        Rest(off, LauncherSession.GestureDwellMs + 40);
-        Check.True(off.Recents == null && off.Selector == RevitNode, "off: the picker, as before");
+        Rest(off, 1000);
+        Check.True(off.Recents == null && off.Selector == null, "off, no Shift: nothing");
+        Rest(off, 80, shift: true);
+        Check.True(off.Recents == null && off.Selector == RevitNode, "off, with Shift: the picker");
     }
 
     private static void GestureWhileReading()
@@ -855,6 +877,14 @@ internal static class LauncherRecentsTests
         Check.True(p.Selector == RevitNode && p.Recents == null, "right-click Revit: the display picker, as before");
         var tile = p.Scene.TilesFor(RevitNode)[1];
         Check.True(Click(p, tile.Center).Launch is { Display: 1, Entry.Document: null }, "a display: Revit opens there");
+
+        // Resting on Revit with its files out, then holding Shift: its displays take their place.
+        var sh = Open(ds);
+        sh.Move(At(sh, 1), 1000);
+        sh.Tick(1000 + LauncherSession.ClickDwellMs + 1);
+        Check.True(sh.Recents == RevitNode, "files out");
+        sh.Tick(1000 + LauncherSession.ClickDwellMs + 41, shift: true);
+        Check.True(sh.Selector == RevitNode && sh.Recents == null, "Shift: the display picker instead");
 
         // Right-click a recent file: choose its display.
         var q = Open(ds);

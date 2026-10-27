@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.8.0 (2026-10-27)
+
+Smoother and calmer: spaces become pills, the panel opens like an app on a phone, the launcher's
+display map waits until you ask for it, and there's an installer for those who'd rather not unzip.
+
+- **Spaces as pills.** The strip under the header is a row of rounded pills instead of plain text with
+  dots: the space on show is filled with your accent colour, the others sit on a quiet fill, and the
+  fill moves across with a short fade when you switch (at once if Windows' animation effects are off).
+  Keys, Alt+0..9, scrolling, + and More spaces work as before.
+- **Opens like an app on a phone.** The panel grows out of the orb (wherever the orb is, on any display),
+  fading in as it slows to a stop, and folds back into it a little quicker. DWM moves it, at your
+  display's own refresh rate, whatever Tack is drawing meanwhile, and the add box has the caret from
+  the start, so you can type straight away. Over frosted glass the panel grows solid and the glass
+  clears in once it's there. With Windows' animation effects off, it shows and hides at once.
+- **Calmer tab switch.** Tasks and Notes cross-fade: the page you leave fades out as the other slides in.
+- **The launcher's display map waits to be asked.** Resting on an app or folder, or dragging on past
+  it, no longer opens the map of your displays by itself. Press **Shift** while you rest on it (after a
+  Shift+drag, let go of Shift and press it again: the Shift you started with doesn't count), or
+  right-click it; M and Shift+Enter still work. Otherwise nothing pops up: releasing on the shortcut
+  just opens it, and with Recent files on, a rest shows the app's files as before, Shift still held or
+  not.
+- **An installer, for those who'd rather install Tack than unzip it.** Each release now also has
+  `Tack-x.y.z-setup.exe`: the same self-contained Tack.exe, installed for everyone in
+  `C:\Program Files\Tack` or just for you in `%LOCALAPPDATA%\Programs\Tack` (no administrator), with a
+  Start menu entry, an optional desktop shortcut and an entry in Settings → Apps. A newer setup
+  upgrades it in place, closing Tack first (only the installed one) and starting it again. Your tasks
+  stay in `%LOCALAPPDATA%\Tack`, as with the zip, and uninstalling leaves them there. The zip is
+  unchanged.
+
 ## 1.7.0 (2026-10-25)
 
 Get things into Tack without leaving the app you're in, and find them again: drop onto the orb,

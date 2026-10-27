@@ -33,7 +33,7 @@ so both can run side by side (with its own `TackData` folder, as above).
 | `src/Tack/Sync/` | The data model shared with Tack Focus: clocks, sort keys, merges, the `tackFocus` section of tack.json, device files and the sync engine. A port of `web/src/model` and `web/src/sync` that must give exactly the same results |
 | `src/Tack/Services/` | `StateStore` (JSON persistence), `StateFile` (tack.json and records), `FolderSync` and `LocalSyncFolder` (sync through a folder), Import, accent colour, startup registration, log, single instance |
 | `src/Tack/Interop/` | Win32 and DWM: glass, monitors/DPI, hotkey, shell watcher. All P/Invoke is in `NativeMethods.cs` |
-| `src/Tack/Windows/` | The windows: orb, peek bubble, panel, and the bubble beside the orb after a drop; `UndoSlot`, the one Undo every toast offers (a drop's, a snippet's, a delete's) |
+| `src/Tack/Windows/` | The windows: orb, peek bubble, panel, and the bubble beside the orb after a drop; `Unfold`, the panel opening out of the orb and folding back (a DWM thumbnail); `UndoSlot`, the one Undo every toast offers (a drop's, a snippet's, a delete's) |
 | `src/Tack/Drop/` | Dropping onto the orb and the paperclips it leaves: `Core/` reads a drag into tasks (bounded, tested with real data objects and hostile ones) and keeps `attachments.json`; `OleDropData` reads another app's OLE data; `DropModule` ties the orb, its bubble and the panel's toast together |
 | `src/Tack/Launcher/` | The optional radial launcher (off by default): `Core/` is platform-neutral and unit-tested; the rest is its window, settings card and Windows launching/placement. See [docs/LAUNCHER.md](docs/LAUNCHER.md) |
 | `src/Tack/Snippets/` | Images pasted into Notes: reading a paste (sizes checked before anything is decoded or copied), `snippets.json` and the `snippets` folder beside tack.json (never synced), and the full-size viewer |
@@ -45,7 +45,8 @@ so both can run side by side (with its own `TackData` folder, as above).
 | `tests/vectors/` | Shared test vectors: `sync.json` (model) and `sync-engine.json` (sync cycles, device files) from Tack Focus, `desktop-export.json` and `desktop-device.json` from Tack for Windows, `legacy-1.1.json` written by Tack 1.1 |
 | `tools/make_icon.py` | Regenerates `Assets/Tack.ico` and `docs/icon.png` (needs Pillow) |
 | `tools/winget-manifest.ps1` | Writes the winget manifests for a released version (prepared, not yet submitted: [docs/WINGET.md](docs/WINGET.md)) |
-| `build.ps1` | Builds the release zips into `artifacts/` |
+| `build.ps1` | Builds the release zips and the installer into `artifacts/` |
+| `installer/Tack.iss` | The installer (Inno Setup 6): the portable build's Tack.exe, for everyone or just one user, upgrades in place, never touches `%LOCALAPPDATA%\Tack` |
 | `web/` | Tack Focus, the web and mobile app (TypeScript, no runtime dependencies). See [web/README.md](web/README.md) |
 | `docs/` | `DESIGN.md` (why Tack is the way it is), `SYNC.md` (how sync works, live since 1.3.0 / 0.2.0), `LAUNCHER.md` (the radial launcher), `ONEDRIVE-SETUP.md` (the Microsoft app registration), `WINGET.md` (the winget package) |
 | `.github/workflows/` | `ci.yml` (build and tests), `release.yml` (Tack downloads on a tag on `main`), `web.yml` (Tack Focus tests and deploy to tackfocus.app) |
@@ -73,10 +74,11 @@ dotnet run --project tests/Tack.Tests -c Release            # sync model, tack.j
 cd web; npm test                                            # Tack Focus, including the shared vectors
 ```
 
-Two tools in the same project run a copy of Tack on your screen (its own temp data, `TACK_INSTANCE=uitestLook`,
-nothing typed or clicked): `-- --frames` times every animation frame by frame (see "Smooth enough, in
-software" in [docs/DESIGN.md](docs/DESIGN.md)), and `-- --screens` takes pictures of the panel's looks as the
-screen shows them. Run them before and after a change to motion or the glass.
+Three tools in the same project run a copy of Tack on your screen (its own temp data, `TACK_INSTANCE=uitestLook`
+unless you set another `uitest…` name, nothing typed or clicked): `-- --frames` times every animation frame by
+frame (see "Smooth enough, in software" in [docs/DESIGN.md](docs/DESIGN.md)), `-- --screens` takes pictures of
+the panel's looks as the screen shows them, and `-- --unfold` pictures of the panel opening and folding. Run
+them before and after a change to motion or the glass.
 
 The two apps must merge and sync identically, so Tack for Windows' `Sync` code is checked against
 vectors computed by Tack Focus's own code. If you change `web/src/model` or `web/src/sync`, regenerate
@@ -101,6 +103,17 @@ Bump `<Version>` in `src/Tack/Tack.csproj`, add the version's section to `CHANGE
 [release workflow](.github/workflows/release.yml) builds the downloads with `build.ps1` and publishes them
 to a GitHub Release whose text is that CHANGELOG section (`tools/release-notes.ps1`). It refuses a tag on
 any commit that isn't already on `main`, before building anything, so always tag after the merge.
+
+The installer (`Tack-x.y.z-setup.exe`, listed in `SHA256SUMS.txt` with the zips) comes from
+`installer/Tack.iss`. The workflow installs one pinned Inno Setup version, checked against its SHA-256;
+locally `build.ps1` uses Inno Setup 6 if it's installed (`winget install --scope user JRSoftware.InnoSetup`
+needs no administrator) and skips the installer with a warning if not. To try an installer on a PC that
+runs Tack, build it with `-InstallerTest <name>`: that one has its own AppId, name and uninstall entry,
+so it can't upgrade or uninstall a real install. Install it with `/CURRENTUSER /VERYSILENT /DIR=<temp folder>`,
+and set `TACK_INSTANCE` in the shell you run it from, so a Tack it starts doesn't just open yours.
+Closing a running Tack (Restart Manager, both in Setup and in the uninstaller) only ever looks at the
+Tack.exe in the install folder, so it can't close a Tack running from anywhere else.
+
 Until a version is released, its changes collect under `## Unreleased` at the top of `CHANGELOG.md`
 (and `web/CHANGELOG.md`); rename that heading to the version when you bump it.
 

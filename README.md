@@ -50,12 +50,14 @@ and gets out of the way the moment you're done.
   browser or a few lines of text onto the orb, and each becomes a task, without leaving the app you're in.
   A small paperclip on the task opens what you dropped.
 - **A launcher, if you want one.** Turn it on in Settings → Launcher, then Shift+click the orb for a ring
-  of your own shortcuts (apps, folders, websites, groups), or Shift+drag to one and let go. Drag on past an
-  app to choose the display it opens on. Turn on **Recent files** and resting on an app shows the files it
-  opened last (from its Jump List, or Revit's, AutoCAD's and Navisworks' own lists), to open one with that app.
+  of your own shortcuts (apps, folders, websites, groups), or Shift+drag to one and let go. Press Shift
+  as you rest on an app (or right-click it) to choose the display it opens on. Turn on **Recent files** and
+  resting on an app shows the files it opened last (from its Jump List, or Revit's, AutoCAD's and Navisworks'
+  own lists), to open one with that app.
   It's off by default, and while it's off nothing changes.
 - **Windows 11 glass, light or dark.** Native acrylic, rounded corners, your accent colour, smooth and
-  short animations. Follows Windows' light/dark mode, or pick one. Crisp on every monitor, at any scaling.
+  short animations: the panel grows out of the orb like an app opening on a phone, and folds back into
+  it. Follows Windows' light/dark mode, or pick one. Crisp on every monitor, at any scaling.
   Make the background more solid or more see-through, and, if you like, have Tack fade back while you
   aren't pointing at it.
 - **Sized to fit.** The Tasks panel grows and shrinks with your list (then scrolls), Notes keeps its own
@@ -72,6 +74,18 @@ and gets out of the way the moment you're done.
 
 Grab the latest `Tack-x.y.z-win-x64.zip` from [**Releases**](../../releases/latest), unzip it and run
 `Tack.exe`. Nothing to install, and no .NET runtime needed.
+
+**Rather install it?** `Tack-x.y.z-setup.exe` from the same release installs that same Tack.exe with a
+Start menu entry (a desktop one if you tick it) and an entry in **Settings → Apps** to uninstall it.
+It asks first whether to install for everyone, in `C:\Program Files\Tack` (needs an administrator), or
+just for you, in `%LOCALAPPDATA%\Programs\Tack` (no administrator). Running a newer setup upgrades it in
+place, closing Tack first and starting it again. Either way your tasks stay in `%LOCALAPPDATA%\Tack`,
+exactly as with the zip, so you can switch between the two; uninstalling leaves them there too (and
+removes *Start with Windows* only if it pointed at the installed Tack). For IT: `/ALLUSERS` or
+`/CURRENTUSER`, with `/VERYSILENT` for a silent install, and `/MERGETASKS=desktopicon` for the desktop
+shortcut. A silent upgrade starts Tack again if it closed it, so a script should wait for the setup
+process alone (`$p = Start-Process setup.exe -ArgumentList ... -PassThru; $p.WaitForExit()`), not
+`Start-Process -Wait`, which waits for that Tack to be quit too.
 
 - Windows 10 or 11, x64 (developed and tested on Windows 11). Frosted glass needs Windows 11 22H2 or
   later; elsewhere the panel is solid.
@@ -144,9 +158,10 @@ until there's a second one, Tack looks exactly as it always has.
   <img src="docs/screenshots/spaces-light.png" width="300" alt="The same space in the light theme, with the add box saying Add to Work" />
 </p>
 
-- Once there's a second space, a slim strip under the header lists **All · Main · Work · …**. Click one
-  (or press **Alt+1** to **Alt+9** for the spaces in order, **Alt+0** for All) to show it. The keys work
-  even while you're typing a task, and the draft stays. **+** at the end of the strip makes a space.
+- Once there's a second space, a slim strip of pills under the header lists **All**, **Main**, **Work**, …
+  with the space on show filled in your accent colour. Click one (or press **Alt+1** to **Alt+9** for the
+  spaces in order, **Alt+0** for All) to show it. The keys work even while you're typing a
+  task, and the draft stays. **+** at the end of the strip makes a space.
 - A space shows its own tasks and sheets, in the one order you set. New tasks and sheets go into the
   space on show ("Add to Work"); from All, into Main. **All** shows everything, each task with its space.
 - Right-click a task (or a sheet's name) → **Move to ▸** to put it in another space, or press **Ctrl+M**
@@ -195,14 +210,14 @@ and the files it opened last fan out beside it, up to 8 that are still there; dr
 click it) and it opens with that very app, on the display the shortcut uses. So a Revit 2024 model opens in
 Revit 2024 even where .rvt files open in another version. The files come from the app's Jump List, then
 Revit's, AutoCAD's and Navisworks' own recent lists; they're read as the launcher opens and never stored.
-Dragging on past the app without stopping still chooses a display.
+Press Shift as you rest on it to choose a display instead.
 
 <p align="center">
   <img src="docs/screenshots/launcher.png" width="300" alt="The launcher in the dark theme: six shortcuts in a ring around the orb, the top one highlighted and labelled Revit 2024" />
   &nbsp;
   <img src="docs/screenshots/launcher-light.png" width="300" alt="The launcher in the light theme" /><br/>
   <img src="docs/screenshots/launcher-display.png" width="300" alt="Choosing a display: a small map of two displays above the ring, captioned Open Revit 2024 on Display 2 (main)" /><br/>
-  <sub>Drag on past an app or folder and a map of your displays appears: let go on one to open it there
+  <sub>Press Shift as you rest on an app or folder (or right-click it) and a map of your displays appears: let go on one to open it there
   (best effort: some apps put themselves back).</sub>
 </p>
 
@@ -236,6 +251,7 @@ Dragging on past the app without stopping still chooses a display.
 | Shift+click / Shift+drag | The orb | Open the launcher / drag to a shortcut and let go (once it's on) |
 | Arrows or Tab, Enter, 1–6 | Launcher | Move between shortcuts, open one, open a position |
 | M or Shift+Enter, Esc | Launcher | Choose the display it opens on; step back, then close |
+| Shift (held while resting), right-click | Launcher shortcut | Choose the display it opens on (it never opens by itself) |
 | R, then ↑ / ↓ and Enter | Launcher | Show the app's recent files, open one (once Recent files is on) |
 
 ## Your data
@@ -298,7 +314,7 @@ Requires Windows and the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotn
 
 ```powershell
 dotnet run --project src/Tack                     # run in debug
-./build.ps1 -Version 1.0.0                        # release zips in ./artifacts
+./build.ps1 -Version 1.0.0                        # release zips (and installer, with Inno Setup 6) in ./artifacts
 cd web; npm install; npm run dev                  # Tack Focus at http://localhost:5173 (Node 22)
 ```
 

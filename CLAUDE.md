@@ -25,6 +25,10 @@ Tack what it promises to be, and how to work on this repo without touching anyon
   only from Settings → Launcher, attachments only by a drop onto the orb, snippets only by a paste in Notes. Launches
   (shortcuts, a task's paperclip, recent files) go through `ShortcutRules` and `ShellExecute` with arguments as their
   own field, never through `cmd` or a built command line.
+- **The installer changes where Tack.exe lives, never where its data lives.** An installed Tack, like the zip,
+  keeps its data in `%LOCALAPPDATA%\Tack` (no `TackData` beside it); setup and uninstall never touch that folder,
+  close only the Tack.exe in the install folder (Restart Manager, never by force), and remove the Run value
+  "Tack" only when it points at the installed exe. "Start Tack" after setup runs as the user, never elevated.
 - **Tack for Windows adopts only `<OneDrive>\Apps\Tack Focus` by itself.** Any other folder with Tack's marker is
   only suggested; the user picks it with Choose folder.
 
@@ -95,7 +99,9 @@ the share target's query (Tack Focus), launcher.json, attachments.json, snippets
 - Branch names, tags and PR text reach scripts only through `env:`, never `${{ }}` inside `run:`.
 - Install from lockfiles (`npm ci`). The deploy job's wrangler is locked in `.github/cloudflare` and installed with
   `--ignore-scripts`.
-- New or updated actions are pinned to a full commit SHA with the version in a comment. Checkouts use
+- New or updated actions are pinned to a full commit SHA with the version in a comment. Tools a workflow
+  downloads (Inno Setup in `release.yml`) are one exact version from the vendor's own release, checked against
+  a pinned SHA-256 before they run, and installed into the runner's temp folder. Checkouts use
   `persist-credentials: false` unless a step pushes with git.
 - Desktop releases come only from tags on commits already on main. `release.yml` checks this; don't remove the check.
 
@@ -106,7 +112,10 @@ the share target's query (Tack Focus), launcher.json, attachments.json, snippets
 - **Test copies run portable:** create a `TackData` folder next to the test exe, set `TACK_INSTANCE`, and set
   `"launchAtStartup": false` in its tack.json before the first start. Any Tack.exe that starts with launch at
   startup on rewrites `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` "Tack" to itself. Note that value
-  before, and set it back exactly afterwards.
+  before, and set it back exactly afterwards. Picture and timing harnesses (`--frames`, `--screens`, `--unfold`)
+  run their copy with a `uitest…` `TACK_INSTANCE`.
+- **Installer tests** use `build.ps1 -InstallerTest <name>` (its own AppId and uninstall entry), installed
+  `/CURRENTUSER /VERYSILENT /DIR=<temp folder>` with `TACK_INSTANCE` set, never for all users, and uninstalled after.
 - Playwright: if port 4173 is busy, set `E2E_PORT` to a free one. Don't stop servers you didn't start.
 - **Production:** normal page loads only. No load tests or probing against tackfocus.app, Microsoft or GitHub.
 - Never print, copy or read secret values: GitHub, Cloudflare and wrangler tokens, or what's in
