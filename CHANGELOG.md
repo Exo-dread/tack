@@ -14,6 +14,10 @@
   holding it after a Shift+drag, or press it in the open ring), or right-click it; M and Shift+Enter
   still work. Let go of Shift before resting and nothing pops up: releasing on the shortcut just opens
   it, and with Recent files on, a rest without Shift shows the app's files as before.
+- **Spaces as pills.** The strip under the header is a row of rounded pills instead of plain text with
+  dots: the space on show is filled with your accent colour, the others sit on a quiet fill, and the
+  fill moves across with a short fade when you switch (at once if Windows' animation effects are off).
+  Keys, Alt+0..9, scrolling, + and More spaces work as before.
 
 ## 1.7.0 (2026-10-25)
 

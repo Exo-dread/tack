@@ -18,35 +18,94 @@
     </WindowChrome.WindowChrome>
 
     <Window.Resources>
-        <!-- A space in the strip: plain text; the one on show in primary text over an accent underline
-             (as the Tasks/Notes tabs mark theirs), so it never rests on colour alone. -->
+        <!-- The spaces strip is a row of pills, 24 px tall and fully rounded. A space at rest sits on the theme's subtle
+             fill with a hairline; the one on show is filled with the accent, its name in the accent's own text colour,
+             so it never rests on colour alone (a filled shape among outlined ones). The filled layer cross-fades in
+             and settles from a touch smaller when the space changes (PanelWindow.SettlePill), if Windows animates. -->
+        <Style x:Key="PillFocusRing">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Border Margin="-3" CornerRadius="15" BorderThickness="1.5" BorderBrush="{DynamicResource AccentBorderBrush}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="SpaceTab" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Padding" Value="6,3" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="10,0" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource PillFocusRing}" />
+            <Setter Property="ContentTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}" MaxWidth="96" TextTrimming="CharacterEllipsis" />
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
                         <Grid>
-                            <Border x:Name="Bd" Background="Transparent" CornerRadius="5" Padding="{TemplateBinding Padding}">
-                                <ContentPresenter VerticalAlignment="Center" />
+                            <Border x:Name="Bd" CornerRadius="12" BorderThickness="1" Padding="{TemplateBinding Padding}"
+                                    Background="{DynamicResource SubtleFillBrush}" BorderBrush="{DynamicResource StrokeBrush}">
+                                <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center" />
                             </Border>
-                            <Border x:Name="Underline" Height="2" CornerRadius="1" Margin="6,0,6,0" VerticalAlignment="Bottom"
-                                    Background="{DynamicResource AccentBrush}" Visibility="Hidden" />
+                            <Border x:Name="Sel" CornerRadius="12" BorderThickness="1" Padding="{TemplateBinding Padding}" Opacity="0"
+                                    Background="{DynamicResource AccentBrush}" BorderBrush="{DynamicResource AccentBrush}"
+                                    TextElement.Foreground="{DynamicResource OnAccentBrush}" RenderTransformOrigin="0.5,0.5">
+                                <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center" />
+                            </Border>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillBrush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource StrokeBrush}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource StrokeStrongBrush}" />
                                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                             </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillBrush}" />
+                            </Trigger>
                             <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Sel" Property="Opacity" Value="1" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- The strip's buttons (+, More spaces...) as pills of the same kind. -->
+        <Style x:Key="SpaceButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="MinWidth" Value="24" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource PillFocusRing}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" CornerRadius="12" BorderThickness="1" Padding="{TemplateBinding Padding}"
+                                Background="{DynamicResource SubtleFillBrush}" BorderBrush="{DynamicResource StrokeBrush}">
+                            <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource StrokeBrush}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource StrokeStrongBrush}" />
                                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-                                <Setter TargetName="Underline" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -57,12 +116,12 @@
         <!-- The strip's inline name entry for a new space. Placeholder text comes from Tag. -->
         <Style x:Key="StripNameBox" TargetType="TextBox" BasedOn="{StaticResource GhostTextBox}">
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="Padding" Value="10,0" />
             <Setter Property="TextWrapping" Value="NoWrap" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TextBox">
-                        <Border CornerRadius="5" BorderThickness="1" Background="{DynamicResource ControlFillFocusBrush}"
+                        <Border CornerRadius="12" BorderThickness="1" Background="{DynamicResource ControlFillFocusBrush}"
                                 BorderBrush="{DynamicResource AccentBorderBrush}">
                             <Grid>
                                 <TextBlock x:Name="Placeholder" Text="{TemplateBinding Tag}" Margin="{TemplateBinding Padding}"
@@ -188,23 +247,24 @@
             </Grid>
 
             <!-- ============ Spaces strip: only once a second space exists ============ -->
-            <!-- The spaces scroll sideways (the wheel too) and fade at an edge with more beyond it;
-                 + stays in sight at the end. -->
-            <Grid x:Name="Strip" Grid.Row="1" Height="28" Margin="10,0,10,2" Visibility="Collapsed">
+            <!-- A row of pills that scrolls sideways (the wheel too) and fades at an edge with more beyond it;
+                 + stays in sight at the end. Room around the pills for their focus rings, which the scroller clips. -->
+            <Grid x:Name="Strip" Grid.Row="1" Height="32" Margin="13,0,13,4" Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <ScrollViewer x:Name="StripScroller" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Focusable="False"
                               PreviewMouseWheel="StripScroller_PreviewMouseWheel" ScrollChanged="StripScroller_ScrollChanged">
-                    <c:GroupPanel x:Name="StripTabs" Orientation="Horizontal" AutomationProperties.Name="Spaces"
+                    <c:GroupPanel x:Name="StripTabs" Orientation="Horizontal" Margin="3,0" AutomationProperties.Name="Spaces"
                                   KeyboardNavigation.DirectionalNavigation="None"
                                   PreviewKeyDown="StripTabs_PreviewKeyDown" />
                 </ScrollViewer>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="NewSpaceButton" Style="{StaticResource IconButton}" Width="24" Height="24" FontSize="10" Margin="2,0,0,0"
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,3,0">
+                    <Button x:Name="NewSpaceButton" Style="{StaticResource SpaceButton}" Width="24" Padding="0" Margin="3,0,0,0"
+                            FontFamily="{StaticResource IconFont}" FontWeight="Normal" FontSize="10"
                             Content="&#xE710;" Click="NewSpace_Click" ToolTip="New space" AutomationProperties.Name="New space" />
-                    <TextBox x:Name="NewSpaceBox" Style="{StaticResource StripNameBox}" Width="120" Height="24" Margin="4,0,0,0"
+                    <TextBox x:Name="NewSpaceBox" Style="{StaticResource StripNameBox}" Width="128" Height="24" Margin="3,0,0,0"
                              Tag="Name, then Enter" Visibility="Collapsed" AutomationProperties.Name="New space name"
                              PreviewKeyDown="NewSpaceBox_PreviewKeyDown" LostKeyboardFocus="NewSpaceBox_LostKeyboardFocus" />
                 </StackPanel>

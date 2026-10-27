@@ -154,7 +154,8 @@ until there's a second one, Tack looks exactly as it always has.
   <img src="docs/screenshots/spaces-light.png" width="300" alt="The same space in the light theme, with the add box saying Add to Work" />
 </p>
 
-- Once there's a second space, a slim strip under the header lists **All · Main · Work · …**. Click one
+- Once there's a second space, a slim strip of pills under the header lists **All**, **Main**, **Work**, … with
+  the space on show filled in your accent colour. Click one
   (or press **Alt+1** to **Alt+9** for the spaces in order, **Alt+0** for All) to show it. The keys work
   even while you're typing a task, and the draft stays. **+** at the end of the strip makes a space.
 - A space shows its own tasks and sheets, in the one order you set. New tasks and sheets go into the
