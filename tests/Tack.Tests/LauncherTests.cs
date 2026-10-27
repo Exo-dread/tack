@@ -29,7 +29,8 @@ internal static class LauncherTests
         yield return ("launcher: Shift+drag to a shortcut and release launches it", GestureLaunch);
         yield return ("launcher: releasing a gesture over nothing, an empty slot or the orb cancels", GestureCancels);
         yield return ("launcher: groups open while dragging, and releasing on a group just leaves it open", GestureGroups);
-        yield return ("launcher: drag on past an app, onto a display, release: launches there", GestureDisplay);
+        yield return ("launcher: Shift held on an app while dragging, onto a display, release: launches there", GestureDisplay);
+        yield return ("launcher: the display picker never opens from a rest or a drag past, only with Shift or a right-click", PickerNeedsShift);
         yield return ("launcher: launch modes (normal, preferred, ask) and a disconnected preferred display", LaunchModes);
         yield return ("launcher: click mode: click, click outside, press-and-slide-off, right-click for displays", ClickMode);
         yield return ("launcher: a missing target says why and launches nothing", MissingTarget);
@@ -562,39 +563,133 @@ internal static class LauncherTests
         var app = At(s, 1);
         Drag(s, app);
         Check.True(s.Selector == null, "not straight away");
-        // Keep going outward past the app: the picker appears.
-        var beyond = s.Scene.Orb.Offset(s.Scene.Orb.AngleTo(app), s.Scene.Orb.DistanceTo(app) + s.Scene.ItemRadius * 0.9);
-        Drag2(s, app, beyond);
-        Check.Equal(new NodeRef(1), s.Selector ?? new NodeRef(-1), "dragging on past the app reveals the display picker");
+        s.Tick(16 * 6 + 100, shift: true); // the drag ended at 96 ms
+        Check.True(s.Selector == null, "not before the rest");
+        // Shift still held (as it was for the Shift+drag) while resting on the app: the picker appears.
+        s.Tick(16 * 6 + LauncherSession.GestureDwellMs + 1, shift: true);
+        Check.Equal(new NodeRef(1), s.Selector ?? new NodeRef(-1), "resting on the app with Shift held reveals the display picker");
         var tile = s.Scene.TilesFor(new NodeRef(1))[1].Center;
-        Drag2(s, beyond, tile);
+        Drag2(s, app, tile);
         Check.Equal(new Hit(HitKind.Display, default, 1), s.Highlight, "the second display is highlighted");
         var r = s.Release(tile, 1600);
         Check.Equal(Outcome.Launch, r.Outcome, "release launches");
         Check.Equal(1, r.Launch!.Display ?? -1, "on that display");
 
-        // Hovering (no outward movement) reveals it after the dwell.
+        // With the picker showing, releasing on the app itself (not a display) still uses its default.
         var s2 = Session(displays: ds);
         Drag(s2, At(s2, 1));
-        s2.Tick(16 * 6 + 100); // the drag ended at 96 ms
-        Check.True(s2.Selector == null, "not before the dwell");
-        s2.Tick(16 * 6 + LauncherSession.GestureDwellMs + 1);
-        Check.Equal(new NodeRef(1), s2.Selector ?? new NodeRef(-1), "after the dwell");
-        // Releasing on the app itself (not a display) still uses its default.
+        s2.Tick(16 * 6 + LauncherSession.GestureDwellMs + 1, shift: true);
+        Check.Equal(new NodeRef(1), s2.Selector ?? new NodeRef(-1), "picker showing");
         Check.True(s2.Release(At(s2, 1), 2000).Launch is { Display: null }, "release on the app: default behaviour");
 
         // One display: no picker, ever.
         var s3 = Session();
         Drag(s3, At(s3, 1));
         Drag2(s3, At(s3, 1), s3.Scene.Orb.Offset(s3.Scene.Orb.AngleTo(At(s3, 1)), 200));
-        s3.Tick(10_000);
+        s3.Tick(10_000, shift: true);
         Check.True(s3.Selector == null, "single display: no picker");
 
-        // Websites never get a picker (their windows belong to the browser).
+        // Websites and groups never get a picker (a website's window belongs to the browser).
         var s4 = Session(displays: ds);
         Drag(s4, At(s4, 2));
-        s4.Tick(10_000);
+        s4.Tick(10_000, shift: true);
         Check.True(s4.Selector == null, "no picker for websites");
+        var s5 = Session(displays: ds);
+        Drag(s5, At(s5, 0));
+        s5.Tick(10_000, shift: true);
+        Check.True(s5.Selector == null && s5.OpenGroup == 0, "no picker for a group: it just stays open");
+    }
+
+    /// <summary>
+    /// The picker never opens by itself: not from resting on a shortcut, nor from dragging on past it. It opens
+    /// on a right-click (click mode), with Shift held while resting (either mode), or with M / Shift+Enter.
+    /// </summary>
+    private static void PickerNeedsShift()
+    {
+        var ds = new[] { Main, Left };
+
+        // Gesture: resting on an app with Shift let go (before the rest): no picker, however long.
+        var rest = Session(displays: ds);
+        Drag(rest, At(rest, 1));
+        for (long t = 100; t < 5000; t += 40) rest.Tick(t, shift: false);
+        Check.True(rest.Selector == null, "gesture: resting without Shift opens no picker");
+        var r = rest.Release(At(rest, 1), 5000);
+        Check.True(r.Outcome == Outcome.Launch && r.Launch!.Node == new NodeRef(1) && r.Launch.Display == null, "and releasing on it opens it normally");
+
+        // Gesture: dragging on past an app (outward) no longer reveals its picker.
+        var past = Session(displays: ds);
+        var app = At(past, 1);
+        Drag(past, app);
+        var beyond = past.Scene.Orb.Offset(past.Scene.Orb.AngleTo(app), past.Scene.Orb.DistanceTo(app) + past.Scene.ItemRadius * 0.9);
+        Drag2(past, app, beyond);
+        Check.True(past.Selector == null, "dragging on past an app reveals nothing");
+        Check.Equal(new Hit(HitKind.Item, new NodeRef(1)), past.Highlight, "the app stays highlighted");
+        var pr = past.Release(beyond, 1300);
+        Check.True(pr.Launch is { Display: null } && pr.Launch.Node == new NodeRef(1), "released there: opens normally");
+
+        // Gesture: passing over an app with Shift held, without resting on it, opens nothing either.
+        var pass = Session(displays: ds);
+        Drag(pass, At(pass, 1));
+        pass.Tick(16 * 6 + LauncherSession.GestureDwellMs - 40, shift: true);
+        Drag2(pass, At(pass, 1), At(pass, 2));
+        pass.Tick(1000 + 16 * 8 + 10, shift: true);
+        Check.True(pass.Selector == null, "passing by with Shift held: no picker");
+
+        // Gesture: Shift held for the rest, then let go: the picker stays (it was asked for).
+        var held = Session(displays: ds);
+        Drag(held, At(held, 1));
+        held.Tick(16 * 6 + LauncherSession.GestureDwellMs + 1, shift: true);
+        held.Tick(16 * 6 + LauncherSession.GestureDwellMs + 500, shift: false);
+        Check.Equal(new NodeRef(1), held.Selector ?? new NodeRef(-1), "letting go of Shift afterwards keeps the picker");
+
+        LauncherSession Open()
+        {
+            var s = Session(displays: ds);
+            s.Begin(s.Scene.Orb, 0);
+            s.Release(s.Scene.Orb, 80);
+            return s;
+        }
+
+        // Click mode: resting on a shortcut without Shift opens nothing.
+        var a = Open();
+        a.Move(At(a, 1), 1000);
+        for (long t = 1000; t < 6000; t += 40) a.Tick(t, shift: false);
+        Check.True(a.Selector == null, "click mode: resting without Shift opens no picker");
+        a.PointerDown(At(a, 1));
+        Check.True(a.PointerUp(At(a, 1)).Launch is { Display: null }, "clicking it opens it normally");
+
+        // Click mode: Shift held while resting opens it (after the rest, not while passing by).
+        var b = Open();
+        b.Move(At(b, 1), 1000);
+        b.Tick(1000 + LauncherSession.ClickDwellMs - 40, shift: true);
+        Check.True(b.Selector == null, "not before the rest");
+        b.Tick(1000 + LauncherSession.ClickDwellMs + 1, shift: true);
+        Check.Equal(new NodeRef(1), b.Selector ?? new NodeRef(-1), "click mode: Shift held on a resting shortcut opens its picker");
+        var tile = b.Scene.TilesFor(new NodeRef(1))[1].Center;
+        b.Move(tile, 2000);
+        b.PointerDown(tile);
+        Check.True(b.PointerUp(tile).Launch is { Display: 1 }, "then a display: launches there");
+
+        // Click mode: pressing Shift after already resting opens it at once.
+        var c = Open();
+        c.Move(At(c, 1), 1000);
+        c.Tick(3000, shift: false);
+        Check.True(c.Selector == null, "rested, no Shift yet");
+        c.Tick(3040, shift: true);
+        Check.Equal(new NodeRef(1), c.Selector ?? new NodeRef(-1), "Shift pressed while resting: the picker");
+
+        // Click mode: right-click still opens it straight away.
+        var d = Open();
+        d.Move(At(d, 1), 1000);
+        d.SecondaryClick(At(d, 1));
+        Check.Equal(new NodeRef(1), d.Selector ?? new NodeRef(-1), "right-click: the picker");
+
+        // A highlight moved with the keys (Shift+Tab, say) never opens it, even with Shift held.
+        var e = Open();
+        e.Key(LauncherKey.Next);
+        e.Key(LauncherKey.Next);
+        for (long t = 100; t < 3000; t += 40) e.Tick(t, shift: true);
+        Check.True(e.Selector == null && e.Highlight == new Hit(HitKind.Item, new NodeRef(1)), "keyboard highlight + Shift: no picker");
     }
 
     private static void LaunchModes()
@@ -673,7 +768,9 @@ internal static class LauncherTests
         var f = Open([Main, Left]);
         f.Move(At(f, 1), 1000);
         f.Tick(1000 + LauncherSession.ClickDwellMs + 1);
-        Check.Equal(new NodeRef(1), f.Selector ?? new NodeRef(-1), "resting on a shortcut offers the picker without forcing it");
+        Check.True(f.Selector == null, "resting on a shortcut opens no picker by itself");
+        f.Tick(1000 + LauncherSession.ClickDwellMs + 41, shift: true);
+        Check.Equal(new NodeRef(1), f.Selector ?? new NodeRef(-1), "with Shift held it offers the picker without forcing it");
         Check.True(Click(f, At(f, 1)).Launch is { Display: null }, "clicking the shortcut itself still opens it normally");
 
         var g = Open();
@@ -793,12 +890,14 @@ internal static class LauncherTests
         Check.Equal(SessionResult.Nothing, d.Move(d.Scene.Orb, t += 40), "the pointer didn't move: nothing changes");
         Check.Equal(new Hit(HitKind.Item, new NodeRef(1)), d.Highlight, "the keyboard's highlight stays");
 
-        // Resting the pointer on a shortcut still offers its picker (see ClickMode), keyboard or not.
+        // Resting the pointer on a shortcut with Shift held still offers its picker (see ClickMode), keyboard or not.
         var e = Open();
         e.Key(LauncherKey.Next);
         e.Move(At(e, 1), t += 40);
         Wait(e, LauncherSession.ClickDwellMs + 80);
-        Check.Equal(new NodeRef(1), e.Selector ?? new NodeRef(-1), "the pointer resting on an app offers the picker");
+        Check.True(e.Selector == null, "resting alone: no picker");
+        e.Tick(t += 40, shift: true);
+        Check.Equal(new NodeRef(1), e.Selector ?? new NodeRef(-1), "the pointer resting on an app, with Shift held, offers the picker");
     }
 
     private static void DamagedMonitorRef()

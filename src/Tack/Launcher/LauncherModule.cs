@@ -208,7 +208,7 @@ internal sealed class LauncherModule : IOrbLauncher, IDisposable
         window.Refresh();
         window.PlayOpen();
 
-        // While open (and only then): a light tick for hover delays, and to notice Esc during a gesture
+        // While open (and only then): a light tick for hover delays, and to notice Esc (and Shift) during a gesture
         // (the user's app has the keyboard then; Tack doesn't hook it).
         _tick = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(40) };
         _tick.Tick += (_, _) => Guard(OnTick);
@@ -240,7 +240,11 @@ internal sealed class LauncherModule : IOrbLauncher, IDisposable
             Apply(_session.Key(LauncherKey.Escape));
             return;
         }
-        Apply(_session.Tick(Now));
+        // Shift is read the same way (no hook): held while resting on a shortcut, it opens the display picker.
+        bool shift;
+        try { shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0; }
+        catch { shift = false; }
+        Apply(_session.Tick(Now, shift));
     }
 
     private void Apply(SessionResult? result)
