@@ -9,6 +9,11 @@
   upgrades it in place, closing Tack first (only the installed one) and starting it again. Your tasks
   stay in `%LOCALAPPDATA%\Tack`, as with the zip, and uninstalling leaves them there. The zip is
   unchanged.
+- **The launcher's display map waits to be asked.** Resting on an app or folder, or dragging on past
+  it, no longer opens the map of your displays by itself. Hold **Shift** while you rest on it (keep
+  holding it after a Shift+drag, or press it in the open ring), or right-click it; M and Shift+Enter
+  still work. Let go of Shift before resting and nothing pops up: releasing on the shortcut just opens
+  it, and with Recent files on, a rest without Shift shows the app's files as before.
 
 ## 1.7.0 (2026-10-25)
 

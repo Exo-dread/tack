@@ -12,9 +12,9 @@ behaves as before, nothing extra is loaded beyond reading a settings file if one
 | **Open (click)** | **Shift+click** the orb. The shortcuts expand around it. Click one to open it; click a group to fan out its shortcuts. Click the orb again, press **Esc**, or click anywhere else to close. |
 | **Open (gesture)** | **Shift+press** the orb and, without letting go, drag toward a shortcut (it highlights) and release. Release over nothing, over an empty position or back on the orb, and nothing happens. |
 | **Groups** | Drag onto a group and its shortcuts fan out beyond it; carry on to one and release. Releasing on the group itself just leaves it open. |
-| **Choose a display** | Keep dragging *past* an app or folder (or rest on it a moment) and a small map of your displays appears; drag onto one and release. With clicks: right-click a shortcut, or rest on it. Shortcuts can also always ask, or remember a display (Settings). |
-| **Recent files** (optional) | With **Settings → Launcher → Recent files** on, rest on an app a moment and the files it opened last fan out beside it (up to 8); drag onto one and release, or click it, and it opens with that app. Dragging on past the app without stopping still shows the displays. With clicks: rest on the app, or press **R**. Off by default: resting then shows the displays, as before. |
-| **Keyboard** (after Shift+click) | Arrows/Tab move, **Enter** or **Space** opens, **M**, **Shift+Enter** or the Menu key shows the displays, **R** shows an app's recent files, **1–6** (top row or number pad) open a position, **Esc** steps back and closes, **Alt+F4** closes. The display map never opens by itself while you use the keys (only when the pointer rests on a shortcut). |
+| **Choose a display** | Keep **Shift** held while you rest on an app or folder a moment and a small map of your displays appears; drag onto one and release. With clicks: right-click a shortcut, or hold Shift while the pointer rests on it. The map never opens by itself: passing over a shortcut, resting on it or dragging on past it without Shift opens nothing, and releasing on it opens it normally. Shortcuts can also always ask, or remember a display (Settings). |
+| **Recent files** (optional) | With **Settings → Launcher → Recent files** on, rest on an app a moment (without Shift) and the files it opened last fan out beside it (up to 8); drag onto one and release, or click it, and it opens with that app. While dragging, let go of Shift before resting to see them (Shift held shows the displays). With clicks: rest on the app, or press **R**. Off by default: resting then opens nothing. |
+| **Keyboard** (after Shift+click) | Arrows/Tab move, **Enter** or **Space** opens, **M**, **Shift+Enter** or the Menu key shows the displays, **R** shows an app's recent files, **1–6** (top row or number pad) open a position, **Esc** steps back and closes, **Alt+F4** closes. The display map never opens by itself while you use the keys, Shift+Tab included (only M, Shift+Enter, or Shift held while the pointer rests on a shortcut). |
 | **Narrator** | Each shortcut and display is a button with its name and what it opens; the keyboard focus follows the highlight, and messages ("can't be found", "Opening…") are read out. |
 
 Shift+click and Shift+drag are told apart by movement only: a press that never moves more than 7 DIPs
@@ -109,9 +109,9 @@ rest a moment, drag onto the model, let go.
   can be written by any program you run. Files on network shares aren't checked (Tack never contacts a server by
   itself; Windows says so if one has gone). If Windows is set not to keep recently opened items (Settings →
   Personalization → Start, or the policy), there are none, from any list.
-- **Gestures**: resting on an app with recent files (260 ms dragging, 550 ms with clicks) shows them instead of the
-  display picker; dragging on past the app *without* resting still opens the picker, and so does right-click. An
-  app with none offers the picker after the rest, as before. While the card is out, passing over a neighbouring
+- **Gestures**: resting on an app with recent files (260 ms dragging, 550 ms with clicks) without Shift shows
+  them; with Shift held, the rest opens the display picker instead (and puts a card that's out away), and so does
+  right-click. An app with none shows nothing after a rest without Shift. While the card is out, passing over a neighbouring
   shortcut doesn't put it away (as with an open group); resting on the neighbour, or heading back toward the orb,
   does. Releasing on the app itself opens the app. Keys: **R** shows them, arrows move, **Enter** opens, **M**
   chooses a display, **Esc** steps back.

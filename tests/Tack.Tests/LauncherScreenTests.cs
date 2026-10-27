@@ -20,6 +20,7 @@ internal static class LauncherScreenTests
         yield return ("launcher on screen: every shortcut and display tile is a named button Narrator can find and invoke", Automation);
         yield return ("launcher on screen: a shortcut's name sits outward, clear of the orb and of the shortcuts beside it", LabelsOutward);
         yield return ("launcher on screen: with the display picker open, its caption names the shortcut and display, and no label covers it", PickerCaption);
+        yield return ("launcher on screen: resting on a shortcut draws no display picker; with Shift held it appears", PickerOnlyWithShift);
         yield return ("launcher on screen: why a shortcut can't open is shown in full, clear of the orb and the other shortcuts", MessageInFull);
         yield return ("launcher settings on screen: '1 shortcut', a damaged entry opens, the main display is named, no error before anything's typed", SettingsCard);
     }
@@ -231,6 +232,28 @@ internal static class LauncherScreenTests
                 Check.Equal("Open File Explorer on Display 2 (main)", caption.Text, $"{spot}: the caption says where it'll open");
                 Check.True(l.Label.Visibility != Visibility.Visible, $"{spot}: still no floating label");
             }
+            Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+        });
+    }
+
+    private static void PickerOnlyWithShift()
+    {
+        Ui.Run(errors =>
+        {
+            var (spot, on, orb) = Spots[0];
+            using var l = Open(on, orb);
+            var explorer = new NodeRef(1);
+            bool PickerShown() => Ui.Descendants<TextBlock>(l.Window).Any(t => t.IsVisible && t.Text.StartsWith("Open ", StringComparison.Ordinal));
+
+            l.Session.Move(l.Scene.CenterOf(explorer), 1000);
+            for (long t = 1000; t <= 1000 + LauncherSession.ClickDwellMs * 4; t += 40) l.Session.Tick(t, shift: false);
+            l.Refresh();
+            Check.True(l.Session.Selector == null && !PickerShown(), $"{spot}: a long rest alone draws no picker");
+            Check.Equal(new Hit(HitKind.Item, explorer), l.Session.Highlight, $"{spot}: just the highlight");
+
+            l.Session.Tick(1000 + LauncherSession.ClickDwellMs * 4 + 40, shift: true);
+            l.Refresh();
+            Check.True(l.Session.Selector == explorer && PickerShown(), $"{spot}: Shift held: the picker and its caption");
             Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
         });
     }

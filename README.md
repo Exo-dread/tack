@@ -50,8 +50,8 @@ and gets out of the way the moment you're done.
   browser or a few lines of text onto the orb, and each becomes a task, without leaving the app you're in.
   A small paperclip on the task opens what you dropped.
 - **A launcher, if you want one.** Turn it on in Settings → Launcher, then Shift+click the orb for a ring
-  of your own shortcuts (apps, folders, websites, groups), or Shift+drag to one and let go. Drag on past an
-  app to choose the display it opens on. Turn on **Recent files** and resting on an app shows the files it
+  of your own shortcuts (apps, folders, websites, groups), or Shift+drag to one and let go. Keep Shift held
+  as you rest on an app (or right-click it) to choose the display it opens on. Turn on **Recent files** and resting on an app shows the files it
   opened last (from its Jump List, or Revit's, AutoCAD's and Navisworks' own lists), to open one with that app.
   It's off by default, and while it's off nothing changes.
 - **Windows 11 glass, light or dark.** Native acrylic, rounded corners, your accent colour, smooth and
@@ -205,14 +205,14 @@ and the files it opened last fan out beside it, up to 8 that are still there; dr
 click it) and it opens with that very app, on the display the shortcut uses. So a Revit 2024 model opens in
 Revit 2024 even where .rvt files open in another version. The files come from the app's Jump List, then
 Revit's, AutoCAD's and Navisworks' own recent lists; they're read as the launcher opens and never stored.
-Dragging on past the app without stopping still chooses a display.
+Hold Shift as you rest on it to choose a display instead.
 
 <p align="center">
   <img src="docs/screenshots/launcher.png" width="300" alt="The launcher in the dark theme: six shortcuts in a ring around the orb, the top one highlighted and labelled Revit 2024" />
   &nbsp;
   <img src="docs/screenshots/launcher-light.png" width="300" alt="The launcher in the light theme" /><br/>
   <img src="docs/screenshots/launcher-display.png" width="300" alt="Choosing a display: a small map of two displays above the ring, captioned Open Revit 2024 on Display 2 (main)" /><br/>
-  <sub>Drag on past an app or folder and a map of your displays appears: let go on one to open it there
+  <sub>Hold Shift as you rest on an app or folder (or right-click it) and a map of your displays appears: let go on one to open it there
   (best effort: some apps put themselves back).</sub>
 </p>
 
@@ -246,6 +246,7 @@ Dragging on past the app without stopping still chooses a display.
 | Shift+click / Shift+drag | The orb | Open the launcher / drag to a shortcut and let go (once it's on) |
 | Arrows or Tab, Enter, 1–6 | Launcher | Move between shortcuts, open one, open a position |
 | M or Shift+Enter, Esc | Launcher | Choose the display it opens on; step back, then close |
+| Shift (held while resting), right-click | Launcher shortcut | Choose the display it opens on (it never opens by itself) |
 | R, then ↑ / ↓ and Enter | Launcher | Show the app's recent files, open one (once Recent files is on) |
 
 ## Your data

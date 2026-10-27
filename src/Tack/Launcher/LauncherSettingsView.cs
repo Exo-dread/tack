@@ -372,7 +372,7 @@ internal sealed class LauncherSettingsView : UserControl
         // A little more room under the choices than under a text field (whose frame sets it apart).
         var underChoices = new Thickness(0, 4, 0, 10);
         if (displays.Count < 2) panel.Children.Add(Hint("Connect another display to choose where this opens.", underChoices));
-        else panel.Children.Add(Hint("Either way, Shift+drag past a shortcut (or right-click it) to pick a display just this once. Some apps put themselves back where they were; then Tack leaves them.", underChoices));
+        else panel.Children.Add(Hint("Either way, hold Shift as you rest on a shortcut (or right-click it) to pick a display just this once. Some apps put themselves back where they were; then Tack leaves them.", underChoices));
         return panel;
     }
 
