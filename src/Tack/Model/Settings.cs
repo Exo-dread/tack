@@ -31,6 +31,7 @@ public sealed class Settings : Observable
     private double? _panelBackgroundGlass;
     private double? _panelBackgroundSolid;
     private bool _fadeWhenIdle;
+    private bool _formatNotes = true;
 
     // ---- Preferences ----
     public bool LaunchAtStartup { get => _launchAtStartup; set => Set(ref _launchAtStartup, value); }
@@ -80,6 +81,18 @@ public sealed class Settings : Observable
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool FadeWhenIdle { get => _fadeWhenIdle; set => Set(ref _fadeWhenIdle, value); }
+
+    /// <summary>
+    /// Format notes (on by default): a note shows formatted while you read it (docs/NOTES-MARKDOWN.md). Off, notes are
+    /// always the plain editor, as in 1.8.0. This PC only: never synced, imported or exported.
+    /// </summary>
+    [JsonIgnore]
+    public bool FormatNotes { get => _formatNotes; set => Set(ref _formatNotes, value); }
+
+    /// <summary>tack.json's "formatNotes": written only when it's off, so a file that never turned it off stays as it was.</summary>
+    [JsonPropertyName("formatNotes")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? FormatNotesSaved { get => _formatNotes ? null : false; set => FormatNotes = value ?? true; }
 
     // ---- Remembered state ----
 
