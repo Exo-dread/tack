@@ -88,14 +88,21 @@ internal static class HostileFileTests
         const int N = 100_000;
         static string Repeat(string s, int n) => new StringBuilder(s.Length * n).Insert(0, s, n).ToString();
         static double Ms(long ticks) => ticks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-        static long Time(string text)
+        // The best of three. With noGc, inside a region without collections: what the reading itself costs. (A
+        // collection's pause grows with what's alive, the half-read note included, so it isn't linear in the text:
+        // timed with it, twice the text can cost three or four times as much. Without it, it costs twice.)
+        static long Time(string text, bool noGc = false)
         {
             long best = long.MaxValue;
             for (int round = 0; round < 3; round++)
             {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                bool region = noGc && GC.TryStartNoGCRegion(200_000_000);
                 var clock = System.Diagnostics.Stopwatch.StartNew();
                 Markdown.Parse(text);
                 best = Math.Min(best, clock.ElapsedTicks);
+                if (region && System.Runtime.GCSettings.LatencyMode == System.Runtime.GCLatencyMode.NoGCRegion) GC.EndNoGCRegion();
             }
             return best;
         }
@@ -103,7 +110,7 @@ internal static class HostileFileTests
         // What 100,000 letters cost: the yardstick (the best of three, after a warm-up).
         string letters = new('a', N);
         Markdown.Parse(letters);
-        double baseline = Ms(Time(letters));
+        double baseline = Ms(Time(letters, noGc: true));
 
         var cases = new (string Name, string Text)[]
         {
@@ -138,9 +145,19 @@ internal static class HostileFileTests
         };
         foreach (var (name, text) in cases)
         {
-            double took = Ms(Time(text));
-            double per = took / Math.Max(1, text.Length) * N;
-            Check.True(per <= Math.Max(40, 25 * baseline), $"{name}: {took:F1} ms for {text.Length:N0} characters ({per:F1} ms per 100,000; letters {baseline:F1})");
+            // Linear: twice the text costs about twice as much as the first half of it; and, collections and all, never
+            // more than a few hundred ms per 100,000 characters, however many delimiters it has.
+            double took = Ms(Time(text, noGc: true)), half = Ms(Time(text[..(text.Length / 2)], noGc: true));
+            Check.True(took <= 3 * half + 2, $"{name}: not linear: {took:F1} ms for all of it, {half:F1} ms for half");
+            double all = Ms(Time(text));
+            double per = all / Math.Max(1, text.Length) * N;
+            Check.True(per <= 250, $"{name}: {all:F1} ms for {text.Length:N0} characters ({per:F1} ms per 100,000; letters {baseline:F1})");
+        }
+        // A run of 100,000 * (or [ or `) costs no more than 100,000 letters, give or take the noise of a fraction of a ms.
+        foreach (char c in new[] { '*', '[', '`', '_', '~' })
+        {
+            double run = Ms(Time(new string(c, N), noGc: true));
+            Check.True(run <= 3 * baseline + 2, $"100,000 {c}: {run:F2} ms, letters {baseline:F2}");
         }
 
         // A whole megabyte of everything at once: the longest note any device takes in.
