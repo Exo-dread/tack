@@ -84,6 +84,19 @@ describe('Markdown: hostile notes', () => {
     expectLinear('[*'.repeat(50_000));
   });
 
+  it('40,000 [ around formatting 8 deep: a link over the depth cap fails once, not once per bracket around it', () => {
+    const n = 39_993;
+    const text = `${'['.repeat(n)}${'*'.repeat(16)}x${'*'.repeat(16)}${'](x)'.repeat(n)}`;
+    expect(text.length).toBe(199_998);
+    expectLinear(text);
+    expect(depthOf(parse(text)).inline).toBeLessThanOrEqual(8);
+  });
+
+  it('closers whose floor was matched away later still stop there (a_ ~~** _* 20,000 times)', () => {
+    expectLinear('a_ ~~** _*'.repeat(20_000));
+    expectLinear('a* ~~__ *_'.repeat(20_000));
+  });
+
   it('backtick runs of every length, none closing', () => {
     let text = '';
     for (let n = 1; text.length < 100_000; n++) text += `${'`'.repeat(n)}a`;

@@ -470,6 +470,8 @@ interface Node {
 
 interface Delim {
   node: Node;
+  /** Creation order: the stack is always in this order, so a floor is an index, not a delimiter that may be gone. */
+  idx: number;
   ch: number;
   n: number;
   open: boolean;
@@ -512,6 +514,7 @@ class InlineParser {
   private delims: Delim | null = null; // top of the delimiter stack
   private brackets: Bracket | null = null;
   private seq = 0;
+  private delimSeq = 0;
   /** Brackets opened before this one can't make links (a link holds no link). */
   private linkedBelow = -1;
   /** Backtick runs by length: where each starts, and how far through them a search has got. */
@@ -640,7 +643,7 @@ class InlineParser {
       close &&= !(after >= 0 && isWord(after));
     }
     if (open || close) {
-      const d: Delim = { node, ch: c, n, open, close, prev: this.delims, next: null };
+      const d: Delim = { node, idx: this.delimSeq++, ch: c, n, open, close, prev: this.delims, next: null };
       if (this.delims) this.delims.next = d;
       this.delims = d;
     }
@@ -669,6 +672,8 @@ class InlineParser {
     let depth = 0;
     for (let n = opener.node.next; n; n = n.next) depth = Math.max(depth, n.depth);
     if (depth + 1 > MAX_INLINE_DEPTH) {
+      // Brackets around this one would fail the same way: they don't try (each would walk all of this again).
+      this.linkedBelow = opener.seq;
       this.append(']');
       return i + 1;
     }
@@ -716,21 +721,22 @@ class InlineParser {
     let closer: Delim | null = this.delims;
     if (closer === bottom) return;
     while (closer && closer.prev !== bottom) closer = closer.prev;
-    const openersBottom = new Map<number, Delim | null>([
-      [STAR, bottom],
-      [UNDER, bottom],
-      [TILDE, bottom],
-    ]);
+    // Per character, the creation index at or below which no opener is looked for (-1: none). An index, not a
+    // delimiter: the one it names may be removed later, and the search must still stop there.
+    const base = bottom ? bottom.idx : -1;
+    let floorStar = base,
+      floorUnder = base,
+      floorTilde = base;
     while (closer) {
       if (!closer.close) {
         closer = closer.next;
         continue;
       }
       let opener = closer.prev;
-      const stop = openersBottom.get(closer.ch)!;
-      while (opener && opener !== bottom && opener !== stop && !(opener.ch === closer.ch && opener.open)) opener = opener.prev;
+      const stop = closer.ch === STAR ? floorStar : closer.ch === UNDER ? floorUnder : floorTilde;
+      while (opener && opener.idx > stop && !(opener.ch === closer.ch && opener.open)) opener = opener.prev;
       let matched = false;
-      if (opener && opener !== bottom && opener !== stop) {
+      if (opener && opener.idx > stop) {
         const use = closer.ch === TILDE ? 2 : closer.n >= 2 && opener.n >= 2 ? 2 : 1;
         let depth = 0;
         for (let n = opener.node.next; n && n !== closer.node; n = n.next) depth = Math.max(depth, n.depth);
@@ -763,7 +769,10 @@ class InlineParser {
       if (!matched) {
         // (Nothing above changed `closer` when there was no match.)
         const unmatched: Delim = closer!;
-        openersBottom.set(unmatched.ch, unmatched.prev);
+        const floor = unmatched.prev ? unmatched.prev.idx : -1;
+        if (unmatched.ch === STAR) floorStar = floor;
+        else if (unmatched.ch === UNDER) floorUnder = floor;
+        else floorTilde = floor;
         if (!unmatched.open) this.removeDelim(unmatched);
         closer = unmatched.next;
       }

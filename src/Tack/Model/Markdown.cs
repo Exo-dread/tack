@@ -465,6 +465,7 @@ public static class Markdown
         private Delim? _delims; // top of the delimiter stack
         private Bracket? _brackets;
         private int _seq;
+        private int _delimSeq; // creation order of delimiters: the stack is always in this order
         private int _linkedBelow = -1; // brackets opened before this one can't make links (a link holds no link)
         private Dictionary<int, (List<int> At, int Next)>? _runs; // backtick runs by length, read forwards only
         private int[]? _parens; // for each index, the next ')' at or after it (-1: none)
@@ -481,6 +482,7 @@ public static class Markdown
         private sealed class Delim
         {
             public required Node Node;
+            public int Idx; // creation order: a floor is an index, not a delimiter that may be gone
             public char Ch;
             public int N;
             public bool Open, Close;
@@ -635,7 +637,7 @@ public static class Markdown
             }
             if (open || close)
             {
-                var d = new Delim { Node = node, Ch = c, N = n, Open = open, Close = close, Prev = _delims };
+                var d = new Delim { Node = node, Idx = _delimSeq++, Ch = c, N = n, Open = open, Close = close, Prev = _delims };
                 if (_delims != null) _delims.Next = d;
                 _delims = d;
             }
@@ -668,6 +670,8 @@ public static class Markdown
             for (var n = opener.Node.Next; n != null; n = n.Next) depth = Math.Max(depth, n.Depth);
             if (depth + 1 > MaxInlineDepth)
             {
+                // Brackets around this one would fail the same way: they don't try (each would walk all of this again).
+                _linkedBelow = opener.Seq;
                 Append("]");
                 return i + 1;
             }
@@ -720,7 +724,10 @@ public static class Markdown
             var closer = _delims;
             if (closer == bottom) return;
             while (closer != null && closer.Prev != bottom) closer = closer.Prev;
-            Delim? floorStar = bottom, floorUnder = bottom, floorTilde = bottom;
+            // Per character, the creation index at or below which no opener is looked for (-1: none). An index, not a
+            // delimiter: the one it names may be removed later, and the search must still stop there.
+            int floorBase = bottom?.Idx ?? -1;
+            int floorStar = floorBase, floorUnder = floorBase, floorTilde = floorBase;
             while (closer != null)
             {
                 if (!closer.Close)
@@ -730,9 +737,9 @@ public static class Markdown
                 }
                 var stop = closer.Ch == '*' ? floorStar : closer.Ch == '_' ? floorUnder : floorTilde;
                 var opener = closer.Prev;
-                while (opener != null && opener != bottom && opener != stop && !(opener.Ch == closer.Ch && opener.Open)) opener = opener.Prev;
+                while (opener != null && opener.Idx > stop && !(opener.Ch == closer.Ch && opener.Open)) opener = opener.Prev;
                 bool matched = false;
-                if (opener != null && opener != bottom && opener != stop)
+                if (opener != null && opener.Idx > stop)
                 {
                     int use = closer.Ch == '~' ? 2 : closer.N >= 2 && opener.N >= 2 ? 2 : 1;
                     int depth = 0;
@@ -768,9 +775,10 @@ public static class Markdown
                 }
                 if (!matched)
                 {
-                    if (closer!.Ch == '*') floorStar = closer.Prev;
-                    else if (closer.Ch == '_') floorUnder = closer.Prev;
-                    else floorTilde = closer.Prev;
+                    int floor = closer!.Prev?.Idx ?? -1;
+                    if (closer.Ch == '*') floorStar = floor;
+                    else if (closer.Ch == '_') floorUnder = floor;
+                    else floorTilde = floor;
                     var next = closer.Next;
                     if (!closer.Open) RemoveDelim(closer);
                     closer = next;
