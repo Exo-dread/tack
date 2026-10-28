@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "vectors": "vitest run tests/unit/vectors.test.ts tests/unit/syncvectors.test.ts --update",
+    "vectors": "vitest run tests/unit/vectors.test.ts tests/unit/syncvectors.test.ts tests/unit/markdown.test.ts --update",
     "e2e": "playwright test",
     "icons": "python tools/make_icons.py"
   },

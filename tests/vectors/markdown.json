@@ -1,0 +1,582 @@
+[
+  {
+    "name": "empty note",
+    "text": "",
+    "blocks": []
+  },
+  {
+    "name": "only blank lines",
+    "text": "\n\n  \n\t\n",
+    "blocks": []
+  },
+  {
+    "name": "one line",
+    "text": "Hello there",
+    "blocks": [{"p":["Hello there"]}]
+  },
+  {
+    "name": "line breaks are kept",
+    "text": "one\ntwo\nthree",
+    "blocks": [{"p":["one",{"br":1},"two",{"br":1},"three"]}]
+  },
+  {
+    "name": "blank lines separate paragraphs; several show as one gap",
+    "text": "one\n\n\n\ntwo",
+    "blocks": [{"p":["one"]},{"p":["two"]}]
+  },
+  {
+    "name": "leading and trailing spaces of a line go",
+    "text": "   padded   \n\tTabbed\t",
+    "blocks": [{"p":["padded",{"br":1},"Tabbed"]}]
+  },
+  {
+    "name": "CRLF and lone CR are line ends",
+    "text": "a\r\nb\rc\n\r\nd",
+    "blocks": [{"p":["a",{"br":1},"b",{"br":1},"c"]},{"p":["d"]}]
+  },
+  {
+    "name": "an indented line is not code",
+    "text": "    four spaces\n\tand a tab",
+    "blocks": [{"p":["four spaces",{"br":1},"and a tab"]}]
+  },
+  {
+    "name": "headings 1 to 3",
+    "text": "# One\n## Two\n### Three",
+    "blocks": [{"h":1,"c":["One"]},{"h":2,"c":["Two"]},{"h":3,"c":["Three"]}]
+  },
+  {
+    "name": "levels 4 to 6 are level 3",
+    "text": "#### Four\n##### Five\n###### Six",
+    "blocks": [{"h":3,"c":["Four"]},{"h":3,"c":["Five"]},{"h":3,"c":["Six"]}]
+  },
+  {
+    "name": "seven # is plain text",
+    "text": "####### Seven",
+    "blocks": [{"p":["####### Seven"]}]
+  },
+  {
+    "name": "#tag is plain text",
+    "text": "#tag and #another",
+    "blocks": [{"p":["#tag and #another"]}]
+  },
+  {
+    "name": "a lone # is plain text",
+    "text": "#\n##",
+    "blocks": [{"p":["#",{"br":1},"##"]}]
+  },
+  {
+    "name": "a trailing run of # is dropped",
+    "text": "# Title ##\n## Also #####   ",
+    "blocks": [{"h":1,"c":["Title"]},{"h":2,"c":["Also"]}]
+  },
+  {
+    "name": "a # stuck to a word stays",
+    "text": "# C#\n## F# and C##",
+    "blocks": [{"h":1,"c":["C#"]},{"h":2,"c":["F# and C##"]}]
+  },
+  {
+    "name": "a heading of only #",
+    "text": "# ###",
+    "blocks": [{"h":1,"c":[]}]
+  },
+  {
+    "name": "an escaped closing #",
+    "text": "# Keep \\#",
+    "blocks": [{"h":1,"c":["Keep #"]}]
+  },
+  {
+    "name": "a heading with inline formatting",
+    "text": "## A **bold** _move_",
+    "blocks": [{"h":2,"c":["A ",{"b":["bold"]}," ",{"i":["move"]}]}]
+  },
+  {
+    "name": "a heading interrupts a paragraph",
+    "text": "text\n# Heading\nmore",
+    "blocks": [{"p":["text"]},{"h":1,"c":["Heading"]},{"p":["more"]}]
+  },
+  {
+    "name": "a heading can be indented",
+    "text": "   # Indented",
+    "blocks": [{"h":1,"c":["Indented"]}]
+  },
+  {
+    "name": "a tab after # makes a heading",
+    "text": "#\tTabbed",
+    "blocks": [{"h":1,"c":["Tabbed"]}]
+  },
+  {
+    "name": "rules of -, * and _",
+    "text": "---\n***\n___",
+    "blocks": [{"hr":1},{"hr":1},{"hr":1}]
+  },
+  {
+    "name": "rules with spaces between and more characters",
+    "text": "- - -\n *  *  * *\n_____",
+    "blocks": [{"hr":1},{"hr":1},{"hr":1}]
+  },
+  {
+    "name": "a --- under a paragraph is a rule (no setext headings)",
+    "text": "Title\n---\nafter",
+    "blocks": [{"p":["Title"]},{"hr":1},{"p":["after"]}]
+  },
+  {
+    "name": "=== is plain",
+    "text": "Title\n===",
+    "blocks": [{"p":["Title",{"br":1},"==="]}]
+  },
+  {
+    "name": "two dashes or mixed characters are plain",
+    "text": "--\n-*-\n--- x",
+    "blocks": [{"p":["--",{"br":1},"-*-",{"br":1},"--- x"]}]
+  },
+  {
+    "name": "bullets with -, * and +",
+    "text": "- one\n* two\n+ three",
+    "blocks": [{"ul":[{"c":["one"],"task":null,"at":null,"sub":[]},{"c":["two"],"task":null,"at":null,"sub":[]},{"c":["three"],"task":null,"at":null,"sub":[]}]}]
+  },
+  {
+    "name": "a marker needs a space after it",
+    "text": "-one\n*two*\n+three",
+    "blocks": [{"p":["-one",{"br":1},{"i":["two"]},{"br":1},"+three"]}]
+  },
+  {
+    "name": "an empty item",
+    "text": "- \n- b",
+    "blocks": [{"ul":[{"c":[],"task":null,"at":null,"sub":[]},{"c":["b"],"task":null,"at":null,"sub":[]}]}]
+  },
+  {
+    "name": "nested lists by 2 spaces",
+    "text": "- a\n  - b\n    - c\n  - d\n- e",
+    "blocks": [{"ul":[{"c":["a"],"task":null,"at":null,"sub":[{"ul":[{"c":["b"],"task":null,"at":null,"sub":[{"ul":[{"c":["c"],"task":null,"at":null,"sub":[]}]}]},{"c":["d"],"task":null,"at":null,"sub":[]}]}]},{"c":["e"],"task":null,"at":null,"sub":[]}]}]
+  },
+  {
+    "name": "one space more is the same level",
+    "text": "- a\n - b\n- c",
+    "blocks": [{"ul":[{"c":["a"],"task":null,"at":null,"sub":[]},{"c":["b"],"task":null,"at":null,"sub":[]},{"c":["c"],"task":null,"at":null,"sub":[]}]}]
+  },
+  {
+    "name": "a tab counts as 4 for nesting",
+    "text": "- a\n\t- b\n\t\t- c",
+    "blocks": [{"ul":[{"c":["a"],"task":null,"at":null,"sub":[{"ul":[{"c":["b"],"task":null,"at":null,"sub":[{"ul":[{"c":["c"],"task":null,"at":null,"sub":[]}]}]}]}]}]}]
+  },
+  {
+    "name": "lists nest at most 8 deep; deeper is the 8th",
+    "text": "- L1\n  - L2\n    - L3\n      - L4\n        - L5\n          - L6\n            - L7\n              - L8\n                - L9\n                  - L10\n                    - L11",
+    "blocks": [{"ul":[{"c":["L1"],"task":null,"at":null,"sub":[{"ul":[{"c":["L2"],"task":null,"at":null,"sub":[{"ul":[{"c":["L3"],"task":null,"at":null,"sub":[{"ul":[{"c":["L4"],"task":null,"at":null,"sub":[{"ul":[{"c":["L5"],"task":null,"at":null,"sub":[{"ul":[{"c":["L6"],"task":null,"at":null,"sub":[{"ul":[{"c":["L7"],"task":null,"at":null,"sub":[{"ul":[{"c":["L8"],"task":null,"at":null,"sub":[]},{"c":["L9"],"task":null,"at":null,"sub":[]},{"c":["L10"],"task":null,"at":null,"sub":[]},{"c":["L11"],"task":null,"at":null,"sub":[]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]
+  },
+  {
+    "name": "a line indented to the item text continues it",
+    "text": "- first\n  still first\n- second",
+    "blocks": [{"ul":[{"c":["first",{"br":1},"still first"],"task":null,"at":null,"sub":[]},{"c":["second"],"task":null,"at":null,"sub":[]}]}]
+  },
+  {
+    "name": "a blank line ends nothing by itself",
+    "text": "- a\n\n- b\n\n  more b",
+    "blocks": [{"ul":[{"c":["a"],"task":null,"at":null,"sub":[]},{"c":["b",{"br":1},"more b"],"task":null,"at":null,"sub":[]}]}]
+  },
+  {
+    "name": "a non-indented line after a blank ends the list",
+    "text": "- a\n\nparagraph",
+    "blocks": [{"ul":[{"c":["a"],"task":null,"at":null,"sub":[]}]},{"p":["paragraph"]}]
+  },
+  {
+    "name": "a non-indented line right after an item ends the list",
+    "text": "- a\nparagraph",
+    "blocks": [{"ul":[{"c":["a"],"task":null,"at":null,"sub":[]}]},{"p":["paragraph"]}]
+  },
+  {
+    "name": "a line indented less than the item text ends the list",
+    "text": "- a\n x",
+    "blocks": [{"ul":[{"c":["a"],"task":null,"at":null,"sub":[]}]},{"p":["x"]}]
+  },
+  {
+    "name": "a line under a nested item, indented to the outer item, continues the outer item",
+    "text": "- a\n  - b\n  about a\n  and more\n- c",
+    "blocks": [{"ul":[{"c":["a"],"task":null,"at":null,"sub":[{"ul":[{"c":["b"],"task":null,"at":null,"sub":[]}]},{"p":["about a",{"br":1},"and more"]}]},{"c":["c"],"task":null,"at":null,"sub":[]}]}]
+  },
+  {
+    "name": "other blocks inside an item are its text",
+    "text": "- a\n  # not a heading\n  > not a quote\n  ```",
+    "blocks": [{"ul":[{"c":["a",{"br":1},"# not a heading",{"br":1},"> not a quote",{"br":1},"```"],"task":null,"at":null,"sub":[]}]}]
+  },
+  {
+    "name": "a heading, quote or rule at the margin ends a list",
+    "text": "- a\n# H\n- b\n> q\n- c\n---",
+    "blocks": [{"ul":[{"c":["a"],"task":null,"at":null,"sub":[]}]},{"h":1,"c":["H"]},{"ul":[{"c":["b"],"task":null,"at":null,"sub":[]}]},{"quote":[{"p":["q"]}]},{"ul":[{"c":["c"],"task":null,"at":null,"sub":[]}]},{"hr":1}]
+  },
+  {
+    "name": "a list right after a paragraph line",
+    "text": "Shopping:\n- milk\n- eggs",
+    "blocks": [{"p":["Shopping:"]},{"ul":[{"c":["milk"],"task":null,"at":null,"sub":[]},{"c":["eggs"],"task":null,"at":null,"sub":[]}]}]
+  },
+  {
+    "name": "extra spaces after the marker move the item text",
+    "text": "-   wide\n    continued",
+    "blocks": [{"ul":[{"c":["wide",{"br":1},"continued"],"task":null,"at":null,"sub":[]}]}]
+  },
+  {
+    "name": "numbered with . and )",
+    "text": "1. one\n2) two\n3. three",
+    "blocks": [{"ol":[{"c":["one"],"task":null,"at":null,"sub":[]},{"c":["two"],"task":null,"at":null,"sub":[]},{"c":["three"],"task":null,"at":null,"sub":[]}],"start":1}]
+  },
+  {
+    "name": "the list starts at the first number",
+    "text": "7. seven\n8. eight\n1. nine",
+    "blocks": [{"ol":[{"c":["seven"],"task":null,"at":null,"sub":[]},{"c":["eight"],"task":null,"at":null,"sub":[]},{"c":["nine"],"task":null,"at":null,"sub":[]}],"start":7}]
+  },
+  {
+    "name": "up to 9 digits",
+    "text": "123456789. big\n1234567890. too big",
+    "blocks": [{"ol":[{"c":["big"],"task":null,"at":null,"sub":[]}],"start":123456789},{"p":["1234567890. too big"]}]
+  },
+  {
+    "name": "a number needs . or ) and a space",
+    "text": "1.one\n2 two\n3:three",
+    "blocks": [{"p":["1.one",{"br":1},"2 two",{"br":1},"3:three"]}]
+  },
+  {
+    "name": "bullets and numbers are different lists",
+    "text": "- a\n- b\n1. one\n2. two\n- c",
+    "blocks": [{"ul":[{"c":["a"],"task":null,"at":null,"sub":[]},{"c":["b"],"task":null,"at":null,"sub":[]}]},{"ol":[{"c":["one"],"task":null,"at":null,"sub":[]},{"c":["two"],"task":null,"at":null,"sub":[]}],"start":1},{"ul":[{"c":["c"],"task":null,"at":null,"sub":[]}]}]
+  },
+  {
+    "name": "a numbered list nested in a bullet",
+    "text": "- a\n  1. one\n  2. two\n- b",
+    "blocks": [{"ul":[{"c":["a"],"task":null,"at":null,"sub":[{"ol":[{"c":["one"],"task":null,"at":null,"sub":[]},{"c":["two"],"task":null,"at":null,"sub":[]}],"start":1}]},{"c":["b"],"task":null,"at":null,"sub":[]}]}]
+  },
+  {
+    "name": "changing kind in a nested list starts another list in the item",
+    "text": "- a\n  - b\n  1. c\n  2. d",
+    "blocks": [{"ul":[{"c":["a"],"task":null,"at":null,"sub":[{"ul":[{"c":["b"],"task":null,"at":null,"sub":[]}]},{"ol":[{"c":["c"],"task":null,"at":null,"sub":[]},{"c":["d"],"task":null,"at":null,"sub":[]}],"start":1}]}]}]
+  },
+  {
+    "name": "0 starts a list",
+    "text": "0. zero\n1. one",
+    "blocks": [{"ol":[{"c":["zero"],"task":null,"at":null,"sub":[]},{"c":["one"],"task":null,"at":null,"sub":[]}],"start":0}]
+  },
+  {
+    "name": "tasks: [ ], [x] and [X]",
+    "text": "- [ ] open\n- [x] done\n- [X] also done",
+    "blocks": [{"ul":[{"c":["open"],"task":false,"at":3,"sub":[]},{"c":["done"],"task":true,"at":14,"sub":[]},{"c":["also done"],"task":true,"at":25,"sub":[]}]}]
+  },
+  {
+    "name": "tasks with any bullet, and numbered",
+    "text": "* [ ] star\n+ [x] plus\n1. [ ] numbered\n2) [x] paren",
+    "blocks": [{"ul":[{"c":["star"],"task":false,"at":3,"sub":[]},{"c":["plus"],"task":true,"at":14,"sub":[]}]},{"ol":[{"c":["numbered"],"task":false,"at":26,"sub":[]},{"c":["paren"],"task":true,"at":42,"sub":[]}],"start":1}]
+  },
+  {
+    "name": "task offsets with CRLF",
+    "text": "Todo\r\n- [ ] one\r\n- [x] two\r\n\r\n  - [ ] nested",
+    "blocks": [{"p":["Todo"]},{"ul":[{"c":["one"],"task":false,"at":9,"sub":[]},{"c":["two"],"task":true,"at":20,"sub":[{"ul":[{"c":["nested"],"task":false,"at":35,"sub":[]}]}]}]}]
+  },
+  {
+    "name": "task offsets after a lone CR",
+    "text": "a\r- [ ] b",
+    "blocks": [{"p":["a"]},{"ul":[{"c":["b"],"task":false,"at":5,"sub":[]}]}]
+  },
+  {
+    "name": "a box alone on the line is a task",
+    "text": "- [ ]\n- [x]",
+    "blocks": [{"ul":[{"c":[],"task":false,"at":3,"sub":[]},{"c":[],"task":true,"at":9,"sub":[]}]}]
+  },
+  {
+    "name": "not tasks: no space, other letters, missing bracket",
+    "text": "- [ ]x\n- [y] no\n- [ x\n- [] empty\n-[ ] no space",
+    "blocks": [{"ul":[{"c":["[ ]x"],"task":null,"at":null,"sub":[]},{"c":["[y] no"],"task":null,"at":null,"sub":[]},{"c":["[ x"],"task":null,"at":null,"sub":[]},{"c":["[] empty"],"task":null,"at":null,"sub":[]}]},{"p":["-[ ] no space"]}]
+  },
+  {
+    "name": "a task box later in the text is plain",
+    "text": "- see [ ] here",
+    "blocks": [{"ul":[{"c":["see [ ] here"],"task":null,"at":null,"sub":[]}]}]
+  },
+  {
+    "name": "nested tasks",
+    "text": "- [ ] parent\n  - [x] child\n    - [ ] grandchild",
+    "blocks": [{"ul":[{"c":["parent"],"task":false,"at":3,"sub":[{"ul":[{"c":["child"],"task":true,"at":18,"sub":[{"ul":[{"c":["grandchild"],"task":false,"at":34,"sub":[]}]}]}]}]}]}]
+  },
+  {
+    "name": "a task with formatting",
+    "text": "- [x] **done** and `code`",
+    "blocks": [{"ul":[{"c":[{"b":["done"]}," and ",{"code":"code"}],"task":true,"at":3,"sub":[]}]}]
+  },
+  {
+    "name": "indented tasks with tabs",
+    "text": "\t- [ ] tabbed",
+    "blocks": [{"ul":[{"c":["tabbed"],"task":false,"at":4,"sub":[]}]}]
+  },
+  {
+    "name": "a quote",
+    "text": "> one\n> two",
+    "blocks": [{"quote":[{"p":["one",{"br":1},"two"]}]}]
+  },
+  {
+    "name": "the space after > is optional",
+    "text": ">tight\n>  two spaces",
+    "blocks": [{"quote":[{"p":["tight",{"br":1},"two spaces"]}]}]
+  },
+  {
+    "name": "consecutive > lines are one quote; a blank line ends it",
+    "text": "> a\n> b\n\n> c",
+    "blocks": [{"quote":[{"p":["a",{"br":1},"b"]}]},{"quote":[{"p":["c"]}]}]
+  },
+  {
+    "name": "a quote with a list and a task inside",
+    "text": "> Notes:\n> - one\n> - [ ] two\n>   - nested",
+    "blocks": [{"quote":[{"p":["Notes:"]},{"ul":[{"c":["one"],"task":null,"at":null,"sub":[]},{"c":["two"],"task":false,"at":22,"sub":[{"ul":[{"c":["nested"],"task":null,"at":null,"sub":[]}]}]}]}]}]
+  },
+  {
+    "name": "a quote inside a quote",
+    "text": "> outer\n> > inner\n> back",
+    "blocks": [{"quote":[{"p":["outer"]},{"quote":[{"p":["inner"]}]},{"p":["back"]}]}]
+  },
+  {
+    "name": "a quote with a heading and code",
+    "text": "> # Title\n> ```\n> code\n> ```",
+    "blocks": [{"quote":[{"h":1,"c":["Title"]},{"code":"code"}]}]
+  },
+  {
+    "name": "an unclosed fence in a quote ends with the quote",
+    "text": "> ```\n> code\nafter",
+    "blocks": [{"quote":[{"code":"code"}]},{"p":["after"]}]
+  },
+  {
+    "name": "a quote interrupts a paragraph and a line without > ends it",
+    "text": "para\n> quoted\nnot quoted",
+    "blocks": [{"p":["para"]},{"quote":[{"p":["quoted"]}]},{"p":["not quoted"]}]
+  },
+  {
+    "name": "quotes nest at most 8 deep; deeper > is text",
+    "text": ">>>>>>>>>> ten",
+    "blocks": [{"quote":[{"quote":[{"quote":[{"quote":[{"quote":[{"quote":[{"quote":[{"quote":[{"p":[">> ten"]}]}]}]}]}]}]}]}]}]
+  },
+  {
+    "name": "an empty quote line keeps the quote going",
+    "text": "> a\n>\n> b",
+    "blocks": [{"quote":[{"p":["a"]},{"p":["b"]}]}]
+  },
+  {
+    "name": "a code block with a language word",
+    "text": "```ts\nconst a = *b*;\n  indented\n```",
+    "blocks": [{"code":"const a = *b*;\n  indented"}]
+  },
+  {
+    "name": "a tilde fence",
+    "text": "~~~\n# not a heading\n~~~",
+    "blocks": [{"code":"# not a heading"}]
+  },
+  {
+    "name": "a longer fence closes only on as many",
+    "text": "````\n```\nstill code\n````",
+    "blocks": [{"code":"```\nstill code"}]
+  },
+  {
+    "name": "the other fence character does not close",
+    "text": "```\n~~~\n```",
+    "blocks": [{"code":"~~~"}]
+  },
+  {
+    "name": "an unclosed fence runs to the end",
+    "text": "```\nopen\n\nstill",
+    "blocks": [{"code":"open\n\nstill"}]
+  },
+  {
+    "name": "an empty code block",
+    "text": "```\n```",
+    "blocks": [{"code":""}]
+  },
+  {
+    "name": "blank lines in code are kept",
+    "text": "```\na\n\n\nb\n```",
+    "blocks": [{"code":"a\n\n\nb"}]
+  },
+  {
+    "name": "a fence closer may have trailing spaces, not text",
+    "text": "```\nx\n``` y\n```  ",
+    "blocks": [{"code":"x\n``` y"}]
+  },
+  {
+    "name": "a backtick fence whose word has a backtick is inline code",
+    "text": "``` a ``` b",
+    "blocks": [{"p":[{"code":"a"}," b"]}]
+  },
+  {
+    "name": "code keeps CRLF lines as plain lines",
+    "text": "```\r\nline1\r\nline2\r\n```",
+    "blocks": [{"code":"line1\nline2"}]
+  },
+  {
+    "name": "code interrupts a paragraph",
+    "text": "text\n```\ncode\n```",
+    "blocks": [{"p":["text"]},{"code":"code"}]
+  },
+  {
+    "name": "bold, italic, both and struck",
+    "text": "**bold** __bold__ *italic* _italic_ ***both*** ~~struck~~",
+    "blocks": [{"p":[{"b":["bold"]}," ",{"b":["bold"]}," ",{"i":["italic"]}," ",{"i":["italic"]}," ",{"i":[{"b":["both"]}]}," ",{"s":["struck"]}]}]
+  },
+  {
+    "name": "nested emphasis",
+    "text": "*a **b** c* and **a *b* c**",
+    "blocks": [{"p":[{"i":["a ",{"b":["b"]}," c"]}," and ",{"b":["a ",{"i":["b"]}," c"]}]}]
+  },
+  {
+    "name": "delimiters need a non-space inside",
+    "text": "a * not * and ** not ** and a * b",
+    "blocks": [{"p":["a * not * and ** not ** and a * b"]}]
+  },
+  {
+    "name": "snake_case stays plain",
+    "text": "snake_case_name and __init__ and a_b_c",
+    "blocks": [{"p":["snake_case_name and ",{"b":["init"]}," and a_b_c"]}]
+  },
+  {
+    "name": "_ at word edges works",
+    "text": "_ok_ (_ok_) x_no_ _no_x",
+    "blocks": [{"p":[{"i":["ok"]}," (",{"i":["ok"]},") x_no_ _no_x"]}]
+  },
+  {
+    "name": "* works inside words",
+    "text": "un*frigging*believable and 2*3*4",
+    "blocks": [{"p":["un",{"i":["frigging"]},"believable and 2",{"i":["3"]},"4"]}]
+  },
+  {
+    "name": "unmatched delimiters are plain",
+    "text": "**open and *also",
+    "blocks": [{"p":["**open and *also"]}]
+  },
+  {
+    "name": "runs split to match what they can",
+    "text": "**open and *also and close** later*",
+    "blocks": [{"p":[{"i":[{"i":["open and ",{"i":["also and close"]}]}," later"]}]}]
+  },
+  {
+    "name": "uneven runs leave the rest as text",
+    "text": "**a* and *a** and ***a*",
+    "blocks": [{"p":[{"i":[{"i":["a"]}," and ",{"i":["a"]}]}," and **",{"i":["a"]}]}]
+  },
+  {
+    "name": "a single ~ or three are plain",
+    "text": "~a~ and ~~~b~~~",
+    "blocks": [{"p":["~a~ and ~~~b~~~"]}]
+  },
+  {
+    "name": "struck with bold inside",
+    "text": "~~**both**~~",
+    "blocks": [{"p":[{"s":[{"b":["both"]}]}]}]
+  },
+  {
+    "name": "emphasis does not cross lines",
+    "text": "*one\ntwo*",
+    "blocks": [{"p":["*one",{"br":1},"two*"]}]
+  },
+  {
+    "name": "inline formatting nests at most 8 deep",
+    "text": "*1 _2 ~~3 **4 *5 _6 ~~7 **8 *9* 8** 7~~ 6_ 5* 4** 3~~ 2_ 1*",
+    "blocks": [{"p":["*1 ",{"i":["2 ",{"s":["3 ",{"b":["4 ",{"i":["5 ",{"i":["6 ",{"s":["7 ",{"b":["8 ",{"i":["9"]}," 8"]}," 7"]}," 6"]}," 5"]}," 4"]}," 3"]}," 2"]}," 1*"]}]
+  },
+  {
+    "name": "a long run of * is plain",
+    "text": "a****************************************b",
+    "blocks": [{"p":["a****************************************b"]}]
+  },
+  {
+    "name": "code spans",
+    "text": "`code` and ``with ` inside`` and ` padded `",
+    "blocks": [{"p":[{"code":"code"}," and ",{"code":"with ` inside"}," and ",{"code":"padded"}]}]
+  },
+  {
+    "name": "no formatting inside code",
+    "text": "`**not bold**` and `\\*`",
+    "blocks": [{"p":[{"code":"**not bold**"}," and ",{"code":"\\*"}]}]
+  },
+  {
+    "name": "an unmatched backtick run is plain",
+    "text": "``no close` here",
+    "blocks": [{"p":["``no close` here"]}]
+  },
+  {
+    "name": "code of only spaces keeps them",
+    "text": "`  `",
+    "blocks": [{"p":[{"code":"  "}]}]
+  },
+  {
+    "name": "code takes the first closer of the same length",
+    "text": "`a``b` c`",
+    "blocks": [{"p":[{"code":"a``b"}," c`"]}]
+  },
+  {
+    "name": "a link shows its text",
+    "text": "see [the docs](https://example.com/docs) now",
+    "blocks": [{"p":["see ",{"link":["the docs"],"url":"https://example.com/docs"}," now"]}]
+  },
+  {
+    "name": "link text can be formatted",
+    "text": "[**bold** link](u)",
+    "blocks": [{"p":[{"link":[{"b":["bold"]}," link"],"url":"u"}]}]
+  },
+  {
+    "name": "a link url is trimmed and ends at the first )",
+    "text": "[a]( spaced url ) and [b](x(y)z)",
+    "blocks": [{"p":[{"link":["a"],"url":"spaced url"}," and ",{"link":["b"],"url":"x(y"},"z)"]}]
+  },
+  {
+    "name": "not links: no url, space before (, no )",
+    "text": "[a] and [b] (c) and [d](e",
+    "blocks": [{"p":["[a] and [b] (c) and [d](e"]}]
+  },
+  {
+    "name": "an empty link and an empty url",
+    "text": "[](x) and [y]()",
+    "blocks": [{"p":[{"link":[],"url":"x"}," and ",{"link":["y"],"url":""}]}]
+  },
+  {
+    "name": "no link inside a link",
+    "text": "[a [b](c) d](e)",
+    "blocks": [{"p":["[a ",{"link":["b"],"url":"c"}," d](e)"]}]
+  },
+  {
+    "name": "brackets inside link text",
+    "text": "[[a]](b)",
+    "blocks": [{"p":[{"link":["[a]"],"url":"b"}]}]
+  },
+  {
+    "name": "<https://…> and bare urls are plain text",
+    "text": "<https://example.com> and https://example.com/a_b_c",
+    "blocks": [{"p":["<https://example.com> and https://example.com/a_b_c"]}]
+  },
+  {
+    "name": "code inside a link text, and ] in code",
+    "text": "[`a]`](b)",
+    "blocks": [{"p":[{"link":[{"code":"a]"}],"url":"b"}]}]
+  },
+  {
+    "name": "emphasis around a link",
+    "text": "**[a](b)** and *[c*](d)",
+    "blocks": [{"p":[{"b":[{"link":["a"],"url":"b"}]}," and *",{"link":["c*"],"url":"d"}]}]
+  },
+  {
+    "name": "escapes show the character",
+    "text": "\\*not italic\\* \\_ \\# \\[x\\](y) \\` \\\\",
+    "blocks": [{"p":["*not italic* _ # [x](y) ` \\"]}]
+  },
+  {
+    "name": "a backslash before other characters stays",
+    "text": "\\a \\é \\ end\\",
+    "blocks": [{"p":["\\a \\é \\ end\\"]}]
+  },
+  {
+    "name": "an escaped marker is not a list or heading",
+    "text": "\\- not a list\n\\# not a heading\n1\\. not numbered",
+    "blocks": [{"p":["- not a list",{"br":1},"# not a heading",{"br":1},"1. not numbered"]}]
+  },
+  {
+    "name": "a note",
+    "text": "# Site visit\n\nMet **Sam** at the gate. Bring:\n- [x] keys\n- [ ] the *new* drawings\n  - A1 and A2\n\n> Call before 9\n\n---\n1. Rebar\n2. Ties\n\n```\nlength = 12.5\n```\n[plan](https://example.com/plan) `v2`",
+    "blocks": [{"h":1,"c":["Site visit"]},{"p":["Met ",{"b":["Sam"]}," at the gate. Bring:"]},{"ul":[{"c":["keys"],"task":true,"at":49,"sub":[]},{"c":["the ",{"i":["new"]}," drawings"],"task":false,"at":60,"sub":[{"ul":[{"c":["A1 and A2"],"task":null,"at":null,"sub":[]}]}]}]},{"quote":[{"p":["Call before 9"]}]},{"hr":1},{"ol":[{"c":["Rebar"],"task":null,"at":null,"sub":[]},{"c":["Ties"],"task":null,"at":null,"sub":[]}],"start":1},{"code":"length = 12.5"},{"p":[{"link":["plan"],"url":"https://example.com/plan"}," ",{"code":"v2"}]}]
+  },
+  {
+    "name": "non-ASCII text and _ beside it",
+    "text": "café_au_lait and _résumé_ and 日本_語",
+    "blocks": [{"p":["café_au_lait and ",{"i":["résumé"]}," and 日本_語"]}]
+  }
+]
