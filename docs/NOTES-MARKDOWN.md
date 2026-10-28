@@ -13,14 +13,26 @@ Markdown the same way (`web/src/model/markdown.ts`, `src/Tack/Model/Markdown.cs`
   paper of a space with no sheets still do.
 - **Writing:** a click or tap on the formatted note (one that isn't a drag to select text, a checkbox or the
   scroll bar) opens the editor with the caret at the start of the line the click landed on, scrolled so that
-  line stays where it was. Typing a character, Enter or F2 while the formatted note has the keyboard does the
-  same and the character is typed. Anything that selects text in a note (search, Ctrl+Enter's task link, Undo)
+  line stays where it was. Anything that selects text in a note (search, Ctrl+Enter's task link, Undo)
   opens the editor with that selection.
+- **Keys on the formatted note** (one rule, both apps). "The caret" is where you last wrote in this sheet (the
+  end of the note if you haven't), with nothing selected: a selection left in the hidden editor (search's
+  match, say) is never typed over. When a checkbox has the keyboard, it's the end of that item's line instead.
+  - A printable character opens the editor at the caret and is typed there.
+  - Enter or F2 opens the editor at the caret and types nothing.
+  - F5 and Ctrl+Enter open the editor at the caret and do what they do there: F5 inserts the date and time
+    (never the browser's reload), Ctrl+Enter turns the caret's line into a task.
+  - Ctrl+V (and Shift+Insert) pastes at the caret (an image on the desktop is a snippet, as in the editor).
+  - Space on a checkbox ticks it. Ctrl+Z undoes the last tick (Tack Focus) or opens the editor and undoes
+    (Tack for Windows).
 - An empty note is always the editor (with its hint). A note longer than 200,000 characters is never
   formatted (it stays the editor), so a huge paste can't stall the panel.
 - **Format notes** in Settings (on by default, this device only, never synced or imported) turns it off: then
   notes are always the editor, exactly as in 1.8.0 / 0.5.0.
 - Snippets (desktop) stay above the text, as now, in both views.
+- Selecting text: in Tack Focus you can select and copy in the formatted note (a drag doesn't open the editor).
+  In Tack for Windows any click opens the editor at that line, where you select as usual: its formatted view lays
+  out only the lines on screen, which is what keeps a long note fast.
 
 ## What's formatted
 
@@ -32,9 +44,10 @@ Blocks (a line's leading spaces: a tab counts as 4):
 - `-`, `*`, `+` + space: a bullet item. `1.` / `1)` + space (1-9 digits): a numbered item; the list starts at
   the first item's number. Items continue while lines are items of the same kind at the same indent; a deeper
   indent (2+ spaces more than the item's marker) starts a nested list inside the previous item (at most 8 levels;
-  deeper is the 8th). A non-item, non-blank line indented at least as far as the item's text continues that
-  item's text (a line break). A blank line ends nothing by itself; a non-indented non-item line after it ends
-  the list.
+  deeper is the 8th). `-`, `*` and `+` are one kind, numbers the other; a change of kind starts a new list. A
+  non-item line indented at least as far as an open item's text continues the deepest such item: as a line break
+  in its text, or, once the item has a nested list, as a paragraph after that list. Any other non-item line ends
+  the list. Blank lines inside a list are dropped. Inside an item's text, `#`, `>` and fences are plain text.
 - `- [ ] ` / `- [x] ` / `- [X] ` (any bullet marker, also numbered): a checklist item with a checkbox. Ticking
   it in the formatted note changes exactly that `[ ]` to `[x]` (or back) in the text, as one edit with Undo,
   saved and synced like typing. The item's text is shown struck through and muted when ticked.
@@ -76,7 +89,17 @@ inline  := "text" | {"b": inline[]} | {"i": inline[]} | {"s": inline[]} | {"code
          | {"link": inline[], "url": "text"} | {"br": 1}
 ```
 
-Adjacent text pieces are merged into one string. Line endings: `\r\n` and `\r` are read as `\n` (offsets stay
+Adjacent text pieces are merged into one string.
+
+Details both parsers share (each pinned by a case): inline formatting never crosses a line break; leading and
+trailing spaces and tabs are trimmed from paragraph, heading and item lines (code lines are kept as they are);
+`# C#` keeps `C#` (a closing `#` run is dropped only after a space); rules are checked before list items, so
+`- - -` is a rule; a task box is `[ ]`, `[x]` or `[X]` right at the item's text, followed by a space or the end
+of the line; quotes have no lazy continuation (a line without `>` ends the quote); a backtick fence whose rest
+of line holds a backtick is not a fence; `_` needs a non-word character outside it (code units 0x80 and up
+count as word characters, except U+00A0 and U+3000); `***x***` is italic around bold; code spans pair with the
+next run of the same length and lose one space at each end when both ends are spaces; a link's url runs to the
+first `)`, with no escapes, and links don't nest. Line endings: `\r\n` and `\r` are read as `\n` (offsets stay
 those of the original text).
 
 ## Cost

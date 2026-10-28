@@ -184,6 +184,73 @@ test.describe('notes in Markdown', () => {
     await expect(editor(page)).toHaveValue('# Title\nbody!more');
   });
 
+  test('from the formatted note, F5 stamps, Ctrl+Enter makes a task and Ctrl+V pastes, at the caret; on a checkbox, at the end of its line', async ({ page, context }) => {
+    test.skip(phone(), 'keyboard');
+    await open(page);
+    await writeSheet(page, '# Plan\n- [ ] ring Sam\nlast');
+    const value = () => editor(page).evaluate((el: HTMLTextAreaElement) => el.value);
+    const caret = () => editor(page).evaluate((el: HTMLTextAreaElement) => [el.selectionStart, el.selectionEnd]);
+
+    // F5: the editor, the date and time at the caret (the end: nothing was written here yet), and no reload.
+    await page.evaluate(() => ((window as unknown as { notReloaded: boolean }).notReloaded = true));
+    await view(page).focus();
+    await page.keyboard.press('F5');
+    await expect(editor(page)).toBeFocused();
+    expect((await value()).startsWith('# Plan\n- [ ] ring Sam\nlast')).toBe(true);
+    expect((await value()).length).toBeGreaterThan('# Plan\n- [ ] ring Sam\nlast'.length + 4);
+    expect(await page.evaluate(() => (window as unknown as { notReloaded?: boolean }).notReloaded)).toBe(true);
+    await setText(page, '# Plan\n- [ ] ring Sam\nlast');
+    await editor(page).evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(el.value.length, el.value.length));
+    await page.keyboard.press('Escape');
+    await expect(view(page)).toBeFocused();
+
+    // Ctrl+Enter: the caret's line becomes a task; the note keeps its text.
+    await page.keyboard.press('Control+Enter');
+    await expect(editor(page)).toBeFocused();
+    await expect(page.getByText('Added to Tasks: “last”')).toBeVisible();
+    await expect(editor(page)).toHaveValue('# Plan\n- [ ] ring Sam\nlast');
+    await page.keyboard.press('Escape');
+
+    // A key on a checkbox: typed at the end of its item's line. Enter there types nothing.
+    const box = view(page).getByRole('checkbox', { name: 'ring Sam' });
+    await box.focus();
+    await page.keyboard.type('!');
+    await expect(editor(page)).toHaveValue('# Plan\n- [ ] ring Sam!\nlast');
+    expect(await caret()).toEqual(['# Plan\n- [ ] ring Sam!'.length, '# Plan\n- [ ] ring Sam!'.length]);
+    await page.keyboard.press('Escape');
+    await box.focus();
+    await page.keyboard.press('Enter');
+    await expect(editor(page)).toBeFocused();
+    await expect(editor(page)).toHaveValue('# Plan\n- [ ] ring Sam!\nlast');
+    expect(await caret()).toEqual(['# Plan\n- [ ] ring Sam!'.length, '# Plan\n- [ ] ring Sam!'.length]);
+    await page.keyboard.press('Escape');
+
+    // Ctrl+V: pasted at the caret (where writing last ended: the end of that line).
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.evaluate(() => navigator.clipboard.writeText(' (pasted)'));
+    await view(page).focus();
+    await page.keyboard.press('Control+V');
+    await expect(editor(page)).toBeFocused();
+    await expect(editor(page)).toHaveValue('# Plan\n- [ ] ring Sam! (pasted)\nlast');
+  });
+
+  test('keys on the formatted note write at the caret, never over a selection search left', async ({ page }) => {
+    test.skip(phone(), 'keyboard');
+    await open(page);
+    await writeSheet(page, '# Agenda\n- [ ] ducts vs beams\n- [ ] walls');
+    await page.keyboard.press('Control+f');
+    await page.getByRole('combobox', { name: 'Search tasks and notes' }).fill('beams');
+    await page.getByRole('listbox', { name: 'Results' }).getByRole('option').first().click();
+    await expect(editor(page)).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(view(page)).toBeFocused();
+    await page.keyboard.type('!');
+    await expect(editor(page)).toBeFocused();
+    const value = await editor(page).evaluate((el: HTMLTextAreaElement) => el.value);
+    expect(value.replace('!', '')).toBe('# Agenda\n- [ ] ducts vs beams\n- [ ] walls');
+    expect(value).toContain('beams');
+  });
+
   test('ticking a box changes exactly that box, as one edit: Undo puts it back, and it syncs like typing', async ({ page, context }) => {
     await open(page);
     await toNotes(page);

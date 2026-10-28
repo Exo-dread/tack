@@ -5,7 +5,8 @@
 - **Notes in Markdown.** A note shows formatted while you read it: headings, bold, italic, struck
   text, `code`, lists, quotes, code blocks, rules, and checklists with real checkboxes. Click or tap
   the note to write: the editor opens with the caret at the start of that line, which stays where
-  it was; typing a letter (or Enter, or F2) on the formatted note types it straight into the editor.
+  it was; typing a letter on the formatted note types it straight into the editor, where you last
+  wrote (Enter and F2 open it; F5, Ctrl+Enter and Ctrl+V do what they do in the editor).
   Ticking a box changes just its `[ ]` to `[x]` in the text, saved and synced like any edit
   (Ctrl+Z on the note takes the last tick back). The text stays exactly what you typed: formatting
   is only how it's shown, and links are shown, never followed. Search opens the editor with the

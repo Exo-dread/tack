@@ -321,7 +321,7 @@ public partial class NotesView : UserControl
                 break;
 
             case Key.F5:
-                Insert(DateTime.Now.ToString("g", CultureInfo.CurrentCulture));
+                Stamp();
                 e.Handled = true;
                 break;
 
@@ -371,7 +371,7 @@ public partial class NotesView : UserControl
         if (lines.Count == 0) return;
         if (lines.Count > DeviceFile.MaxPasteLines)
         {
-            _panel.ShowToast($"Make up to {DeviceFile.MaxPasteLines:N0} tasks at once");
+            _host?.ShowToast($"Make up to {DeviceFile.MaxPasteLines:N0} tasks at once");
             return;
         }
 
@@ -380,7 +380,7 @@ public partial class NotesView : UserControl
         var added = new List<TaskItem>();
         for (int i = lines.Count - 1; i >= 0; i--) added.Add(_ws.AddTask(lines[i], space: space));
         string label = lines.Count == 1 ? $"Added to tasks: {Shorten(lines[0])}" : $"Added {lines.Count} tasks";
-        _panel.ShowToast(label, () => { foreach (var t in added) _ws.Delete(t); });
+        _host?.ShowToast(label, () => { foreach (var t in added) _ws.Delete(t); });
     }
 
     /// <summary>Enter on a list line starts the next item; Enter on an empty item ends the list.</summary>
@@ -411,6 +411,9 @@ public partial class NotesView : UserControl
         Insert(Environment.NewLine + indent + marker);
         return true;
     }
+
+    /// <summary>F5: the date and time, at the caret.</summary>
+    private void Stamp() => Insert(DateTime.Now.ToString("g", CultureInfo.CurrentCulture));
 
     private void Insert(string text)
     {
@@ -596,8 +599,40 @@ public partial class NotesView : UserControl
         Keyboard.Focus(Editor);
     }
 
-    /// <summary>A keystroke on the formatted note: the editor, its caret where it was.</summary>
-    private void Edit() => FocusEditor();
+    /// <summary>
+    /// The editor from the formatted note (a key, the Edit menu, a click on no line): the caret where you last wrote in
+    /// this sheet (else the end of the note), nothing selected: a selection left in the hidden editor (search's match,
+    /// say) is never typed over. With <paramref name="box"/> (the row whose checkbox has the keyboard), at the end of
+    /// that item's line instead.
+    /// </summary>
+    private void Edit(int box = -1)
+    {
+        int line = box >= 0 && box < Reader.Rows.Count ? Reader.Rows[box].Line : -1; // read before the rows go
+        ShowEditor();
+        string text = Editor.Text;
+        int at = Math.Min(Editor.CaretIndex, text.Length);
+        if (line >= 0 && line <= text.Length)
+        {
+            int end = text.IndexOf('\n', line);
+            if (end < 0) end = text.Length;
+            else if (end > line && text[end - 1] == '\r') end--;
+            at = end;
+        }
+        Editor.Select(at, 0);
+        Editor.Focus();
+        Keyboard.Focus(Editor);
+    }
+
+    /// <summary>The row whose checkbox <paramref name="source"/> is in (-1: not a checkbox).</summary>
+    private static int BoxRowOf(object? source)
+    {
+        if (!Inside<CheckBox>(source)) return -1;
+        for (var d = source as DependencyObject; d != null; d = d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+        {
+            if (d is RowView view) return view.Index;
+        }
+        return -1;
+    }
 
     /// <summary>The line at the top of the editor: where it starts in the text, and where that is on screen.</summary>
     private (int Offset, double Y)? EditorTopLine()
@@ -650,7 +685,7 @@ public partial class NotesView : UserControl
         int row = Reader.RowAt(at);
         if (row < 0)
         {
-            FocusEditor();
+            Edit();
             return;
         }
         double? top = Reader.TextTopOf(row);
@@ -665,45 +700,61 @@ public partial class NotesView : UserControl
 
     private void Reader_PreviewTextInput(object sender, TextCompositionEventArgs e)
     {
-        // Space on a checkbox ticks it; control characters (Ctrl+letter) aren't typing.
-        if (Inside<CheckBox>(e.OriginalSource) || string.IsNullOrEmpty(e.Text) || char.IsControl(e.Text[0])) return;
+        // Control characters (Ctrl+letter) aren't typing; Space on a checkbox ticks it.
+        if (string.IsNullOrEmpty(e.Text) || char.IsControl(e.Text[0])) return;
+        int box = BoxRowOf(e.OriginalSource);
+        if (Inside<CheckBox>(e.OriginalSource) && (box < 0 || e.Text == " ")) return;
         e.Handled = true;
-        TypeFromReader(e.Text);
+        TypeFromReader(e.Text, box);
     }
 
-    /// <summary>A character typed on the formatted note: the editor opens and it's typed there.</summary>
-    internal void TypeFromReader(string text)
+    /// <summary>
+    /// A character typed on the formatted note: the editor opens (<see cref="Edit"/>: at the caret, or the end of the
+    /// line of the checkbox that had the keyboard) and it's typed there.
+    /// </summary>
+    internal void TypeFromReader(string text, int box = -1)
     {
-        Edit();
+        Edit(box);
         Insert(text);
     }
 
     private void Reader_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (ReaderKey(e.Key, Keyboard.Modifiers, Inside<CheckBox>(e.OriginalSource))) e.Handled = true;
+        if (ReaderKey(e.Key, Keyboard.Modifiers, BoxRowOf(e.OriginalSource))) e.Handled = true;
     }
 
-    /// <summary>A key on the formatted note (or a checkbox in it): true when it was one of Notes' own.</summary>
-    internal bool ReaderKey(Key key, ModifierKeys mods, bool onBox = false)
+    /// <summary>
+    /// A key on the formatted note: true when it was one of Notes' own. <paramref name="box"/>: the row whose checkbox
+    /// has the keyboard (-1: none). Keys that write open the editor first (<see cref="Edit"/>), then do what they do
+    /// there.
+    /// </summary>
+    internal bool ReaderKey(Key key, ModifierKeys mods, int box = -1)
     {
         switch (key)
         {
+            // Enter and F2 open the editor and type nothing.
             case Key.F2 when mods == ModifierKeys.None:
-                Edit();
+            case Key.Enter when mods == ModifierKeys.None:
+                Edit(box);
                 return true;
 
-            case Key.Enter when mods == ModifierKeys.None && !onBox:
-                Edit();
-                if (!ContinueList()) Insert(Environment.NewLine);
+            case Key.Enter when mods == ModifierKeys.Control:
+                Edit(box);
+                SendLineToTasks();
+                return true;
+
+            case Key.F5:
+                Edit(box);
+                Stamp();
                 return true;
 
             case Key.Z when mods == ModifierKeys.Control:
-                Edit();
+                Edit(box);
                 if (Editor.CanUndo) Editor.Undo();
                 return true;
 
             case Key.Y when mods == ModifierKeys.Control:
-                Edit();
+                Edit(box);
                 if (Editor.CanRedo) Editor.Redo();
                 return true;
 
@@ -711,7 +762,7 @@ public partial class NotesView : UserControl
             case Key.Insert when mods == ModifierKeys.Shift:
                 if (!PasteImage())
                 {
-                    Edit();
+                    Edit(box);
                     Editor.Paste();
                 }
                 return true;

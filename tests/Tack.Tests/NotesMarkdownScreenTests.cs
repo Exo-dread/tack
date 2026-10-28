@@ -32,6 +32,9 @@ internal static class NotesMarkdownScreenTests
         yield return ("notes markdown on screen: a note shows formatted on opening, with the keyboard on it; empty, blank paper and over 200,000 characters stay the editor", FormattedOnOpen);
         yield return ("notes markdown on screen: a click opens the editor with the caret at the start of that line, the line kept where it was", ClickToEdit);
         yield return ("notes markdown on screen: typing a character, Enter or F2 on the formatted note opens the editor, and the character is typed", TypingFromReader);
+        yield return ("notes markdown on screen: from the formatted note, keys write at the caret, never over a selection left in the editor (search's match)", NoHiddenSelection);
+        yield return ("notes markdown on screen: F5 and Ctrl+Enter on the formatted note do what they do in the editor, at the caret", StampAndTaskFromReader);
+        yield return ("notes markdown on screen: a key on a checkbox writes at the end of its item's line; Space still ticks it", KeysOnABox);
         yield return ("notes markdown on screen: ticking a box changes exactly [ ] to [x] as one edit (saved, clocked); Ctrl+Z opens the editor and undoes it", TickAndUndo);
         yield return ("notes markdown on screen: the editor losing the keyboard, a sheet switch or a change from another device shows it formatted again", BackToReading);
         yield return ("notes markdown on screen: search opens the editor with the match selected; a new sheet and blank paper write at once", SelectionOpensEditor);
@@ -276,7 +279,9 @@ internal static class NotesMarkdownScreenTests
             n.Editor.CaretIndex = n.Editor.Text.Length;
             n.Key(Key.Enter);
             Shown(n, false, "Enter");
-            Check.Equal("- one\r\n- ", n.Sheet.Text, "Enter on a list line continues the list, as in the editor");
+            Check.Equal("- one", n.Sheet.Text, "Enter opens the editor and types nothing");
+            Check.Equal(n.Editor.Text.Length, n.Editor.CaretIndex, "the caret where it was");
+            Check.True(Focused(n, n.Editor), "the focus in the editor");
         }
         using (var n = new Notes("plain"))
         {
@@ -293,6 +298,142 @@ internal static class NotesMarkdownScreenTests
             n.Key(Key.Down);
             Shown(n, true, "an arrow scrolls, it doesn't write");
             Check.True(n.Page.ReaderKey(Key.V, ModifierKeys.Control) && !n.Page.IsReading, "Ctrl+V: the editor, to paste into");
+        }
+        Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+    });
+
+    /// <summary>Search's match selected, then the editor left: the note formatted, the selection still in the hidden editor.</summary>
+    private static Notes AfterSearch(string text, string match)
+    {
+        var n = new Notes(text);
+        int at = n.Sheet.Text.IndexOf(match, StringComparison.Ordinal);
+        n.Page.Reveal(n.Sheet, (at, at + match.Length));
+        Ui.Pump();
+        Check.Equal(match, n.Editor.SelectedText, "(search selected the match)");
+        Keyboard.ClearFocus();
+        Ui.Pump();
+        Shown(n, true, "(back to formatted after search)");
+        Check.Equal(match.Length, n.Editor.SelectionLength, "(the selection kept in the hidden editor)");
+        return n;
+    }
+
+    private static void NoHiddenSelection() => Ui.Run(errors =>
+    {
+        const string text = "# Head\nfind the needle here";
+        string shown = NoteSheet.ForTextBox(text);
+        using (var n = AfterSearch(text, "needle"))
+        {
+            int caret = n.Editor.CaretIndex;
+            n.Text("!");
+            Shown(n, false, "a character");
+            Check.Equal(shown.Insert(caret, "!"), n.Sheet.Text, "typed at the caret; the match still there");
+            Check.Equal(0, n.Editor.SelectionLength, "nothing selected");
+        }
+        foreach (var key in new[] { Key.Enter, Key.F2 })
+        {
+            using var n = AfterSearch(text, "needle");
+            int caret = n.Editor.CaretIndex;
+            n.Key(key);
+            Shown(n, false, key.ToString());
+            Check.Equal(shown, n.Sheet.Text, $"{key}: nothing typed, nothing replaced");
+            Check.True(n.Editor.SelectionLength == 0 && n.Editor.CaretIndex == caret, $"{key}: the caret where it was, nothing selected");
+        }
+        using (var n = AfterSearch(text, "needle"))
+        {
+            // Pasted at the caret (the end of the match): whatever the clipboard holds, the match is still there, whole.
+            int caret = n.Editor.CaretIndex;
+            Check.True(n.Page.ReaderKey(Key.V, ModifierKeys.Control), "Ctrl+V is Notes' own");
+            Ui.Pump();
+            Shown(n, false, "Ctrl+V");
+            Check.True(n.Sheet.Text.StartsWith(shown[..caret], StringComparison.Ordinal) && n.Sheet.Text.EndsWith(shown[caret..], StringComparison.Ordinal),
+                "Ctrl+V: pasted at the caret, not over the match");
+        }
+        // A click below the last line opens it without the selection too.
+        using (var n = AfterSearch(text, "needle"))
+        {
+            n.Page.ClickToEdit(new Point(60, n.Reader.ActualHeight + 500));
+            Ui.Pump();
+            Shown(n, false, "a click below the note");
+            Check.Equal(0, n.Editor.SelectionLength, "a click below the note: nothing selected");
+        }
+        // Search itself still opens the editor with its match selected.
+        using (var n = new Notes(text))
+        {
+            int at = n.Sheet.Text.IndexOf("needle", StringComparison.Ordinal);
+            n.Page.Reveal(n.Sheet, (at, at + 6));
+            Ui.Pump();
+            Check.Equal("needle", n.Editor.SelectedText, "search: the match selected");
+        }
+        Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+    });
+
+    private static void StampAndTaskFromReader() => Ui.Run(errors =>
+    {
+        using (var n = new Notes("# Head\nplain"))
+        {
+            n.Editor.CaretIndex = n.Editor.Text.Length;
+            string before = n.Sheet.Text;
+            n.Key(Key.F5);
+            Shown(n, false, "F5");
+            string stamp = n.Sheet.Text.Length > before.Length ? n.Sheet.Text[before.Length..] : "";
+            Check.True(n.Sheet.Text.StartsWith(before, StringComparison.Ordinal) && DateTime.TryParse(stamp, System.Globalization.CultureInfo.CurrentCulture, out _),
+                $"F5 stamps the date and time at the caret ('{stamp}')");
+            Check.Equal(n.Editor.Text.Length, n.Editor.CaretIndex, "the caret after it");
+        }
+        using (var n = AfterSearch("# Head\nfind the needle here", "needle"))
+        {
+            n.Key(Key.F5);
+            Check.True(n.Sheet.Text.StartsWith("# Head\r\nfind the ", StringComparison.Ordinal) && n.Sheet.Text.EndsWith(" here", StringComparison.Ordinal)
+                && n.Sheet.Text.Contains("needle", StringComparison.Ordinal), "F5: stamped at the caret, not over search's match");
+        }
+        using (var n = new Notes("# Head\n- ring the client\nlast line"))
+        {
+            n.Editor.CaretIndex = n.Sheet.Text.IndexOf("ring", StringComparison.Ordinal);
+            int open = n.Ws.Open.Count;
+            Check.True(n.Page.ReaderKey(Key.Enter, ModifierKeys.Control), "Ctrl+Enter is Notes' own");
+            Ui.Pump();
+            Shown(n, false, "Ctrl+Enter");
+            Check.Equal(open + 1, n.Ws.Open.Count, "Ctrl+Enter: one task");
+            Check.True(n.Ws.Open.Any(t => t.Text == "ring the client"), "made from the caret's line, as in the editor");
+            Check.Equal("# Head\r\n- ring the client\r\nlast line", n.Sheet.Text, "the note keeps its text");
+        }
+        using (var n = new Notes("first\nsecond"))
+        {
+            n.Editor.Select(0, n.Editor.Text.Length); // left selected in the hidden editor
+            int open = n.Ws.Open.Count;
+            n.Page.ReaderKey(Key.Enter, ModifierKeys.Control);
+            Ui.Pump();
+            Check.Equal(open + 1, n.Ws.Open.Count, "Ctrl+Enter with a selection left in the editor: one task, the caret's line, not the selection");
+        }
+        Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
+    });
+
+    private static void KeysOnABox() => Ui.Run(errors =>
+    {
+        const string text = "# Head\n- [ ] first item\n- [ ] second item\nlast";
+        string shown = NoteSheet.ForTextBox(text);
+        int endOfFirst = shown.IndexOf("first item", StringComparison.Ordinal) + "first item".Length;
+        using (var n = new Notes(text))
+        {
+            n.Editor.CaretIndex = n.Editor.Text.Length;
+            var box = n.BoxOf(n.TaskRows()[0]);
+            n.Text(" ", on: box);
+            Shown(n, true, "Space on a checkbox (its key ticks it)");
+            n.Text("!", on: box);
+            Shown(n, false, "a character on a checkbox");
+            Check.Equal(shown.Insert(endOfFirst, "!"), n.Sheet.Text, "typed at the end of that item's line");
+            Check.Equal(endOfFirst + 1, n.Editor.CaretIndex, "the caret after it");
+        }
+        foreach (var key in new[] { Key.Enter, Key.F2 })
+        {
+            using var n = new Notes(text);
+            n.Editor.Select(0, 3); // a selection left in the hidden editor
+            int row = n.TaskRows()[0];
+            Check.True(n.Page.ReaderKey(key, ModifierKeys.None, row), $"{key} on a checkbox is Notes' own");
+            Ui.Pump();
+            Shown(n, false, $"{key} on a checkbox");
+            Check.Equal(shown, n.Sheet.Text, $"{key} on a checkbox types nothing");
+            Check.True(n.Editor.CaretIndex == endOfFirst && n.Editor.SelectionLength == 0, $"{key} on a checkbox: the caret at the end of its item's line ({n.Editor.CaretIndex}, not {endOfFirst})");
         }
         Check.Equal(0, errors.Count, "no error\n" + string.Join("\n", errors));
     });

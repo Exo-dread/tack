@@ -59,7 +59,7 @@ export class NotesView {
     this.view = h('div.md', {
       role: 'document',
       'aria-label': 'Note',
-      'aria-keyshortcuts': 'Enter F2',
+      'aria-keyshortcuts': 'Enter F2 F5 Control+Enter',
       tabindex: '0',
       hidden: true,
       onclick: (e: Event) => this.onViewClick(e as MouseEvent),
@@ -616,14 +616,38 @@ export class NotesView {
     this.write(end ? this.activeText.length : offset, { offset, top: rect.top - box.top });
   }
 
+  /**
+   * A key on the formatted note. Keys that write open the editor first (writeFromKeyboard), then
+   * do what they do there: a character is typed, Enter and F2 type nothing, F5 stamps, Ctrl+Enter
+   * makes a task of the caret's line, Ctrl+V pastes. Space on a checkbox ticks it.
+   */
   private onViewKey(e: KeyboardEvent): void {
+    if (e.isComposing) return;
     const mod = e.ctrlKey || e.metaKey;
+    const box = (e.target as HTMLElement).closest<HTMLInputElement>('input.md-check');
+    if (e.key === 'F5') {
+      // As in the editor (which takes F5 with any modifier): never the browser's reload.
+      e.preventDefault();
+      this.writeFromKeyboard(box);
+      this.stamp();
+      return;
+    }
     if (mod && !e.altKey && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
       if (this.undoTick()) e.preventDefault();
       return;
     }
-    if (mod || e.altKey || e.isComposing) return;
-    const box = (e.target as HTMLElement).closest<HTMLInputElement>('input.md-check');
+    if (mod && !e.altKey && !e.shiftKey && e.key === 'Enter') {
+      e.preventDefault();
+      this.writeFromKeyboard(box);
+      this.toTasks();
+      return;
+    }
+    if ((mod && !e.altKey && (e.key === 'v' || e.key === 'V')) || (e.shiftKey && !mod && !e.altKey && e.key === 'Insert')) {
+      // The editor takes the focus now, so the paste this key makes lands in it, at the caret.
+      this.writeFromKeyboard(box);
+      return;
+    }
+    if (mod || e.altKey) return;
     if (box && e.key === ' ') return; // ticks it
     if (e.key === 'F2' || e.key === 'Enter') {
       e.preventDefault();
@@ -635,9 +659,9 @@ export class NotesView {
   }
 
   /**
-   * The keyboard on the formatted note: the editor, with the caret on the checklist item that
-   * had the keyboard, or where it was when you last wrote here (the end, if you haven't),
-   * keeping the lines in sight where they were.
+   * The keyboard on the formatted note: the editor, with the caret where it was when you last
+   * wrote in this sheet (the end, if you haven't), nothing selected; or, when a checkbox had the
+   * keyboard, at the end of its item's line. The lines stay in sight where they were.
    */
   private writeFromKeyboard(box: HTMLInputElement | null): void {
     const viewTop = this.view.getBoundingClientRect().top;
@@ -646,7 +670,11 @@ export class NotesView {
     anchor ??= this.lines().find((l) => l.getBoundingClientRect().bottom > viewTop);
     const keep = anchor ? { offset: this.lineOffset(Number(anchor.dataset.ln)), top: anchor.getBoundingClientRect().top - viewTop } : null;
     const text = this.activeText;
-    const caret = box && keep ? keep.offset : Math.min(this.caretMemo.get(this.activeId) ?? text.length, text.length);
+    let caret = Math.min(this.caretMemo.get(this.activeId) ?? text.length, text.length);
+    if (box && keep) {
+      const end = text.indexOf('\n', keep.offset);
+      caret = end < 0 ? text.length : end;
+    }
     this.write(caret, keep);
   }
 
