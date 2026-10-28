@@ -409,7 +409,7 @@ test.describe('spaces', () => {
     await expect(page.locator('.sheet-pill[aria-selected="true"]')).toHaveText('Main notes');
     await show(page, 'Work');
     await expect(page.locator('.sheet-pill[aria-selected="true"]')).toHaveText('Second');
-    await expect(editor).toHaveValue('Second');
+    await expect(page.locator('textarea.editor')).toHaveValue('Second');
   });
 
   test('Undo on a space\'s blank paper makes no sheet (it stays blank, as on the desktop)', async ({ page }) => {

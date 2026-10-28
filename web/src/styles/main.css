@@ -1167,6 +1167,113 @@ html.kb-open .page.notes { bottom: calc(var(--dock-h) + 10px); }
 
 .editor::placeholder { color: var(--text-3); }
 
+/* ---- a note formatted while you read it (Markdown: docs/NOTES-MARKDOWN.md). Same box, font and
+   padding as the editor, so the lines stay where they were when it opens. */
+
+.md {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 6px 4px 28px;
+  color: var(--text);
+  font: max(16px, var(--text-size)) / 1.62 var(--font);
+  overflow-y: auto;
+  overflow-wrap: break-word;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--fill-3) transparent;
+  cursor: text;
+  outline: 0;
+  border-radius: 6px;
+}
+
+.md:focus-visible { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 70%, transparent); }
+
+.md > :first-child > :first-child { margin-top: 0; }
+.md > :last-child > :last-child { margin-bottom: 0; }
+
+/* Off screen, a chunk of the note isn't laid out (markdownview.ts sizes it until it is). */
+.md-chunk { display: flow-root; content-visibility: auto; }
+
+.md :is(p, ul, ol, pre, blockquote) { margin: 0 0 .7em; }
+
+.md .md-h {
+  margin: .85em 0 .3em;
+  font-family: var(--font-display);
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -.01em;
+}
+
+.md h2.md-h { font-size: 1.36em; }
+.md h3.md-h { font-size: 1.16em; }
+.md h4.md-h { font-size: 1.02em; color: var(--text-2); }
+
+.md strong { font-weight: 650; }
+.md s { color: var(--text-3); }
+
+.md :is(ul, ol) { padding-left: 1.45em; }
+.md li > :is(ul, ol, p) { margin: 0; }
+.md li::marker { color: var(--text-3); }
+
+/* A checklist item: a real checkbox where the bullet was. */
+.md li.task { list-style: none; position: relative; }
+.md .md-check {
+  position: absolute;
+  left: -1.45em;
+  top: .3em;
+  width: 1.08em;
+  height: 1.08em;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.md li.task.done > .li-text { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--text-4); }
+
+@media (pointer: coarse) {
+  /* A thumb-sized box. */
+  .md .md-check { left: -1.6em; top: .16em; width: 1.36em; height: 1.36em; }
+  .md :is(ul, ol):has(> li.task) { padding-left: 1.75em; }
+}
+
+.md blockquote {
+  margin-left: 0;
+  margin-right: 0;
+  padding: 0 0 0 .85em;
+  border-left: 3px solid var(--stroke-2);
+  color: var(--text-2);
+}
+
+.md code {
+  font-family: ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+  font-size: .86em;
+  padding: .08em .32em;
+  border-radius: 5px;
+  background: var(--fill-2);
+}
+
+.md pre {
+  padding: .55em .8em;
+  border-radius: 10px;
+  background: var(--fill-2);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  line-height: 1.5;
+}
+
+.md pre code { padding: 0; background: none; font-size: .86em; white-space: pre; }
+
+.md hr { height: 0; margin: .9em 0; border: 0; border-top: 1px solid var(--stroke-2); }
+
+/* A link is shown, never followed: synced text never becomes something to open. */
+.md .md-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  text-underline-offset: 2px;
+}
+
 /* ============================================================== toasts */
 
 .toasts {
@@ -1568,7 +1675,7 @@ kbd {
   .notes-head .tool { padding: 0 11px; }
   .notes-head :is(.sheet-pill, .sheet-ghost) { height: 38px; font-size: 14.5px; }
   .wide .paper { padding: 14px 22px 0; }
-  .wide .editor { padding-bottom: 40px; }
+  .wide :is(.editor, .md) { padding-bottom: 40px; }
   .wide .empty { padding-top: 48px; }
 }
 
