@@ -207,7 +207,7 @@ test.describe('notes in Markdown', () => {
     // Ctrl+Enter: the caret's line becomes a task; the note keeps its text.
     await page.keyboard.press('Control+Enter');
     await expect(editor(page)).toBeFocused();
-    await expect(page.getByText('Added to Tasks: “last”')).toBeVisible();
+    await expect(page.getByText('Added to Tasks: “last”', { exact: true })).toBeVisible();
     await expect(editor(page)).toHaveValue('# Plan\n- [ ] ring Sam\nlast');
     await page.keyboard.press('Escape');
 
