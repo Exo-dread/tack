@@ -149,16 +149,21 @@ internal static class SpaceStripTests
             Check.True(Math.Abs(gap - PanelWindow.PillGap) < 0.01, $"{pills[i].Content}: 6 px after the one before ({gap})");
         }
 
-        // The focus ring (3 px out) has room inside the scroller, which clips it.
+        // The focus ring (3 px out) has room inside the scroller, which clips it (give or take the
+        // layout rounding to whole device pixels: 2.67 at 150%).
         var first = Bounds(pills[0], panel.StripScroller);
-        Check.True(first.Left >= 3 && first.Top >= 3 && panel.StripScroller.ActualHeight - first.Bottom >= 3, $"room for the ring ({first})");
+        const double ring = 2.5;
+        Check.True(first.Left >= ring && first.Top >= ring && panel.StripScroller.ActualHeight - first.Bottom >= ring, $"room for the ring ({first})");
         // In line with the panel's content (the add box and the list start 16 px in).
-        Check.Equal(16.0, Bounds(pills[0], panel.Chrome).Left, "the first pill lines up with the content");
+        // Within a device pixel: layout rounds to whole ones (2/3 px at 150%).
+        double left = Bounds(pills[0], panel.Chrome).Left;
+        Check.True(Math.Abs(left - 16) <= 0.7, $"the first pill lines up with the content ({left})");
 
         var plus = panel.NewSpaceButton;
         Check.True(plus.ActualWidth == 24 && plus.ActualHeight == 24, $"+ is round, 24 px ({plus.ActualWidth}x{plus.ActualHeight})");
         Check.Equal(new CornerRadius(12), Part(plus, "Bd").CornerRadius, "+ rounded like the pills");
-        Check.Equal(16.0, panel.Chrome.ActualWidth - Bounds(plus, panel.Chrome).Right, "+ ends 16 px from the edge, as the content does");
+        double right = panel.Chrome.ActualWidth - Bounds(plus, panel.Chrome).Right;
+        Check.True(Math.Abs(right - 16) <= 0.7, $"+ ends 16 px from the edge, as the content does ({right})");
 
         // Many spaces: they scroll, + stays in sight.
         for (int i = 0; i < 30; i++) shell.Ws.AddSpace($"Project {i}");
