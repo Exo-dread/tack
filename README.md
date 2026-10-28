@@ -41,9 +41,10 @@ and gets out of the way the moment you're done.
 - **Spaces, if you want them.** Keep work, development and personal tasks apart: make a space in
   Settings and a slim strip under the header switches between them (Alt+1 to Alt+9, Alt+0 for all).
   Until you make one, there's nothing extra on screen.
-- **Notes like scrap paper.** Plain-text sheets that save as you type. Lists continue themselves,
-  F5 stamps the time, and Ctrl+Enter turns a line into a task. Paste a screenshot to keep it on the
-  sheet while you follow it, then throw it away.
+- **Notes like scrap paper.** Plain-text sheets that save as you type, shown formatted while you read
+  them (headings, lists, checkboxes you can tick: a little Markdown). Lists continue themselves, F5 stamps
+  the time, and Ctrl+Enter turns a line into a task. Paste a screenshot to keep it on the sheet while you
+  follow it, then throw it away.
 - **Find anything.** Ctrl+F searches every task, finished task and note in every space as you type,
   whatever the case or accents, and takes you straight to what you pick.
 - **Drop it on the orb.** Drag an email from Outlook, a file or folder from Explorer, a link from your
@@ -178,6 +179,13 @@ until there's a second one, Tack looks exactly as it always has.
 - Sheets are plain text; a sheet's title is its first line. **+** (or **Ctrl+N**) adds a sheet;
   right-click a sheet's name to delete it (or, with spaces, move it to another).
 - Start a line with `- `, `* `, `1. ` or `[ ] ` and Enter continues the list.
+- **Formatted while you read.** A sheet you're not writing in shows its Markdown formatted: `#` to `###`
+  headings, `**bold**`, `*italic*`, `~~struck~~`, `` `code` ``, `- ` and `1. ` lists, `- [ ] ` checkboxes,
+  `> ` quotes, code between three backticks and `---` rules. Click a line (or start typing, or press F2)
+  to write: it's the plain text again, the caret at the start of the line you clicked. Tick a checkbox
+  to change that `[ ]` to `[x]` in the text (Ctrl+Z takes it back). The text is never changed by the
+  formatting, links open nothing, and **Settings → Look → Format notes** turns it off. The full rules are
+  in [docs/NOTES-MARKDOWN.md](docs/NOTES-MARKDOWN.md).
 - **Snippets.** Snip some instructions (Win+Shift+S), press **Ctrl+V** in a sheet, and the picture sits
   above the sheet's text as a thumbnail. Click it to see it full size on that display (Esc or a click
   closes it); **×** throws it away, with Undo. Image files copied in Explorer paste the same way, and an

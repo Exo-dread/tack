@@ -35,6 +35,8 @@ internal interface INotesHost
 /// It shows the sheets of the space on show (<see cref="SpaceView"/>); a space without
 /// any shows blank paper until you write on it. An image pasted onto a sheet becomes a
 /// snippet: a thumbnail above its text, kept on this PC only (<see cref="SnippetStore"/>).
+/// While you read a note (its editor doesn't have the keyboard) it shows formatted, its Markdown laid out
+/// (<see cref="NoteDocument"/>, docs/NOTES-MARKDOWN.md); a click or a keystroke turns it back into the editor.
 /// </summary>
 public partial class NotesView : UserControl
 {
@@ -67,6 +69,7 @@ public partial class NotesView : UserControl
         _host = host ?? panel;
         DataContext = view;
         _shown = view.ActiveSheet;
+        InitializeReader();
 
         if (snippets == null) return;
         _snippets = snippets;
@@ -80,6 +83,16 @@ public partial class NotesView : UserControl
         ShowSnippets();
     }
 
+    /// <summary>What isn't about snippets: the formatted view, set up whether or not snippets are on.</summary>
+    private void InitializeReader()
+    {
+        _ws.Settings.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(Settings.FormatNotes)) FormatChanged(); };
+        Reader.AddHandler(MouseLeftButtonUpEvent, new MouseButtonEventHandler(Reader_MouseLeftButtonUp), handledEventsToo: true);
+        Reader.ContextMenuOpening += (_, e) => _menuAt = e.CursorLeft >= 0 ? new Point(e.CursorLeft, e.CursorTop) : null;
+        Reader.Ticked += Tick;
+        if (CanRead(_view.ActiveSheet)) ShowReader();
+    }
+
     /// <summary>Snippets are on: an image pasted here (or on Tasks) is kept.</summary>
     internal bool TakesImages => _snippets != null;
 
@@ -90,10 +103,28 @@ public partial class NotesView : UserControl
         catch (Exception) { return null; } // another app has it open: the paste goes on as it would have
     };
 
+    /// <summary>The keyboard to the editor (shown, if the note was formatted), its caret where it was.</summary>
     public void FocusEditor()
     {
+        ShowEditor();
         Editor.Focus();
         Keyboard.Focus(Editor);
+    }
+
+    /// <summary>
+    /// Opening Notes, a sheet switch: the note formatted if it can be (the keyboard on it, so typing still writes),
+    /// otherwise the editor.
+    /// </summary>
+    public void FocusDefault()
+    {
+        if (!CanRead(_view.ActiveSheet))
+        {
+            FocusEditor();
+            return;
+        }
+        ShowReader();
+        Reader.Focus();
+        Keyboard.Focus(Reader);
     }
 
     // ---- Sheets ----
@@ -133,7 +164,14 @@ public partial class NotesView : UserControl
             {
                 Editor.CaretIndex = Editor.Text.Length;
             }
-            if (IsVisible) FocusEditor();
+            // The note on show is formatted (unless it was just written on blank paper, where typing goes on).
+            if (madeOnPaper)
+            {
+                if (IsVisible) FocusEditor();
+            }
+            else if (IsVisible) FocusDefault();
+            else if (CanRead(_view.ActiveSheet)) ShowReader();
+            else ShowEditor();
         });
     }
 
@@ -153,6 +191,7 @@ public partial class NotesView : UserControl
     /// </summary>
     private void Editor_TextChanged(object sender, TextChangedEventArgs e)
     {
+        if (_reading && !_ticking) RenderWhenShown();
         if (_ws == null || _makingSheet || _view.ActiveSheet != null || Editor.Text.Length == 0) return;
         _makingSheet = true;
         Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
@@ -228,7 +267,7 @@ public partial class NotesView : UserControl
             _ws.MoveSheetToSpace(sheet.Id, before);
             if (_view.Sheets.Contains(sheet)) _ws.ActiveSheet = sheet;
         });
-        if (IsVisible) FocusEditor();
+        if (IsVisible) FocusDefault();
     }
 
     private void CycleSheet(int delta)
@@ -382,6 +421,349 @@ public partial class NotesView : UserControl
 
     private static string Shorten(string s) => s.Length > 28 ? s[..27].TrimEnd() + "…" : s;
 
+    // ---- Reading: the note formatted ----
+
+    private bool _reading;
+    private string? _renderedText;
+    private bool _renderQueued;
+    private bool _swapping;
+    private bool _ticking;
+    private (Point At, int Clicks)? _down;
+    private Point? _menuAt;
+
+    /// <summary>The note on show is formatted (the editor is hidden).</summary>
+    internal bool IsReading => _reading;
+
+    /// <summary>The formatted note (for tests).</summary>
+    internal NoteReader ReaderPanel => Reader;
+
+    /// <summary>
+    /// Formatted, unless it's off, there's no sheet (blank paper), it's empty, or longer than Tack Focus would format
+    /// (counted as the note's own text, a line break one character, not the editor's CR LF).
+    /// </summary>
+    private bool CanRead(NoteSheet? sheet)
+    {
+        if (!_ws.Settings.FormatNotes || sheet == null || sheet.IsEmpty) return false;
+        string text = sheet.Text;
+        if (text.Length <= Markdown.MaxFormatted) return true;
+        int breaks = text.AsSpan().Count("\r\n");
+        return text.Length - breaks <= Markdown.MaxFormatted;
+    }
+
+    private bool IsStale => _renderedText == null || !string.Equals(_renderedText, Editor.Text, StringComparison.Ordinal);
+
+    /// <summary>Shows the note formatted, where the editor was; the keyboard follows if the editor had it.</summary>
+    private void ShowReader()
+    {
+        if (!CanRead(_view.ActiveSheet))
+        {
+            ShowEditor();
+            return;
+        }
+        if (_reading)
+        {
+            if (IsStale) RenderWhenShown();
+            return;
+        }
+        var top = EditorTopLine();
+        _reading = true;
+        _swapping = true;
+        try
+        {
+            bool hadKeyboard = Editor.IsKeyboardFocusWithin;
+            ReaderScroller.Visibility = Visibility.Visible;
+            Editor.Visibility = Visibility.Hidden; // still laid out: back in an instant, scrolled as it was
+            if (hadKeyboard)
+            {
+                Reader.Focus();
+                Keyboard.Focus(Reader);
+            }
+            // Coming back to the panel (after another app had the keyboard) puts it here, not on the hidden editor.
+            if (FocusManager.GetFocusScope(Editor) is { } scope && ReferenceEquals(FocusManager.GetFocusedElement(scope), Editor))
+                FocusManager.SetFocusedElement(scope, Reader);
+        }
+        finally
+        {
+            _swapping = false;
+        }
+        Render(keepPlace: false);
+        if (top is { } t && IsVisible) Reader.ScrollRowTo(Reader.RowOfLine(t.Offset), TranslatePoint(new Point(0, t.Y), Reader).Y);
+    }
+
+    /// <summary>Shows the editor; the keyboard follows if the formatted note had it. The rows go (they're made again next time).</summary>
+    private void ShowEditor()
+    {
+        if (!_reading)
+        {
+            if (Editor.Visibility != Visibility.Visible) Editor.Visibility = Visibility.Visible;
+            return;
+        }
+        _reading = false;
+        _swapping = true;
+        try
+        {
+            bool hadKeyboard = ReaderScroller.IsKeyboardFocusWithin;
+            Editor.Visibility = Visibility.Visible;
+            ReaderScroller.Visibility = Visibility.Collapsed;
+            Reader.SetRows([], keepPlace: false);
+            _renderedText = null;
+            if (hadKeyboard)
+            {
+                Editor.Focus();
+                Keyboard.Focus(Editor);
+            }
+        }
+        finally
+        {
+            _swapping = false;
+        }
+    }
+
+    /// <summary>
+    /// Reads the note into rows: once each time it's shown, and when it changes while shown (a sync, a tick). Only the
+    /// rows in view are laid out (<see cref="NoteReader"/>).
+    /// </summary>
+    private void Render(bool keepPlace)
+    {
+        int focusedBox = Reader.FocusedBox();
+        string text = Editor.Text;
+        Reader.SetRows(NoteRows.Build(Markdown.Parse(text)), keepPlace);
+        _renderedText = text;
+        if (focusedBox < 0) return;
+        Reader.UpdateLayout();
+        if (Reader.ViewOf(focusedBox)?.Box is { } box) box.Focus();
+        else Reader.Focus();
+    }
+
+    /// <summary>The note changed while formatted: read again once things settle (once, however many changes).</summary>
+    private void RenderWhenShown()
+    {
+        if (_renderQueued) return;
+        _renderQueued = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            _renderQueued = false;
+            if (!_reading || !IsStale) return;
+            if (!CanRead(_view.ActiveSheet)) ShowEditor();
+            else Render(keepPlace: true);
+        });
+    }
+
+    private void FormatChanged()
+    {
+        if (!_ws.Settings.FormatNotes) ShowEditor();
+        else if (!_reading && !Editor.IsKeyboardFocusWithin) ShowReader();
+    }
+
+    /// <summary>The editor lost the keyboard (a click or Tab away, the panel folding): the note shows formatted.</summary>
+    private void Editor_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (_swapping || _reading || Editor.ContextMenu?.IsOpen == true) return;
+        // Not while it's only gone to the editor's own menu: checked again once the focus has settled.
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            if (_reading || Editor.IsKeyboardFocusWithin || Editor.ContextMenu?.IsOpen == true) return;
+            if (CanRead(_view.ActiveSheet)) ShowReader();
+        });
+    }
+
+    // ---- Reading: back to writing ----
+
+    /// <summary>
+    /// Opens the editor with the caret at <paramref name="offset"/> (the start of a line of the text), scrolled so
+    /// that line stays where it was on screen (<paramref name="y"/>, in this view's coordinates).
+    /// </summary>
+    private void EditAt(int offset, double? y)
+    {
+        offset = Math.Clamp(offset, 0, Editor.Text.Length);
+        ShowEditor();
+        Editor.Select(offset, 0);
+        if (y is double want && Editor.IsVisible)
+        {
+            // Lines out of view are only estimated until they're laid out: another look or two settles it.
+            for (int pass = 0; pass < 3; pass++)
+            {
+                Editor.UpdateLayout();
+                var rect = Editor.GetRectFromCharacterIndex(offset);
+                if (rect.IsEmpty) break;
+                double top = Editor.TranslatePoint(new Point(0, rect.Top), this).Y;
+                double to = Math.Max(0, Editor.VerticalOffset + top - want);
+                if (Math.Abs(to - Editor.VerticalOffset) < 0.5) break;
+                Editor.ScrollToVerticalOffset(to);
+            }
+        }
+        Editor.Focus();
+        Keyboard.Focus(Editor);
+    }
+
+    /// <summary>A keystroke on the formatted note: the editor, its caret where it was.</summary>
+    private void Edit() => FocusEditor();
+
+    /// <summary>The line at the top of the editor: where it starts in the text, and where that is on screen.</summary>
+    private (int Offset, double Y)? EditorTopLine()
+    {
+        if (!Editor.IsVisible || Editor.Text.Length == 0) return null;
+        int visual = Editor.GetFirstVisibleLineIndex();
+        if (visual < 0) return null;
+        int index = Editor.GetCharacterIndexFromLineIndex(visual);
+        if (index < 0) return null;
+        string text = Editor.Text;
+        int start = index == 0 ? 0 : text.LastIndexOf('\n', index - 1) + 1;
+        var rect = Editor.GetRectFromCharacterIndex(start);
+        if (rect.IsEmpty) rect = Editor.GetRectFromCharacterIndex(index);
+        if (rect.IsEmpty) return null;
+        return (start, Editor.TranslatePoint(new Point(0, rect.Top), this).Y);
+    }
+
+    private static bool Inside<T>(object? source) where T : DependencyObject
+    {
+        for (var d = source as DependencyObject; d != null; d = d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+        {
+            if (d is T) return true;
+        }
+        return false;
+    }
+
+    private void Reader_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // A checkbox ticks; anything else is a click to write (unless the pointer moves away before it's let go).
+        _down = Inside<CheckBox>(e.OriginalSource) ? null : (e.GetPosition(Reader), e.ClickCount);
+    }
+
+    private void Reader_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_down is not { } down || !_reading) return;
+        _down = null;
+        var up = e.GetPosition(Reader);
+        if (down.Clicks > 1
+            || Math.Abs(up.X - down.At.X) > SystemParameters.MinimumHorizontalDragDistance
+            || Math.Abs(up.Y - down.At.Y) > SystemParameters.MinimumVerticalDragDistance)
+            return;
+        e.Handled = true;
+        ClickToEdit(down.At);
+    }
+
+    /// <summary>A click at <paramref name="at"/> (the formatted note's coordinates): the editor, the caret at the start of that line.</summary>
+    internal void ClickToEdit(Point at)
+    {
+        if (!_reading) return;
+        int row = Reader.RowAt(at);
+        if (row < 0)
+        {
+            FocusEditor();
+            return;
+        }
+        double? top = Reader.TextTopOf(row);
+        EditAt(Reader.Rows[row].Line, top is double y ? Reader.TranslatePoint(new Point(0, y), this).Y : null);
+    }
+
+    private void EditMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (_menuAt is { } at) ClickToEdit(at);
+        else Edit();
+    }
+
+    private void Reader_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        // Space on a checkbox ticks it; control characters (Ctrl+letter) aren't typing.
+        if (Inside<CheckBox>(e.OriginalSource) || string.IsNullOrEmpty(e.Text) || char.IsControl(e.Text[0])) return;
+        e.Handled = true;
+        TypeFromReader(e.Text);
+    }
+
+    /// <summary>A character typed on the formatted note: the editor opens and it's typed there.</summary>
+    internal void TypeFromReader(string text)
+    {
+        Edit();
+        Insert(text);
+    }
+
+    private void Reader_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (ReaderKey(e.Key, Keyboard.Modifiers, Inside<CheckBox>(e.OriginalSource))) e.Handled = true;
+    }
+
+    /// <summary>A key on the formatted note (or a checkbox in it): true when it was one of Notes' own.</summary>
+    internal bool ReaderKey(Key key, ModifierKeys mods, bool onBox = false)
+    {
+        switch (key)
+        {
+            case Key.F2 when mods == ModifierKeys.None:
+                Edit();
+                return true;
+
+            case Key.Enter when mods == ModifierKeys.None && !onBox:
+                Edit();
+                if (!ContinueList()) Insert(Environment.NewLine);
+                return true;
+
+            case Key.Z when mods == ModifierKeys.Control:
+                Edit();
+                if (Editor.CanUndo) Editor.Undo();
+                return true;
+
+            case Key.Y when mods == ModifierKeys.Control:
+                Edit();
+                if (Editor.CanRedo) Editor.Redo();
+                return true;
+
+            case Key.V when mods == ModifierKeys.Control:
+            case Key.Insert when mods == ModifierKeys.Shift:
+                if (!PasteImage())
+                {
+                    Edit();
+                    Editor.Paste();
+                }
+                return true;
+
+            case Key.N when mods == ModifierKeys.Control:
+                AddSheet();
+                return true;
+
+            case Key.Tab when mods == ModifierKeys.Control:
+            case Key.PageDown when mods == ModifierKeys.Control:
+                CycleSheet(1);
+                return true;
+
+            case Key.Tab when mods == (ModifierKeys.Control | ModifierKeys.Shift):
+            case Key.PageUp when mods == ModifierKeys.Control:
+                CycleSheet(-1);
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// A checkbox clicked: exactly that "[ ]" becomes "[x]" (or back) in the text, as one edit in the editor (so Undo,
+    /// saving and the sync clocks all take it as typing). The caret stays where it was.
+    /// </summary>
+    private void Tick(NoteRow row, CheckBox box)
+    {
+        if (row.Item?.At is not int at) return;
+        string text = Editor.Text;
+        if (!_reading || at < 1 || at + 1 >= text.Length || text[at - 1] != '[' || text[at + 1] != ']' || text[at] is not (' ' or 'x' or 'X')
+            || !string.Equals(text, _renderedText, StringComparison.Ordinal))
+        {
+            Render(keepPlace: true); // the note changed under it: show it as it is now
+            return;
+        }
+        bool ticked = text[at] != ' ';
+        if (box.IsChecked == ticked) return; // already as the text says
+        int start = Editor.SelectionStart, length = Editor.SelectionLength;
+        _ticking = true;
+        try
+        {
+            Editor.Select(at, 1);
+            Editor.SelectedText = ticked ? " " : "x";
+            Editor.Select(start, length);
+        }
+        finally
+        {
+            _ticking = false;
+        }
+        RenderWhenShown(); // once this click is done: the box it came from goes
+    }
+
     // ---- Snippets ----
 
     /// <summary>The strip's height (and its thumbnails'), in DIPs.</summary>
@@ -520,7 +902,7 @@ public partial class NotesView : UserControl
             // The focus stays in the strip, on the next one along (or the one before), else goes to the text.
             if (SnippetStrip.Children.Count > 0)
                 (SnippetStrip.Children[Math.Min(at, SnippetStrip.Children.Count - 1)] as Grid)?.Children.OfType<Button>().FirstOrDefault()?.Focus();
-            else Editor.Focus();
+            else FocusDefault();
         };
 
         // Hidden until the pointer is over the thumbnail, but always there for screen readers.

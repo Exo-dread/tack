@@ -217,6 +217,12 @@
                                   IsChecked="{Binding Settings.FadeWhenIdle}" />
                         <TextBlock Style="{StaticResource Hint}"
                                    Text="The orb and a pinned panel fade to half after a few seconds without the pointer, and come back as soon as you point at them." />
+                        <Border Height="1" Background="{DynamicResource DividerBrush}" />
+                        <!-- This PC only, never synced or imported: off, notes are always the plain editor (as in 1.8.0). -->
+                        <CheckBox x:Name="FormatToggle" Style="{StaticResource ToggleSwitch}" Content="Format notes" Margin="0,9,0,8"
+                                  IsChecked="{Binding Settings.FormatNotes}" />
+                        <TextBlock Style="{StaticResource Hint}"
+                                   Text="Notes show headings, lists, checkboxes and bold while you read them, and turn back into plain text as you write. The text itself never changes." />
                     </StackPanel>
                 </Border>
                 <TextBlock Style="{StaticResource Hint}" Margin="2,8,8,0"

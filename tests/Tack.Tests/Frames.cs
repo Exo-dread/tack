@@ -78,6 +78,12 @@ internal static class Frames
             ws.AddTask(text);
         ws.AddTask("Review the coordination clashes", asNow: true);
         ws.Complete(ws.AddTask("Back up the central model"));
+        // A note with some Markdown, so the Notes tab shows what it usually does (formatted, with Format notes on).
+        ws.ActiveSheet.Text = NoteSheet.ForTextBox(string.Join("\n",
+            "# Level 3 coordination", "Clash run *Tuesday*, report to **MEP** by `Thu 12:00`.", "",
+            "## Today", "- [x] Federate the structural model", "- [ ] Check duct clearances on L3", "- [ ] Answer the architect about the stair core", "",
+            "1. Purge unused families", "2. Export the IFC", "   - with base quantities", "",
+            "> Keep penetrations off the transfer beams.", "", "Plain line one", "Plain line two"));
     }
 
     private static Task Wait(int ms) => Task.Delay(ms);
