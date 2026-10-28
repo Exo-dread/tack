@@ -76,6 +76,127 @@ internal static class HostileFileTests
         yield return ("attachments.json: a damaged or hand-edited file can't point a paperclip anywhere a drop couldn't; the good entries still load", AttachmentsEntries);
         yield return ("attachments.json: too large, too deep or too many is bounded, and the backup takes over", AttachmentsBounds);
         yield return ("attachments.json: one that can't be read (nor its .bak) sweeps no saved email, is kept aside and never written over", UnreadableAttachments);
+        yield return ("markdown, hostile notes: runs of 100,000 delimiters, brackets or backticks, deep quotes and indents, 1 MB and lone surrogates read in linear time, no error", HostileMarkdown);
+    }
+
+    /// <summary>
+    /// A note is synced text: anyone who can write the sync folder chooses it. Reading it as Markdown (docs/NOTES-MARKDOWN.md)
+    /// must cost about what its length does, never overflow the stack, and keep every character.
+    /// </summary>
+    private static void HostileMarkdown()
+    {
+        const int N = 100_000;
+        static string Repeat(string s, int n) => new StringBuilder(s.Length * n).Insert(0, s, n).ToString();
+        static double Ms(long ticks) => ticks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        static long Time(string text)
+        {
+            long best = long.MaxValue;
+            for (int round = 0; round < 3; round++)
+            {
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                Markdown.Parse(text);
+                best = Math.Min(best, clock.ElapsedTicks);
+            }
+            return best;
+        }
+
+        // What 100,000 letters cost: the yardstick (the best of three, after a warm-up).
+        string letters = new('a', N);
+        Markdown.Parse(letters);
+        double baseline = Ms(Time(letters));
+
+        var cases = new (string Name, string Text)[]
+        {
+            ("100,000 *", new string('*', N)),
+            ("100,000 _", new string('_', N)),
+            ("100,000 ~", new string('~', N)),
+            ("100,000 [", new string('[', N)),
+            ("100,000 ]", new string(']', N)),
+            ("100,000 `", new string('`', N)),
+            ("*a 50,000 times", Repeat("*a", N / 2)),
+            ("**a* 25,000 times", Repeat("**a*", N / 4)),
+            ("_a* 33,000 times", Repeat("_a*", N / 3)),
+            ("~~a 33,000 times", Repeat("~~a", N / 3)),
+            ("*_ nested 25,000 deep", Repeat("*_", N / 4) + "x" + Repeat("_*", N / 4)),
+            ("* a _ nested 16,000 deep", Repeat("*a _b ", N / 6) + "x" + Repeat(" b_ a*", N / 6)),
+            ("[a]( 25,000 times", Repeat("[a](", N / 4)),
+            ("[ ]( nested 33,000 deep", new string('[', N / 3) + new string(']', N / 3) + "(x)"),
+            ("[*a]( and )* 12,000 times", Repeat("[*a](", N / 10) + Repeat("b*)", N / 10)),
+            ("backtick runs 1, 2, 3, ...", string.Concat(Enumerable.Range(1, 440).Select(k => new string('`', k) + "a"))),
+            ("\\\\* 33,000 times", Repeat("\\\\*", N / 3)),
+            ("100,000 > on a line", new string('>', N) + " a"),
+            ("> nested 1,000 deep, 100 lines", Repeat(string.Join(" ", Enumerable.Repeat(">", 1000)) + " a\n", 100)),
+            ("indents 2 deeper each line, 2,000 lines", string.Concat(Enumerable.Range(0, 2000).Select(k => new string(' ', 2 * k) + "- a\n"))),
+            ("indents back and forth", Repeat("- a\n" + new string(' ', 16) + "- b\n  c\n", N / 30)),
+            ("100,000 spaces then an item", new string(' ', N) + "- a"),
+            ("100,000 tabs then a heading", new string('\t', N) + "# a"),
+            ("50,000 lines of #", Repeat("#\n", N / 2)),
+            ("25,000 one-line fences", Repeat("```\n", N / 4)),
+            ("an unclosed fence, then 50,000 lines", "```\n" + Repeat("x\n", N / 2)),
+            ("12,000 tasks", Repeat("- [ ] a\n", N / 8)),
+            ("100,000 CRs", new string('\r', N)),
+        };
+        foreach (var (name, text) in cases)
+        {
+            double took = Ms(Time(text));
+            double per = took / Math.Max(1, text.Length) * N;
+            Check.True(per <= Math.Max(40, 25 * baseline), $"{name}: {took:F1} ms for {text.Length:N0} characters ({per:F1} ms per 100,000; letters {baseline:F1})");
+        }
+
+        // A whole megabyte of everything at once: the longest note any device takes in.
+        var mixed = new StringBuilder();
+        var random = new Random(11);
+        string[] pieces = ["# h ", "- [x] ", "> ", "*", "**", "_", "~~", "`", "``", "[", "](", ")", "\\", "word ", "\n", "\r\n", "  ", "1. ", "---", "```", "\t"];
+        while (mixed.Length < DeviceFile.MaxNoteText) mixed.Append(pieces[random.Next(pieces.Length)]);
+        mixed.Length = DeviceFile.MaxNoteText;
+        var whole = System.Diagnostics.Stopwatch.StartNew();
+        var blocks = Markdown.Parse(mixed.ToString());
+        Check.True(whole.ElapsedMilliseconds < 3000 && blocks.Count > 0, $"1 MB of everything: {whole.ElapsedMilliseconds} ms");
+
+        // Lone surrogates stay as they are, wherever they are.
+        string halves = "\ud800 *\udc00* `\ud800` [\udfff](\udbff)\n- [ ] \udbfe";
+        string shown = string.Concat(MarkdownTexts(Markdown.Parse(halves)));
+        Check.Equal(halves.Count(char.IsSurrogate), shown.Count(char.IsSurrogate), "every half kept: " + string.Join(" ", shown.Select(c => ((int)c).ToString("X4"))));
+    }
+
+    /// <summary>Every piece of text a tree shows (and its links' urls), in order.</summary>
+    internal static IEnumerable<string> MarkdownTexts(IEnumerable<MdBlock> blocks)
+    {
+        static IEnumerable<string> Inline(IEnumerable<MdInline> inlines)
+        {
+            foreach (var i in inlines)
+            {
+                switch (i)
+                {
+                    case MdText t:
+                        yield return t.Text;
+                        break;
+                    case MdCode c:
+                        yield return c.Text;
+                        break;
+                    case MdStyle s:
+                        foreach (var x in Inline(s.Content)) yield return x;
+                        break;
+                    case MdLink l:
+                        foreach (var x in Inline(l.Content)) yield return x;
+                        yield return l.Url;
+                        break;
+                }
+            }
+        }
+        foreach (var b in blocks)
+        {
+            var parts = b switch
+            {
+                MdHeading h => Inline(h.Content),
+                MdParagraph p => Inline(p.Content),
+                MdQuote q => MarkdownTexts(q.Blocks),
+                MdCodeBlock c => [c.Text],
+                MdList l => l.Items.SelectMany(it => Inline(it.Content).Concat(MarkdownTexts(it.Sub))),
+                _ => [],
+            };
+            foreach (var x in parts) yield return x;
+        }
     }
 
     // ---------------------------------------------------------------- attachments.json (local, never synced)

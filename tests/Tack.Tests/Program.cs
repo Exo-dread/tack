@@ -36,7 +36,7 @@ internal static class Program
 
         var tests = VectorTests.All().Concat(OrderTests.All()).Concat(StateFileTests.All()).Concat(SyncTests.All()).Concat(HostileFileTests.All())
             .Concat(SpacesTests.All()).Concat(SpaceViewTests.All()).Concat(SpaceStripTests.All()).Concat(ScreenTests.All()).Concat(LauncherTests.All()).Concat(LauncherScreenTests.All()).Concat(LauncherRecentsTests.All()).Concat(LauncherRecentsScreenTests.All())
-            .Concat(GlideTests.All()).Concat(SearchTests.All()).Concat(SearchScreenTests.All()).Concat(LookTests.All()).Concat(SnippetTests.All()).Concat(DropTests.All()).Concat(DropScreenTests.All()).Concat(UnfoldTests.All()).Concat(StartupTests.All()).ToList();
+            .Concat(GlideTests.All()).Concat(SearchTests.All()).Concat(MarkdownTests.All()).Concat(SearchScreenTests.All()).Concat(LookTests.All()).Concat(SnippetTests.All()).Concat(DropTests.All()).Concat(DropScreenTests.All()).Concat(UnfoldTests.All()).Concat(StartupTests.All()).ToList();
         string? only = args.FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal));
         if (only != null) tests = tests.Where(t => t.Name.Contains(only, StringComparison.OrdinalIgnoreCase)).ToList();
 
