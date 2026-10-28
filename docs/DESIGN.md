@@ -160,9 +160,33 @@ Ticking a task has a short grace period (a second click un-ticks it) before it m
 
 ### Notes are sheets of paper
 A single scratchpad turns into a junk drawer; a full notes app is out of scope. Tack has *sheets*:
-plain text, titled by their first line, switched with a pill strip. There's no formatting. A few quiet
-helpers make it pleasant: list continuation, F5 timestamps (a nod to Notepad), and Ctrl+Enter to promote
-a line to a task, which is the bridge between the two halves of the app.
+plain text, titled by their first line, switched with a pill strip. A few quiet helpers make it pleasant:
+list continuation, F5 timestamps (a nod to Notepad), and Ctrl+Enter to promote a line to a task, which is
+the bridge between the two halves of the app.
+
+### Markdown: formatted to read, plain to write
+People already write notes with `#`, `- ` and `- [ ] `, so a sheet shows them formatted while you read it
+and is the same plain text box while you write ([NOTES-MARKDOWN.md](NOTES-MARKDOWN.md)):
+
+- **The text is the truth.** Formatting is only how a note is shown: what's stored, synced, exported and
+  searched is exactly what was typed, so there's nothing new in the sync format and no way for the two
+  views to disagree. Ticking a checkbox is an edit like typing (one character, in the editor, with Undo).
+- **One rule, both apps.** `Model/Markdown.cs` is a port of Tack Focus's parser that gives the same tree for
+  every shared case (`tests/vectors/markdown.json`). It reads line by line and is linear in the text (a
+  delimiter stack, no regular expressions, nesting capped), since a note is synced text anyone who can
+  write the folder chooses.
+- **Reading is the default, writing is one click away.** The note is formatted whenever its editor doesn't
+  have the keyboard. A click puts the caret at the start of the line clicked, with that line kept where it
+  was on screen; typing on the formatted note writes, so opening Notes and typing still works.
+- **Light enough to show at once.** The formatted view is a panel of rows, one per line of the text, that
+  makes only the rows in view (`Views/NoteReader.cs`). A FlowDocument laid the whole note out first: a 20 KB
+  note took 230 ms (FlowDocumentScrollViewer) to 470 ms (RichTextBox) at 150% in software, against about
+  16 ms for the rows (parse 0.6, rows 1.7, layout of those in view 10, drawing 4), and a 200 KB note about
+  30 ms whatever its length. The price: no selecting text in the formatted view (a click goes to the
+  editor, where you can), and a screen reader finds the rows in view (headings with their level, list items
+  and checkboxes by their text).
+- **Nothing to open.** A link is styled text with its address as a tooltip: synced text never becomes
+  something to launch.
 
 ### Snippets: a screenshot to follow, then gone
 A lot of what people jot down is really a picture: a few steps of instructions snipped from a manual,
@@ -273,7 +297,7 @@ src/Tack
 ├── App.xaml(.cs)          Startup: single instance, data folder, first-run seeding, crash safety
 ├── AppShell.cs            The coordinator: orb ⇄ panel, placement, shortcut, full-screen, housekeeping
 ├── IdleFade.cs            Fade when idle (off by default): one-shot timers, the orb and a pinned panel at half
-├── Model/                 Workspace (all user state), SpaceView (what the space on show shows), Search, TaskItem, NoteSheet, Settings
+├── Model/                 Workspace (all user state), SpaceView (what the space on show shows), Search, Markdown (how a note reads), TaskItem, NoteSheet, Settings
 ├── Services/              StateStore (JSON persistence), FolderSync (sync through a folder), accent colour, startup, log, single instance
 ├── Sync/                  The data model shared with Tack Focus: clocks, sort keys, merges, device files, the sync engine
 ├── Interop/               Win32/DWM: glass, monitors & DPI, global hotkey, shell watcher
@@ -281,7 +305,7 @@ src/Tack
 ├── Launcher/              The optional radial launcher: Core/ (platform-neutral, tested), its window, settings card, launching
 ├── Drop/                  Dropping onto the orb: Core/ (reading drags, attachments.json, the rules; tested), OLE, the module
 ├── Snippets/              Images pasted into Notes: reading a paste safely, the store beside tack.json, the full-size viewer
-├── Views/                 TasksView, NotesView, SettingsView, SearchView (UserControls inside the panel)
+├── Views/                 TasksView, NotesView (and NoteReader, a note formatted), SettingsView, SearchView (UserControls inside the panel)
 ├── Controls/              OrbVisual (custom-drawn), animation helpers, converters
 └── Themes/                Theme.xaml (typography and every control style), Dark.xaml / Light.xaml (palettes)
 ```
