@@ -35,6 +35,8 @@ same notes, same `tack.json`.
   space it shows. Until you make a space, nothing about them is on screen.
 - **Notes are scrap paper.** Plain text, titled by the first line, saved as you type. Lists continue
   themselves; *Make task* turns the current line or selection into tasks; *Time* stamps the date.
+  While you read, a note shows its Markdown formatted (headings, lists, checkboxes you can tick,
+  bold, code, quotes); click or type to write. *Format notes* in Settings turns it off.
 - **Search.** The search button beside Settings (on a phone), or Ctrl+F (⌘F): every task, finished
   task and note in every space, as you type, whatever the case or accents, grouped Tasks, Done and
   Notes with each one's space. Tap one (or ↑ ↓ and Enter) to go there: the task lit up in its list,
@@ -95,6 +97,7 @@ web/
 │   │   ├── workspace.ts    Every mutation; views (now/open/done, per space); batched change events
 │   │   ├── spaces.ts       Spaces: names, ids, where a task or sheet shows
 │   │   ├── search.ts       What search matches (the same rule as Tack for Windows)
+│   │   ├── markdown.ts     How a note's Markdown reads (the same tree as Tack for Windows)
 │   │   ├── merge.ts        Field-by-field merge (between tabs and between devices)
 │   │   ├── hlc.ts          Hybrid logical clocks
 │   │   ├── order.ts        Fractional sort keys
@@ -117,7 +120,8 @@ web/
 │   │   ├── app.ts          Shell: header, dock, modes, layout, shortcuts, first run
 │   │   ├── tasks.ts        Keyed rendering + FLIP, ticking, editing in place
 │   │   ├── gestures.ts     Swipe and long-press reorder (pointer events)
-│   │   ├── notes.ts        Sheets, list continuation, make task
+│   │   ├── notes.ts        Sheets, list continuation, make task, the formatted view
+│   │   ├── markdownview.ts A note's Markdown tree as elements (no markup from text)
 │   │   ├── spaces.ts       Spaces on screen: the switcher, Move to…, the space on show
 │   │   ├── search.ts       Search: the box, the results, going to what's found
 │   │   ├── settings.ts     Bottom sheet: appearance, spaces, sync, data, install, about

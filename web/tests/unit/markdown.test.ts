@@ -5,8 +5,10 @@
  * they're out of date), and Tack for Windows' port (src/Tack/Model/Markdown.cs) must read every
  * one the same. The rules below are also checked by hand, so the cases can't quietly drift.
  */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { lineStarts, parse, type Block, type Inline } from '../../src/model/markdown';
+import { lineStarts, parse, setTask, type Block, type Inline } from '../../src/model/markdown';
 
 const VECTORS = '../../../tests/vectors/markdown.json';
 
@@ -312,5 +314,53 @@ describe('markdown rules', () => {
       { hr: 1, ln: 10 },
     ]);
     expect(lineStarts('a\r\nb\rc\nd')).toEqual([0, 3, 5, 7]);
+  });
+});
+
+describe('ticking a checklist box', () => {
+  it('changes exactly that one character', () => {
+    const text = 'a\n- [ ] one\n- [X] two';
+    expect(setTask(text, 5, true)).toBe('a\n- [x] one\n- [X] two');
+    expect(setTask(text, 15, false)).toBe('a\n- [ ] one\n- [ ] two');
+    // Already so: unchanged.
+    expect(setTask(text, 5, false)).toBe(text);
+    expect(setTask(text, 15, true)).toBe(text);
+  });
+
+  it('refuses an offset that is no longer a box', () => {
+    expect(setTask('- [ ] a', 2, true)).toBeNull();
+    expect(setTask('- [y] a', 3, true)).toBeNull();
+    expect(setTask('[ ]', 1.5, true)).toBeNull();
+    expect(setTask('[ ]', -1, true)).toBeNull();
+    expect(setTask('[ ', 1, true)).toBeNull();
+    expect(setTask('', 0, true)).toBeNull();
+  });
+
+  it('every task in the shared cases ticks and unticks in place', () => {
+    for (const [, text] of CASES) {
+      const visit = (blocks: Block[]) => {
+        for (const b of blocks) {
+          if ('quote' in b) visit(b.quote);
+          for (const it of 'ul' in b ? b.ul : 'ol' in b ? b.ol : []) {
+            if (it.at !== null) {
+              const flipped = setTask(text, it.at, !it.task)!;
+              expect(flipped.length).toBe(text.length);
+              expect(parse(flipped).length).toBe(parse(text).length);
+            }
+            visit(it.sub);
+          }
+        }
+      };
+      visit(parse(text));
+    }
+  });
+});
+
+describe('the formatted view builds no markup from text', () => {
+  it('uses no innerHTML, insertAdjacentHTML, outerHTML, document.write, eval or <a>', () => {
+    for (const file of ['../../src/ui/markdownview.ts', '../../src/ui/notes.ts', '../../src/model/markdown.ts']) {
+      const source = readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8');
+      expect(source, file).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function|createElement\('a'\)|\bhref\b/);
+    }
   });
 });

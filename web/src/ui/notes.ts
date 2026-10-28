@@ -1,11 +1,13 @@
 import { MAX_NOTE_TEXT, MAX_PASTE_LINES } from '../model/limits';
+import { canFormat, lineStarts, parse, setTask } from '../model/markdown';
 import { continueList, noteLinesToTasks, sheetTitle, shorten } from '../model/text';
 import type { Sheet } from '../model/types';
 import type { Origin, Workspace } from '../model/workspace';
-import { prefs, setPrefs } from '../store/prefs';
+import { onPrefs, prefs, setPrefs } from '../store/prefs';
 import { h, svg } from './dom';
 import { haptics } from './haptics';
 import { icons } from './icons';
+import { renderNote } from './markdownview';
 import { animate, EASE_OUT, measure, playFlip, reducedMotion } from './motion';
 import type { SpaceUi } from './spaces';
 import type { Toasts } from './toast';
@@ -24,10 +26,16 @@ export interface NotesContext {
  * Notes: sheets of scratch paper. Plain text that saves as you type, titled by its first line,
  * with the desktop app's quiet helpers: lists continue themselves, a timestamp is a tap away,
  * and any line (or selection) can become a task.
+ *
+ * While you read, the note shows formatted (its Markdown: docs/NOTES-MARKDOWN.md); while you
+ * write, it's the plain editor. A click, a tap or a keystroke on the formatted note opens the
+ * editor at that line. The text stays exactly what was typed: formatting is only how it's shown.
  */
 export class NotesView {
   readonly el: HTMLElement;
   readonly editor: HTMLTextAreaElement;
+  /** The note formatted, shown instead of the editor while you read (Format notes on). */
+  readonly view: HTMLElement;
   /** Sheet tabs. Lives in the dock on phones and above the page on wide screens. */
   readonly sheetBar: HTMLElement;
   /** "Make task", "Time", "Done": shown above the keyboard while writing. */
@@ -48,10 +56,20 @@ export class NotesView {
       spellcheck: 'true',
       autocomplete: 'off',
     });
+    this.view = h('div.md', {
+      role: 'document',
+      'aria-label': 'Note',
+      'aria-keyshortcuts': 'Enter F2',
+      tabindex: '0',
+      hidden: true,
+      onclick: (e: Event) => this.onViewClick(e as MouseEvent),
+      onkeydown: (e: Event) => this.onViewKey(e as KeyboardEvent),
+      onchange: (e: Event) => this.onTick(e),
+    });
     this.el = h(
       'section.page.notes#page-notes',
       { role: 'tabpanel', 'aria-labelledby': 'tab-notes', tabindex: '-1' },
-      h('div.paper', {}, this.editor),
+      h('div.paper', {}, this.editor, this.view),
     );
 
     this.strip = h('div.sheet-strip', { role: 'tablist', 'aria-label': 'Sheets' });
@@ -78,7 +96,23 @@ export class NotesView {
     this.editor.addEventListener('input', () => this.onInput());
     this.editor.addEventListener('beforeinput', this.onBeforeInput);
     this.editor.addEventListener('keydown', this.onKeyDown);
-    this.editor.addEventListener('blur', () => this.syncEditor());
+    this.editor.addEventListener('blur', () => {
+      // The window losing the focus leaves the editor the active element: still writing.
+      if (document.activeElement === this.editor) return;
+      if (this.activeId) this.caretMemo.set(this.activeId, this.editor.selectionStart);
+      this.syncEditor();
+      this.refreshView();
+    });
+    // The app hidden (another app, another tab, the phone locked): the note shows formatted again.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && document.activeElement === this.editor && this.formats(this.activeText)) this.editor.blur();
+    });
+    let formatting = prefs().formatNotes;
+    onPrefs((p) => {
+      if (p.formatNotes === formatting) return;
+      formatting = p.formatNotes;
+      this.refreshView();
+    });
     this.editor.addEventListener('compositionstart', () => (this.composing = true));
     this.editor.addEventListener('compositionend', () => {
       this.composing = false;
@@ -151,6 +185,7 @@ export class NotesView {
     this.remember();
     this.renderStrip();
     this.syncEditor(origin !== 'local');
+    this.refreshView();
   }
 
   /** Shows the model's text. While you're writing, only changes from elsewhere are applied, keeping your place. */
@@ -228,13 +263,20 @@ export class NotesView {
     else if (r.right > strip.right - fade) this.strip.scrollLeft += r.right - strip.right + fade;
   }
 
+  /**
+   * Shows sheet `id`. Switching sheet doesn't put the caret in the editor (the note shows
+   * formatted) unless `focusEditor` asks for it, or you were writing and the next sheet isn't
+   * formatted (Format notes off, an empty or a very long note): then you write on, as before.
+   */
   select(id: string, focusEditor = false): void {
     if (id === this.activeId) {
-      if (focusEditor) this.editor.focus();
+      if (focusEditor) this.focusEditor();
       return;
     }
+    const wasWriting = document.activeElement === this.editor;
     const leaving = this.ws.sheets.get(this.activeId);
-    this.scrollMemory.set(this.activeId, { top: this.editor.scrollTop, caret: this.editor.selectionStart });
+    this.scrollMemory.set(this.activeId, { top: this.reading ? this.view.scrollTop : this.editor.scrollTop, caret: this.editor.selectionStart });
+    if (wasWriting && this.activeId) this.caretMemo.set(this.activeId, this.editor.selectionStart);
     const list = this.list();
     const goingRight = list.findIndex((s) => s.id === id) > list.findIndex((s) => s.id === this.activeId);
     this.activeId = id;
@@ -244,16 +286,28 @@ export class NotesView {
     if (leaving && !leaving.text.trim() && this.ws.sheetList.length > 1) this.ws.deleteSheet(leaving.id);
     this.editor.value = this.activeText;
     const memory = this.scrollMemory.get(id);
-    this.editor.scrollTop = memory?.top ?? 0;
+    const writeOn = focusEditor || (wasWriting && !this.formats(this.activeText));
+    if (wasWriting && !writeOn) {
+      // Off the editor, onto the formatted note: the keyboard stays in the notes. (The blur
+      // would remember this sheet's caret as wherever the old one's was: keep its own.)
+      const caret = this.caretMemo.get(id);
+      this.editor.blur();
+      if (caret === undefined) this.caretMemo.delete(id);
+      else this.caretMemo.set(id, caret);
+      this.view.focus({ preventScroll: true });
+    }
     this.renderStrip();
+    this.refreshView();
+    this.editor.scrollTop = memory?.top ?? 0;
+    this.view.scrollTop = memory?.top ?? 0;
     this.strip.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
-    animate(this.editor, [{ opacity: 0, transform: `translateX(${goingRight ? 14 : -14}px)` }, { opacity: 1, transform: 'none' }], {
+    animate(this.reading ? this.view : this.editor, [{ opacity: 0, transform: `translateX(${goingRight ? 14 : -14}px)` }, { opacity: 1, transform: 'none' }], {
       duration: 240,
       easing: EASE_OUT,
     });
-    if (focusEditor) {
-      this.editor.focus({ preventScroll: true });
+    if (writeOn) {
       const caret = memory?.caret ?? this.editor.value.length;
+      this.focusEditor();
       this.editor.setSelectionRange(caret, caret);
     }
   }
@@ -265,7 +319,7 @@ export class NotesView {
   reveal(id: string, match: [number, number] | null): void {
     this.select(id);
     const ta = this.editor;
-    ta.focus({ preventScroll: true });
+    this.focusEditor();
     if (!match) return;
     const [start, end] = match;
     ta.setSelectionRange(start, end);
@@ -287,7 +341,7 @@ export class NotesView {
     const current = this.ws.sheets.get(this.activeId);
     if ((current && !current.text.trim()) || !this.activeId) {
       // Already on a blank sheet (or a space's blank paper): just start writing.
-      this.editor.focus();
+      this.focusEditor();
       return;
     }
     haptics.tick();
@@ -313,11 +367,13 @@ export class NotesView {
       if (next) this.select(next.id);
     }
     this.editor.value = this.activeText;
+    this.refreshView();
     const title = sheet.text.trim() ? `“${shorten(sheetTitle(sheet.text), 24)}”` : 'sheet';
     this.ctx.toasts.show(wasOnly ? 'Sheet cleared' : `Deleted ${title}`, () => {
       undo();
       this.select(sheet.id);
       this.editor.value = this.activeText;
+      this.refreshView();
     });
   }
 
@@ -358,6 +414,8 @@ export class NotesView {
       hour: 'numeric',
       minute: '2-digit',
     }).format(new Date());
+    // From the formatted note (the tools sit beside it on wide screens): into the editor first.
+    if (document.activeElement !== this.editor) this.focusEditor();
     insertText(this.editor, stamp);
   }
 
@@ -388,6 +446,11 @@ export class NotesView {
       this.stamp();
     } else if (e.key === 'Escape') {
       this.editor.blur();
+      // Back to the formatted note, keeping the keyboard in it (the app's own Escape would take it away).
+      if (this.reading) {
+        e.preventDefault();
+        this.view.focus({ preventScroll: true });
+      }
     }
   };
 
@@ -407,7 +470,220 @@ export class NotesView {
     const list = this.list();
     const i = list.findIndex((s) => s.id === this.activeId);
     const next = list[(i + delta + list.length) % list.length];
-    if (next) this.select(next.id, document.activeElement === this.editor);
+    if (next) this.select(next.id);
+  }
+
+  // ================================================================ formatted view
+
+  /** The note formatted is on show (else the editor is). */
+  private get reading(): boolean {
+    return !this.view.hidden;
+  }
+
+  /** Would this text show formatted while you read it? */
+  private formats(text: string): boolean {
+    return prefs().formatNotes && canFormat(text);
+  }
+
+  /** What the view shows: the text it was laid out from, its sheet, and where its lines start. */
+  private shown: { id: string; text: string; starts: number[] | null } | null = null;
+
+  /**
+   * Formatted, or the editor: formatted whenever the editor doesn't have the keyboard (and the
+   * note can be). Lays the note out again only if it changed since it was last shown, and never
+   * while you're writing, so typing costs nothing more.
+   */
+  private refreshView(): void {
+    const text = this.activeText;
+    const formatted = document.activeElement !== this.editor && this.formats(text);
+    if (formatted && (this.shown?.text !== text || this.shown.id !== this.activeId)) this.paint(text);
+    if (this.editor.hidden !== formatted) {
+      // The keyboard on the hidden view would be lost: the editor takes it.
+      const hadFocus = !formatted && this.view.contains(document.activeElement);
+      this.editor.hidden = formatted;
+      this.view.hidden = !formatted;
+      if (hadFocus) this.editor.focus({ preventScroll: true });
+    }
+  }
+
+  private paint(text: string): void {
+    const view = this.view;
+    const sameSheet = this.shown?.id === this.activeId;
+    // Keep your place: the scroll position, and the checkbox that had the keyboard.
+    const focused = view.contains(document.activeElement) ? (document.activeElement as HTMLElement) : null;
+    const at = focused?.dataset.at;
+    const top = view.scrollTop;
+    view.replaceChildren(renderNote(parse(text, { lines: true })));
+    this.shown = { id: this.activeId, text, starts: null };
+    if (sameSheet) view.scrollTop = top;
+    if (focused && focused !== view) {
+      const again = at !== undefined ? view.querySelector<HTMLElement>(`input[data-at="${CSS.escape(at)}"]`) : null;
+      (again ?? view).focus({ preventScroll: true });
+    }
+  }
+
+  /** Where line `ln` of the note on show starts. */
+  private lineOffset(ln: number): number {
+    const shown = this.shown!;
+    shown.starts ??= lineStarts(shown.text);
+    return shown.starts[Math.min(ln, shown.starts.length - 1)] ?? 0;
+  }
+
+  /** The editor, in sight, with the keyboard (and the caret where it was, if it was hidden). */
+  private focusEditor(): void {
+    const ta = this.editor;
+    const wasHidden = ta.hidden !== false;
+    ta.hidden = false;
+    this.view.hidden = true;
+    // WebKit won't focus an element it hasn't laid out since it was hidden: lay it out first.
+    void ta.offsetHeight;
+    ta.focus({ preventScroll: wasHidden });
+    if (wasHidden) {
+      const caret = Math.min(this.caretMemo.get(this.activeId) ?? ta.value.length, ta.value.length);
+      ta.setSelectionRange(caret, caret);
+    }
+  }
+
+  /** The caret in each sheet when you last stopped writing in it (this session). */
+  private readonly caretMemo = new Map<string, number>();
+
+  /**
+   * Opens the editor with the caret at `caret`, scrolled so that the line at `keep.offset` stays
+   * `keep.top` pixels below the top, where it was in the formatted note.
+   */
+  private write(caret: number, keep: { offset: number; top: number } | null): void {
+    const ta = this.editor;
+    this.view.hidden = true;
+    ta.hidden = false;
+    void ta.offsetHeight; // (see focusEditor)
+    ta.focus({ preventScroll: true });
+    ta.setSelectionRange(caret, caret);
+    if (keep) ta.scrollTop = Math.max(0, caretTop(ta, keep.offset) - keep.top);
+    const inSight = () => {
+      const y = caretTop(ta, ta.selectionStart);
+      if (y < ta.scrollTop || y > ta.scrollTop + ta.clientHeight - 40) ta.scrollTop = Math.max(0, y - ta.clientHeight / 3);
+    };
+    inSight();
+    // A phone's keyboard coming up shrinks the page: keep the caret above it.
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const again = () => {
+      vv.removeEventListener('resize', again);
+      requestAnimationFrame(() => {
+        if (document.activeElement === ta) inSight();
+      });
+    };
+    vv.addEventListener('resize', again);
+    setTimeout(() => vv.removeEventListener('resize', again), 1000);
+  }
+
+  /** The line elements on show, top to bottom. */
+  private lines(): HTMLElement[] {
+    return [...this.view.querySelectorAll<HTMLElement>('[data-ln]')];
+  }
+
+  /** A click or tap on the formatted note: the editor, with the caret at the start of that line. */
+  private onViewClick(e: MouseEvent): void {
+    if (!this.reading || e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('input')) return; // a checkbox ticks
+    // A drag that selected text is for copying, not writing.
+    const sel = document.getSelection();
+    if (sel && !sel.isCollapsed && sel.anchorNode && this.view.contains(sel.anchorNode)) return;
+    const box = this.view.getBoundingClientRect();
+    if (e.clientX >= box.left + this.view.clientLeft + this.view.clientWidth) return; // the scroll bar
+    const lines = this.lines();
+    let pick: HTMLElement | undefined;
+    let rect: DOMRect | undefined;
+    for (const line of lines) {
+      const r = line.getBoundingClientRect();
+      if (r.top > e.clientY) break;
+      pick = line;
+      rect = r;
+      if (e.clientY < r.bottom) break;
+    }
+    // Above the first line: the first line.
+    if (!pick && lines[0]) {
+      pick = lines[0];
+      rect = pick.getBoundingClientRect();
+    }
+    if (!pick || !rect) {
+      this.write(this.activeText.length, null);
+      return;
+    }
+    const offset = this.lineOffset(Number(pick.dataset.ln));
+    // Below the last line: the end of the note, as in the editor.
+    const end = pick === lines[lines.length - 1] && e.clientY >= rect.bottom;
+    this.write(end ? this.activeText.length : offset, { offset, top: rect.top - box.top });
+  }
+
+  private onViewKey(e: KeyboardEvent): void {
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && !e.altKey && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+      if (this.undoTick()) e.preventDefault();
+      return;
+    }
+    if (mod || e.altKey || e.isComposing) return;
+    const box = (e.target as HTMLElement).closest<HTMLInputElement>('input.md-check');
+    if (box && e.key === ' ') return; // ticks it
+    if (e.key === 'F2' || e.key === 'Enter') {
+      e.preventDefault();
+      this.writeFromKeyboard(box);
+    } else if ([...e.key].length === 1 || e.key === 'Dead' || e.key === 'Process') {
+      // The editor takes the focus now, so this very key is typed into it.
+      this.writeFromKeyboard(box);
+    }
+  }
+
+  /**
+   * The keyboard on the formatted note: the editor, with the caret on the checklist item that
+   * had the keyboard, or where it was when you last wrote here (the end, if you haven't),
+   * keeping the lines in sight where they were.
+   */
+  private writeFromKeyboard(box: HTMLInputElement | null): void {
+    const viewTop = this.view.getBoundingClientRect().top;
+    let anchor: HTMLElement | undefined;
+    if (box) anchor = box.closest('li')?.querySelector<HTMLElement>('[data-ln]') ?? undefined;
+    anchor ??= this.lines().find((l) => l.getBoundingClientRect().bottom > viewTop);
+    const keep = anchor ? { offset: this.lineOffset(Number(anchor.dataset.ln)), top: anchor.getBoundingClientRect().top - viewTop } : null;
+    const text = this.activeText;
+    const caret = box && keep ? keep.offset : Math.min(this.caretMemo.get(this.activeId) ?? text.length, text.length);
+    this.write(caret, keep);
+  }
+
+  /** Ticks this session, newest last, for Ctrl+Z on the formatted note. */
+  private ticks: { id: string; before: string; after: string }[] = [];
+
+  /** A checkbox ticked: exactly its box changes in the text, as one edit (saved and synced like typing). */
+  private onTick(e: Event): void {
+    const box = e.target as HTMLInputElement;
+    if (!box.matches('input.md-check')) return;
+    const before = this.activeText;
+    const after = setTask(before, Number(box.dataset.at), box.checked);
+    if (after === null) {
+      // The note changed under it: show it as it is now.
+      this.paint(before);
+      return;
+    }
+    if (after === before) return;
+    this.ticks.push({ id: this.activeId, before, after });
+    if (this.ticks.length > 20) this.ticks.shift();
+    box.closest('li')?.classList.toggle('done', box.checked);
+    // The view already shows it: no need to lay it out again.
+    this.shown = { id: this.activeId, text: after, starts: this.shown?.starts ?? null };
+    this.ws.editSheet(this.activeId, after);
+    if (box.checked) haptics.tick();
+  }
+
+  /** Ctrl+Z on the formatted note: the last tick, if nothing has changed the note since. */
+  private undoTick(): boolean {
+    const last = this.ticks[this.ticks.length - 1];
+    if (!last || last.id !== this.activeId || last.after !== this.activeText) {
+      this.ticks = [];
+      return false;
+    }
+    this.ticks.pop();
+    this.ws.editSheet(last.id, last.before);
+    return true;
   }
 }
 
@@ -428,6 +704,9 @@ function caretTop(ta: HTMLTextAreaElement, index: number): number {
   copy.style.setProperty('top', '0');
   copy.style.setProperty('white-space', 'pre-wrap');
   copy.style.setProperty('overflow-wrap', 'break-word');
+  // Safari on a phone enlarges the text of long blocks of text (text autosizing): not this copy's.
+  copy.style.setProperty('-webkit-text-size-adjust', 'none');
+  copy.style.setProperty('text-size-adjust', 'none');
   copy.textContent = ta.value.slice(0, index);
   const mark = document.createElement('span');
   mark.textContent = String.fromCharCode(0x200b); // a zero-width space: where the caret would be

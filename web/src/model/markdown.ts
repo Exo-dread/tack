@@ -53,6 +53,18 @@ export function canFormat(text: string): boolean {
   return text.length > 0 && text.length <= MAX_FORMATTED;
 }
 
+/**
+ * The note with the checklist box at `at` ticked (`[x]`) or not (`[ ]`): exactly that one
+ * character changes. Null if there's no box there any more (the text changed meanwhile).
+ */
+export function setTask(text: string, at: number, done: boolean): string | null {
+  if (!Number.isInteger(at) || at < 1 || at + 1 >= text.length) return null;
+  const box = text[at];
+  if (text[at - 1] !== '[' || text[at + 1] !== ']' || (box !== ' ' && box !== 'x' && box !== 'X')) return null;
+  if ((box !== ' ') === done) return text;
+  return text.slice(0, at) + (done ? 'x' : ' ') + text.slice(at + 1);
+}
+
 export interface ParseOptions {
   /**
    * Also say which line of the note each line shown came from (`ln` on headings, code blocks and

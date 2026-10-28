@@ -109,6 +109,16 @@ export class Settings {
     }
     const appearance = group('Appearance', row('Theme', themeGroup), row('Accent', swatches));
 
+    // --- notes
+    const notes = group(
+      'Notes',
+      row(
+        'Format notes',
+        toggle('Format notes', p.formatNotes, (on) => setPrefs({ formatNotes: on })),
+        'Show headings, lists, checkboxes and bold while you read a note. Click or type to write: the text stays exactly as you typed it. This device only.',
+      ),
+    );
+
     // --- feel
     const feel = hapticsSupported()
       ? group(
@@ -191,7 +201,7 @@ export class Settings {
       ),
     );
 
-    return [h('div.sheet-grip', { 'aria-hidden': 'true' }), title, h('div.sheet-scroll', {}, appearance, feel, this.spacesSection(), this.syncSection(), install, data, about)];
+    return [h('div.sheet-grip', { 'aria-hidden': 'true' }), title, h('div.sheet-scroll', {}, appearance, notes, feel, this.spacesSection(), this.syncSection(), install, data, about)];
   }
 
   // ------------------------------------------------------------------ spaces
