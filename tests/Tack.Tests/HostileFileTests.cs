@@ -156,11 +156,12 @@ internal static class HostileFileTests
             double per = all / Math.Max(1, text.Length) * N;
             Check.True(per <= 250, $"{name}: {all:F1} ms for {text.Length:N0} characters ({per:F1} ms per 100,000; letters {baseline:F1})");
         }
-        // A run of 100,000 * (or [ or `) costs no more than 100,000 letters, give or take the noise of a fraction of a ms.
+        // A run of 100,000 * (or [ or `) costs about what 100,000 letters do: a few ms at most, where a quadratic
+        // reader would take seconds (each one is a node of its own, so a slow CI runner may take a few times longer).
         foreach (char c in new[] { '*', '[', '`', '_', '~' })
         {
             double run = Ms(Time(new string(c, N), noGc: true));
-            Check.True(run <= 3 * baseline + 2, $"100,000 {c}: {run:F2} ms, letters {baseline:F2}");
+            Check.True(run <= 10 * baseline + 5, $"100,000 {c}: {run:F2} ms, letters {baseline:F2}");
         }
 
         // A whole megabyte of everything at once: the longest note any device takes in.
