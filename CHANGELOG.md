@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.9.0 (2026-10-29)
 
 - **Notes in Markdown.** A note shows formatted while you read it: headings, bold and italic, lists,
   checkboxes, quotes, code and rules, from the Markdown you type (`#`, `**`, `- `, `- [ ] `, `>`, three

@@ -1,6 +1,6 @@
 # Tack Focus changelog
 
-## Unreleased
+## 0.6.0 (29 October 2026)
 
 - **Notes in Markdown.** A note shows formatted while you read it: headings, bold, italic, struck
   text, `code`, lists, quotes, code blocks, rules, and checklists with real checkboxes. Click or tap
