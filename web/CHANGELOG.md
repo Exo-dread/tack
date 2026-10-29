@@ -1,5 +1,19 @@
 # Tack Focus changelog
 
+## 0.6.0 (29 October 2026)
+
+- **Notes in Markdown.** A note shows formatted while you read it: headings, bold, italic, struck
+  text, `code`, lists, quotes, code blocks, rules, and checklists with real checkboxes. Click or tap
+  the note to write: the editor opens with the caret at the start of that line, which stays where
+  it was; typing a letter on the formatted note types it straight into the editor, where you last
+  wrote (Enter and F2 open it; F5, Ctrl+Enter and Ctrl+V do what they do in the editor).
+  Ticking a box changes just its `[ ]` to `[x]` in the text, saved and synced like any edit
+  (Ctrl+Z on the note takes the last tick back). The text stays exactly what you typed: formatting
+  is only how it's shown, and links are shown, never followed. Search opens the editor with the
+  match selected, as before. Empty notes, and notes over 200,000 characters, stay the editor.
+  **Format notes** in Settings turns it off on this device. Tack for Windows reads Markdown the
+  same way (docs/NOTES-MARKDOWN.md).
+
 ## 0.5.0 (25 October 2026)
 
 Search, the same as Tack for Windows', and sharing to Tack from any app on Android.

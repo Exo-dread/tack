@@ -28,6 +28,11 @@ export interface Prefs {
    * Each device keeps its own, so the PC can stay on Work while the phone shows Personal.
    */
   space: string;
+  /**
+   * Format notes: a note shows formatted (its Markdown) while you read it, and is the plain editor
+   * while you write (docs/NOTES-MARKDOWN.md). This device only: never synced or imported.
+   */
+  formatNotes: boolean;
 }
 
 const KEY = 'tack.prefs';
@@ -45,6 +50,7 @@ const DEFAULTS: Prefs = {
   firstDay: null,
   welcome: null,
   space: 'main',
+  formatNotes: true,
 };
 
 let current: Prefs = load();
@@ -58,6 +64,7 @@ function load(): Prefs {
     if (!['system', 'light', 'dark'].includes(p.theme)) p.theme = 'system';
     if (p.mode !== 'notes') p.mode = 'tasks';
     if (typeof p.space !== 'string') p.space = DEFAULTS.space;
+    if (typeof p.formatNotes !== 'boolean') p.formatNotes = DEFAULTS.formatNotes;
     return p;
   } catch {
     return { ...DEFAULTS };

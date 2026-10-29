@@ -30,7 +30,9 @@ test.describe('notes', () => {
     await page.reload();
     await toNotes(page);
     await expect(page.locator('.sheet-pill[aria-selected="true"]')).toHaveText('Shopping');
-    await expect(editor).toHaveValue('Shopping\n- milk\n- eggs\n');
+    // Formatted now (the editor is hidden until you write): the text is as it was typed.
+    await expect(page.locator('.md li')).toHaveText(['milk', 'eggs']);
+    await expect(page.locator('textarea.editor')).toHaveValue('Shopping\n- milk\n- eggs\n');
     if (test.info().project.name !== 'desktop-chromium') await page.getByRole('tab', { name: 'Tasks' }).click();
     await expect(openTexts(page).first()).toHaveText('eggs');
   });
@@ -73,13 +75,14 @@ test.describe('your data', () => {
     await open(page);
     await toNotes(page);
     const editor = page.getByRole('textbox', { name: 'Note' });
-    await editor.click();
+    // The note shows formatted: a click on it opens the editor.
+    await page.locator('.md').click();
     await editor.press('Control+End');
     const other = await context.newPage();
     await open(other);
     await toNotes(other);
     const otherEditor = other.getByRole('textbox', { name: 'Note' });
-    await otherEditor.click();
+    await other.locator('.md').click();
     await otherEditor.press('Control+End');
     await otherEditor.pressSequentially('\nAdded in the other window');
     await flushed(other);
@@ -92,7 +95,7 @@ test.describe('your data', () => {
     await flushed(page);
     await other.reload();
     await toNotes(other);
-    await expect(other.getByRole('textbox', { name: 'Note' })).toHaveValue(/Added in the other window\nAnd this one$/);
+    await expect(other.locator('textarea.editor')).toHaveValue(/Added in the other window\nAnd this one$/);
   });
 
   test('imports a Tack for Windows file, merging without overwriting', async ({ page }) => {

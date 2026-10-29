@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.0 (2026-10-29)
+
+- **Notes in Markdown.** A note shows formatted while you read it: headings, bold and italic, lists,
+  checkboxes, quotes, code and rules, from the Markdown you type (`#`, `**`, `- `, `- [ ] `, `>`, three
+  backticks, `---`). Click a line and it's the plain editor again, the caret at the start of that line and
+  the line where it was; or just start typing where you last wrote (Enter and F2 open it; F5, Ctrl+Enter
+  and Ctrl+V do what they do in the editor). Tick a checkbox and exactly that `[ ]`
+  becomes `[x]` in the text, as one edit with Undo, saved and synced like typing. The text stored, synced
+  and exported is exactly what you typed: formatting is only how it's shown, and Tack Focus shows the same
+  note the same way. Links look like links but open nothing (their address is in the tooltip). A note
+  longer than 200,000 characters stays the editor. **Format notes** in Settings → Look (on by default,
+  this PC only) turns it off: notes are then always the editor, as in 1.8.0.
+- Opening Notes or switching sheet shows the note formatted rather than putting the caret in it; typing
+  writes there all the same. Ctrl+N and a space's blank paper still give you the caret at once.
+
 ## 1.8.0 (2026-10-27)
 
 Smoother and calmer: spaces become pills, the panel opens like an app on a phone, the launcher's

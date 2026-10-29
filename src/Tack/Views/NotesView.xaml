@@ -1,7 +1,8 @@
 <UserControl x:Class="Tack.Views.NotesView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:c="clr-namespace:Tack.Controls">
+             xmlns:c="clr-namespace:Tack.Controls"
+             xmlns:v="clr-namespace:Tack.Views">
     <UserControl.Resources>
         <c:BoolToVisibility x:Key="Vis" />
 
@@ -109,6 +110,41 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- A checkbox in a formatted note: a small rounded square, filled with the accent and ticked when done. -->
+        <Style x:Key="NoteCheck" TargetType="CheckBox">
+            <Setter Property="Width" Value="14" />
+            <Setter Property="Height" Value="14" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="Bd" CornerRadius="4" BorderThickness="1.5" Background="Transparent"
+                                BorderBrush="{DynamicResource TextTertiaryBrush}">
+                            <!-- A path, not a glyph: nothing for a screen reader to find inside the box but the box. -->
+                            <Path x:Name="Tick" Data="M 1.5,5 L 4,7.5 L 8.5,2.5" Width="10" Height="10" Stretch="None"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"
+                                  Stroke="{DynamicResource OnAccentBrush}" StrokeThickness="1.6"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentBrush}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <ContextMenu x:Key="ReaderMenu">
+            <MenuItem Header="Edit" Click="EditMenu_Click" InputGestureText="F2" />
+        </ContextMenu>
     </UserControl.Resources>
 
     <Grid Margin="14,0,14,12">
@@ -173,7 +209,17 @@
                 <!-- MaxLength: DeviceFile.MaxNoteText, the longest note any device reads from a sync file. -->
                 <TextBox x:Name="Editor" Grid.Row="1" Style="{StaticResource NotesBox}" AutomationProperties.Name="Note" MaxLength="1000000"
                          Text="{Binding ActiveSheet.Text, UpdateSourceTrigger=PropertyChanged}"
-                         PreviewKeyDown="Editor_PreviewKeyDown" TextChanged="Editor_TextChanged" />
+                         PreviewKeyDown="Editor_PreviewKeyDown" TextChanged="Editor_TextChanged"
+                         LostKeyboardFocus="Editor_LostKeyboardFocus" />
+                <!-- The note formatted (docs/NOTES-MARKDOWN.md): shown whenever the editor doesn't have the keyboard, its text
+                     lined up with the editor's. A click opens the editor at that line; typing writes. Only the rows in view are made. -->
+                <ScrollViewer x:Name="ReaderScroller" Grid.Row="1" Visibility="Collapsed" Focusable="False" CanContentScroll="True"
+                              Padding="16,12,14,12" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <v:NoteReader x:Name="Reader" ContextMenu="{StaticResource ReaderMenu}"
+                                  AutomationProperties.Name="Note" AutomationProperties.HelpText="Formatted. Click a line, or start typing, to edit."
+                                  PreviewKeyDown="Reader_PreviewKeyDown" PreviewTextInput="Reader_PreviewTextInput"
+                                  PreviewMouseLeftButtonDown="Reader_PreviewMouseLeftButtonDown" />
+                </ScrollViewer>
                 <TextBlock x:Name="Hint" Grid.Row="1" Margin="16,12,16,12" IsHitTestVisible="False" TextWrapping="Wrap"
                            Foreground="{DynamicResource TextTertiaryBrush}" LineHeight="20"
                            Visibility="{Binding ActiveSheet.IsEmpty, Converter={StaticResource Vis}, FallbackValue=Visible}">

@@ -17,6 +17,8 @@
     <SolidColorBrush x:Key="StrokeBrush" Color="#17FFFFFF" />
     <SolidColorBrush x:Key="StrokeStrongBrush" Color="#2BFFFFFF" />
     <SolidColorBrush x:Key="DividerBrush" Color="#12FFFFFF" />
+    <!-- Code in a formatted note: a shade behind it. -->
+    <SolidColorBrush x:Key="CodeFillBrush" Color="#17FFFFFF" />
 
     <!-- Laid over the acrylic to keep text contrast high on busy backgrounds. -->
     <SolidColorBrush x:Key="GlassTintBrush" Color="#85141418" />

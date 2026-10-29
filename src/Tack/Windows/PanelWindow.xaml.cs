@@ -428,7 +428,7 @@ public partial class PanelWindow : Window, IFadingWindow, INotesHost, Drop.IUndo
         }
         Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
         {
-            if (_ws.Settings.Tab == "notes") NotesPage.FocusEditor();
+            if (_ws.Settings.Tab == "notes") NotesPage.FocusDefault();
             else TasksPage.FocusInput();
         });
     }
