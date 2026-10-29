@@ -33,6 +33,17 @@ function expectLinear(text: string): void {
   expect(took, `${took.toFixed(1)} ms against ${plain.toFixed(1)} ms for plain text`).toBeLessThan(Math.max(250, plain * 10));
 }
 
+/**
+ * Linear for text made of many tiny lines, where every line is a block of its own (so plain text,
+ * one long paragraph, is no fair yardstick): twice the lines may cost about twice the time, never
+ * four times (and never over 250 ms for the full run, the floor for slow CI).
+ */
+function expectScales(unit: string, count: number): void {
+  const half = time(() => parse(unit.repeat(count / 2)));
+  const full = time(() => parse(unit.repeat(count)));
+  expect(full, `${full.toFixed(1)} ms for ${count} against ${half.toFixed(1)} ms for half`).toBeLessThan(Math.max(250, half * 3));
+}
+
 function depthOf(blocks: Block[]): { blocks: number; inline: number } {
   let blockDepth = 0;
   let inlineDepth = 0;
@@ -153,10 +164,10 @@ describe('Markdown: hostile notes', () => {
   });
 
   it('a million line breaks', () => {
-    expectLinear('\n'.repeat(1_000_000));
-    expectLinear('a\n'.repeat(500_000));
-    expectLinear('\r'.repeat(1_000_000));
-    expectLinear('- a\n  b\n'.repeat(100_000));
+    expectScales('\n', 1_000_000);
+    expectScales('a\n', 500_000);
+    expectScales('\r', 1_000_000);
+    expectScales('- a\n  b\n', 100_000);
   });
 
   it('lone surrogates are kept as they are, and offsets still count UTF-16 units', () => {
