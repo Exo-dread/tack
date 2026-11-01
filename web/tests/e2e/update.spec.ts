@@ -23,6 +23,10 @@ const DIST = resolve(import.meta.dirname, '../../dist');
 const PORTS = [4194, 4195, 4196, 4197, 4198, 4199];
 /** How long a reload that shouldn't happen is given to happen anyway (it follows a save: milliseconds). */
 const QUIET = 1000;
+/** How long an offer waiting for a quiet moment takes to look again (QUIET_CHECK in src/ui/sw.ts), and a little. */
+const QUIET_CHECK = 12_000;
+/** The card that offers an update (one fading out lingers a moment, inert). */
+const offerCard = (page: Page) => page.locator('.toast.ask:not([inert])', { hasText: 'A new version of Tack Focus is ready.' });
 /** How late the app's storage answers in a slow start (an update takes over in 1-2 s; it gives up at 10). */
 const SLOW_START = 5000;
 
@@ -436,6 +440,85 @@ test.describe('updates', () => {
     // ...but the next new version is one.
     await update(page, site);
     await reloadedIntoNew(page, site, visit);
+    expect(visit.errors).toEqual([]);
+  });
+
+  test('in use when it arrives: a card offers it at a quiet moment, and Update now reloads into the new version', async ({ page, site }) => {
+    await page.clock.install();
+    const visit = await installed(page, site);
+    await touch(page);
+    await update(page, site);
+    await arrived(page);
+    await stays(page, visit);
+    // Offered once the last touch is a moment past, without reloading.
+    await page.clock.fastForward(QUIET_CHECK);
+    await expect(offerCard(page)).toBeVisible();
+    await expect(offerCard(page).locator('.toast-label')).toHaveText('Update');
+    await stays(page, visit);
+
+    await offerCard(page).getByRole('button', { name: 'Update now', exact: true }).click();
+    await reloadedIntoNew(page, site, visit);
+    await expect(offerCard(page)).toHaveCount(0);
+    expect(visit.errors).toEqual([]);
+  });
+
+  test('Later: the card goes and nothing reloads; it is offered again hours on, and leaving applies it', async ({ page, site }) => {
+    await page.clock.install();
+    const visit = await installed(page, site);
+    await touch(page);
+    await update(page, site);
+    await arrived(page);
+    await page.clock.fastForward(QUIET_CHECK);
+    await offerCard(page).getByRole('button', { name: 'Later', exact: true }).click();
+    await expect(offerCard(page)).toHaveCount(0);
+    await stays(page, visit);
+    // Not again for a while, however quiet...
+    await page.clock.fastForward(60 * 60 * 1000);
+    await expect(offerCard(page)).toHaveCount(0);
+    // ...then once more, still with nothing reloaded.
+    await page.clock.fastForward(4 * 60 * 60 * 1000);
+    await expect(offerCard(page)).toBeVisible();
+    await stays(page, visit);
+
+    await setVisibility(page, 'hidden');
+    await reloadedIntoNew(page, site, visit);
+    expect(visit.errors).toEqual([]);
+  });
+
+  test('never over another toast: the card waits for an Undo on show to go, then takes its turn', async ({ page, site }) => {
+    await page.clock.install();
+    const visit = await installed(page, site);
+    await touch(page);
+    await page.evaluate(() => {
+      const dt = new DataTransfer();
+      dt.setData('text/plain', 'milk\neggs\n');
+      document.querySelector('.composer-input')!.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+    await expect(page.locator('.toast:not([inert]) .toast-text')).toHaveText('Added 2 tasks');
+    await update(page, site);
+    await arrived(page);
+    await page.clock.fastForward(QUIET_CHECK / 4);
+    await expect(offerCard(page)).toHaveCount(0);
+    await expect(page.locator('.toast:not([inert]) .toast-text')).toHaveText('Added 2 tasks');
+
+    // Its Undo had its time; then the card.
+    await page.clock.fastForward(QUIET_CHECK * 2);
+    await expect(offerCard(page)).toBeVisible();
+    await stays(page, visit);
+    expect(visit.errors).toEqual([]);
+  });
+
+  test('typing in the box: no card while you are in it', async ({ page, site }) => {
+    await page.clock.install();
+    const visit = await installed(page, site);
+    await composer(page).click();
+    await composer(page).pressSequentially('Half');
+    await update(page, site);
+    await arrived(page);
+    await page.clock.fastForward(QUIET_CHECK * 3);
+    await expect(offerCard(page)).toHaveCount(0);
+    await stays(page, visit);
+    await expect(composer(page)).toBeFocused();
     expect(visit.errors).toEqual([]);
   });
 

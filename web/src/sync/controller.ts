@@ -460,6 +460,16 @@ export class SyncController {
     return this._leaving;
   }
 
+  /** A sync cycle is under way in this tab. */
+  get syncing(): boolean {
+    return this.running !== null;
+  }
+
+  /** Resolves once no sync cycle is under way in this tab (one that fails counts as over). */
+  async idle(): Promise<void> {
+    while (this.running) await this.running.catch(() => {});
+  }
+
   /** On the way to Microsoft to renew, or due to go (at the next quiet moment). */
   get visiting(): boolean {
     return this._leaving || this.visitDue(Date.now());

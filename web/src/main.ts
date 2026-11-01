@@ -77,6 +77,11 @@ async function boot(): Promise<void> {
     // A reload on the way to Microsoft would cut the sign-in's renewal short.
     leaving: () => sync.leaving,
     renewing: () => sync.visiting,
+    syncing: () => sync.syncing,
+    syncIdle: () => sync.idle(),
+    toastShowing: () => app.toastShowing,
+    offer: (update, later) => app.offerUpdate(update, later),
+    say: (message) => app.say(message),
   });
   sync.start();
   if (returned === 'signed-in' || returned === 'signed-in-again') app.syncTurnedOn(returned === 'signed-in-again');
