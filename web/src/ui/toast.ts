@@ -105,10 +105,18 @@ export class Toasts {
 
   /**
    * A question in place of a toast: a small `label` over `message` (two lines of it at most), the
-   * action and Dismiss. It stays until it's answered: the action runs `act`; Dismiss, a swipe down,
-   * or a newer toast taking its place runs `dropped`. Returns a token for `asking`.
+   * action and `quiet` (Dismiss). It stays until it's answered: the action runs `act`; Dismiss, a
+   * swipe down, or a newer toast taking its place runs `dropped` (told which: `byYou` is false for
+   * the newer toast). Returns a token for `asking`.
    */
-  ask(label: string, message: string, action: string, act: () => void, dropped: () => void): object {
+  ask(
+    label: string,
+    message: string,
+    action: string,
+    act: () => void,
+    dropped: (byYou: boolean) => void,
+    quiet = 'Dismiss',
+  ): object {
     this.dismiss(false);
     const token = {};
     let answered = false;
@@ -118,17 +126,18 @@ export class Toasts {
       if (this.current?.node === node) this.dismiss();
       run();
     };
+    const drop = () => dropped(true);
     const node = h(
       'div.toast.ask',
       {},
       h('span.toast-ask', {}, h('span.toast-label', { text: label }), h('span.toast-text', { text: message })),
       h('button.toast-action', { type: 'button', text: action, onclick: () => answer(act) }),
-      h('button.toast-action.quiet', { type: 'button', text: 'Dismiss', onclick: () => answer(dropped) }),
+      h('button.toast-action.quiet', { type: 'button', text: quiet, onclick: () => answer(drop) }),
     );
     let startY = 0;
     node.addEventListener('pointerdown', (e) => (startY = e.clientY));
     node.addEventListener('pointerup', (e) => {
-      if (e.clientY - startY > 24) answer(dropped);
+      if (e.clientY - startY > 24) answer(drop);
     });
     this.el.append(node);
     animate(node, [{ opacity: 0, transform: 'translateY(16px) scale(.96)' }, { opacity: 1, transform: 'none' }], {
@@ -136,9 +145,14 @@ export class Toasts {
       easing: SPRING.easing,
     });
     // No countdown: it waits for an answer. A newer toast ends it (see dismiss).
-    this.current = { node, dropped: () => answer(dropped), token };
-    this.announce(`${label}: ${message}. ${action} or Dismiss.`);
+    this.current = { node, dropped: () => answer(() => dropped(false)), token };
+    this.announce(`${label}: ${message}. ${action} or ${quiet}.`);
     return token;
+  }
+
+  /** Is any toast or question on show? */
+  get showing(): boolean {
+    return this.current !== null;
   }
 
   /** Is the question `ask` returned this token for still on show? */

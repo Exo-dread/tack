@@ -376,6 +376,34 @@ describe('waiting as long as Microsoft asks', () => {
     expect(sync.status.phase).toBe('synced');
   });
 
+  it('says when a sync is under way, and idle() waits for it to end (an update waits for it too)', async () => {
+    const healthy = graph();
+    let release!: () => void;
+    const held = new Promise<void>((done) => (release = done));
+    let first = true;
+    const http: typeof fetch = async (input, init) => {
+      if (first) {
+        first = false;
+        await held;
+      }
+      return healthy.http(input, init);
+    };
+    const { sync } = await running(http);
+    expect(sync.syncing).toBe(false);
+    sync.start();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(sync.syncing).toBe(true);
+    let idle = false;
+    void sync.idle().then(() => (idle = true));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(idle).toBe(false);
+    release();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(idle).toBe(true);
+    expect(sync.syncing).toBe(false);
+    expect(sync.status.phase).toBe('synced');
+  });
+
   it('a hidden frame that keeps timing out is tried less often, then a visit takes over (L5)', async () => {
     const g = graph();
     // Signed in 21 hours ago: renewing ahead of time is due (four hours before the end).

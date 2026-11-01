@@ -437,6 +437,24 @@ export class App {
     );
   }
 
+  /** A toast or question is on show: an update's offer waits rather than take its place. */
+  get toastShowing(): boolean {
+    return this.toasts.showing;
+  }
+
+  /**
+   * Offers a new version: Update now runs `update`; Later (or Dismiss by a swipe) runs `later`
+   * with true, a newer toast taking its place with false.
+   */
+  offerUpdate(update: () => void, later: (byYou: boolean) => void): void {
+    this.toasts.ask('Update', 'A new version of Tack Focus is ready.', 'Update now', update, later, 'Later');
+  }
+
+  /** Says something in a toast (an update that has to wait, say). */
+  say(message: string): void {
+    this.toasts.show(message, undefined, { duration: 4000 });
+  }
+
   /** The Undo of the last share added (see `settled`). */
   private shareUndo: (() => void) | null = null;
   /** A share's card, while it waits for Add or Dismiss (see `settled`). */

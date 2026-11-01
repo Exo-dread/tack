@@ -1,5 +1,16 @@
 # Tack Focus changelog
 
+## 0.8.0 (1 November 2026)
+
+- **Tells you when it's updated.** A new version still applies by itself while you're away from
+  the app, or as you open it before you've touched anything. While you're using it, a small card
+  now says a new version is ready, with Update now and Later. It comes at a quiet moment, never
+  over another toast (or its Undo), never while you're typing, and never in the middle of a sync.
+  Update now saves everything and lets a sync under way finish first, then reloads into the new
+  version, which is already downloaded. Later puts it away until you come back to the app (or for
+  a few hours). An installed app open on a desktop now also looks for an update when its window
+  comes to the front again, at most every half hour.
+
 ## 0.7.0 (1 November 2026)
 
 - **Sync with Google Drive.** Settings → Sync now offers Google Drive beside OneDrive (one per
