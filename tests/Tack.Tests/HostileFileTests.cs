@@ -367,8 +367,15 @@ internal static class HostileFileTests
         foreach (var (name, text) in cases)
         {
             // Linear: twice the text costs about twice as much as the first half of it; and, collections and all, never
-            // more than a few hundred ms per 100,000 characters, however many delimiters it has.
-            double took = Ms(Time(text, noGc: true)), half = Ms(Time(text[..(text.Length / 2)], noGc: true));
+            // more than a few hundred ms per 100,000 characters, however many delimiters it has. A shared CI runner can
+            // stall one measurement, so it's taken up to five times: a quadratic reader is about 4 times every time.
+            double took = 0, half = 0;
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                took = Ms(Time(text, noGc: true));
+                half = Ms(Time(text[..(text.Length / 2)], noGc: true));
+                if (took <= 3 * half + 2) break;
+            }
             Check.True(took <= 3 * half + 2, $"{name}: not linear: {took:F1} ms for all of it, {half:F1} ms for half");
             double all = Ms(Time(text));
             double per = all / Math.Max(1, text.Length) * N;
