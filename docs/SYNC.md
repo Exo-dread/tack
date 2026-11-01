@@ -290,12 +290,25 @@ same six hours, and no more.
 - Asks OneDrive to keep the folder on the PC ("Always keep on this device") so the other devices'
   files are there offline too.
 - Reacts to the folder changing (a file system watcher), to your edits, to the panel opening and
-  to the PC waking up. **No polling**: nothing runs while idle, as before.
+  to the PC waking up. **No polling**: nothing runs while idle, as before. (The one exception is a
+  Google Drive folder, whose drive raises no watcher events for cloud changes: its `devices`
+  listing is looked at once a minute; see [GOOGLE-DRIVE.md](GOOGLE-DRIVE.md).)
 - If a file can't be read right now (the OneDrive app is writing it, or it's cloud-only and you're
   offline), it waits and tries again, quietly unless it keeps happening.
 - Tack sees the folder, not the cloud: if the OneDrive app isn't running, Tack is still "in step
   with the sync folder" while nothing reaches your other devices. Settings says so, and suggests
   checking the OneDrive app if changes don't arrive.
+
+## Google Drive
+
+The same folder, files and merge through Google Drive instead of OneDrive, chosen per device (devices
+on different providers don't see each other). Google's narrowest permission, `drive.file`, only lets
+Tack Focus see files it created itself, so **Tack Focus creates every file in the folder**, including
+spare files (`devices/spare-<16 hex>.json`, kept at three); Tack for Windows, which never goes online,
+renames a spare to its own device file through Google Drive for desktop and writes into it from then
+on. A marker saying `"spares": true` puts Tack for Windows in that mode. The design, the live tests
+it rests on, the sign-in Worker and the exact contracts are in [GOOGLE-DRIVE.md](GOOGLE-DRIVE.md).
+Throttling, timeouts and backoff are as for OneDrive.
 
 ## Staying signed in (and why not MSAL)
 

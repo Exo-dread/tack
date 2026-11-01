@@ -1,0 +1,35 @@
+# The Google sign-in Worker (docs/GOOGLE-DRIVE.md, "The sign-in Worker"). A Worker, not Pages Functions:
+# the site itself stays static files on Cloudflare Pages; only tackfocus.app/api/google/* comes here.
+#
+# Secrets are set with `wrangler secret put` and must never be in this file, the repo or a VITE_ variable:
+#   GOOGLE_CLIENT_SECRET   the OAuth client secret from Google Cloud
+#   SESSION_KEY            32 random bytes, base64 (it encrypts the session and flow cookies;
+#                          changing it signs everyone out)
+
+name = "tack-focus-google"
+main = "google.ts"
+compatibility_date = "2026-10-01"
+workers_dev = false
+preview_urls = false
+
+routes = [
+  { pattern = "tackfocus.app/api/google/*", zone_name = "tackfocus.app" },
+]
+
+[vars]
+SITE_ORIGIN = "https://tackfocus.app"
+# Public (it's in every sign-in URL), but set by the owner from Google Cloud. Empty: sign-in answers reason=config.
+GOOGLE_CLIENT_ID = "941190850400-v6a9tki7gkugja412bhhnav0f75pps34.apps.googleusercontent.com"
+
+# Per IP and path, 30 a minute (token is called about once an hour per device). Answers 429, Retry-After: 60.
+# namespace_id is any number unique to this account's rate limiters.
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 30
+  period = 60
+
+[observability]
+enabled = false

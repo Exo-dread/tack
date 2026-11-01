@@ -512,9 +512,14 @@ public partial class SettingsView : UserControl
         SyncChooseButton.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
         SyncNowButton.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         SyncOffButton.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        // A Google Drive folder (its marker says it has spares) or OneDrive (or a folder you chose).
+        string provider = sync.Provider;
         DataIntro.Text = on
-            ? "Everything is on this PC, and in your OneDrive while sync is on. No Tack account, no tracking."
+            ? $"Everything is on this PC, and in your {provider} while sync is on. No Tack account, no tracking."
             : "Everything stays on this PC. No account, no cloud, no tracking.";
+        var (where, holder) = !on ? ("OneDrive or Google Drive", "Microsoft or Google") : sync.ClaimMode ? ("Google Drive", "Google") : ("OneDrive", "Microsoft");
+        SyncPrivacy.Text = $"With sync on, your tasks and notes are saved in {where} as ordinary files: you can open them; {holder} can read them as your storage provider, and so can apps you've given your whole {where} to. They aren't end-to-end encrypted yet.";
+        SyncOffButton.ToolTip = $"Stops syncing. Your tasks stay here, and the files stay in {provider} for your other devices.";
 
         // Tack sees the folder, not the cloud: "in step with the folder" is what it can vouch for.
         string? line = on ? st.Phase switch
@@ -529,7 +534,7 @@ public partial class SettingsView : UserControl
         {
             if (st.Peers.Count > 0)
                 line += $"\nOther devices: {string.Join(", ", st.Peers.Select(p => $"{(p.Name.Length > 0 ? p.Name : "another device")} (last change {At(p.WrittenMs)})"))}.";
-            line += "\nThe OneDrive app carries the files: if changes don't arrive, check it's running.";
+            line += $"\nThe {provider} app carries the files: if changes don't arrive, check it's running.";
         }
         var full = new List<(string Device, string Who)>();
         foreach (var (device, problem) in on ? st.Problems : [])

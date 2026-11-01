@@ -6,18 +6,29 @@ Tack what it promises to be, and how to work on this repo without touching anyon
 ## What Tack is, and must stay
 
 - **No server, no accounts, no telemetry.** tackfocus.app is static files on Cloudflare Pages: no Functions,
-  Workers, `_worker.js` or `_redirects`. If one is ever added (discuss first), it needs per-IP and per-path rate
-  limits that answer 429 with `Retry-After`.
+  `_worker.js` or `_redirects`. The one exception is the Google sign-in Worker in `web/worker/`
+  (docs/GOOGLE-DRIVE.md), on the route `tackfocus.app/api/google/*` only: it exchanges and renews Google
+  tokens and does nothing else. It never calls the Drive API or sees task contents, stores nothing (no KV,
+  D1, R2 or logs of tokens, codes, cookies or emails), and keeps its per-IP and per-path rate limit answering
+  429 with `Retry-After`. Anything more on a server needs a discussion first.
 - **Tack for Windows never goes online.** No `HttpClient`, no sockets, no NuGet packages. Sync is plain file I/O in
   the local OneDrive folder; the OneDrive app does the uploading.
 - **No secrets in the repo, and none in `VITE_*` variables:** every `VITE_` value ships to every browser. The
   Microsoft client ID is public (it's also served at `/.well-known/microsoft-identity-association.json`). It is not a
   secret, and the app stays a public SPA client: auth code + PKCE, no client secret, certificate or implicit grant.
-- **Scope stays `openid profile offline_access Files.ReadWrite.AppFolder`.** Anything wider needs a discussion first.
+  Google's client secret and the Worker's `SESSION_KEY` live only as Worker secrets (`wrangler secret put`),
+  never in the repo, a `VITE_` variable, `.dev.vars` committed, a log or the page.
+- **Scope stays `openid profile offline_access Files.ReadWrite.AppFolder`** for Microsoft, and
+  **`openid email https://www.googleapis.com/auth/drive.file`** for Google (the Worker refuses a grant with
+  anything wider). Anything wider needs a discussion first.
 - **Tokens** live only in the IndexedDB meta record `auth`. The refresh token goes only to the authority's
   `/oauth2/v2.0/token`, and the access token only to `https://graph.microsoft.com/`. OneDrive download links are
   fetched without it. Tokens are never logged, put in a URL, exported or written to a device file. The refresh token
   is never extended past 24 hours from sign-in.
+- **Google tokens** never reach browser storage: the refresh token exists only encrypted (AES-GCM) in the
+  Worker's `__Secure-tack-g` cookie (HttpOnly, Secure, SameSite=Strict, Path=/api/google/, 180 days at most),
+  and the page keeps the one-hour access token in memory only, sending it only to `https://www.googleapis.com/`.
+  The Worker's `token` and `signout` need POST, `X-Tack: 1` and a same-site `Origin`; it answers no CORS preflight.
 - **Imports and device files carry records only** (tasks, sheets, spaces, focus). They never change settings, the
   device id, the sync folder, launch at startup, the hotkey, the launcher, attachments or snippets.
 - **Local files stay local:** launcher.json, attachments.json with the attachments folder, and snippets.json with the
@@ -29,14 +40,24 @@ Tack what it promises to be, and how to work on this repo without touching anyon
   keeps its data in `%LOCALAPPDATA%\Tack` (no `TackData` beside it); setup and uninstall never touch that folder,
   close only the Tack.exe in the install folder (Restart Manager, never by force), and remove the Run value
   "Tack" only when it points at the installed exe. "Start Tack" after setup runs as the user, never elevated.
-- **Tack for Windows adopts only `<OneDrive>\Apps\Tack Focus` by itself.** Any other folder with Tack's marker is
-  only suggested; the user picks it with Choose folder.
+- **Tack for Windows adopts only `<OneDrive>\Apps\Tack Focus`, or the one `<Google Drive>\My Drive\Tack Focus`
+  whose marker says `"spares": true`, by itself.** Any other folder with Tack's marker is only suggested; the user
+  picks it with Choose folder.
+- **In a Google Drive folder (claim mode) Tack for Windows never creates a lasting file or folder** (only its
+  `~$…tmp` write file, moved over its own file at once). Anything a PC makes is
+  invisible to Tack Focus under `drive.file`, so it only writes into files Tack Focus made: it renames a spare
+  (`spare-<16 hex>.json`) to its device file, then writes as usual. Migrating to a new device id keeps
+  `tack.before-google.json` and renames the old file to `retired-<id>.json`; neither is ever deleted by Tack.
+  A Google Drive folder is the one place Tack for Windows looks without being told: its `devices` listing once a
+  minute (Google's drive raises no watcher events for cloud changes). Never file contents, and never elsewhere.
 
 ## Untrusted input
 
 Where it comes from, riskiest first: **device files in the sync folder** (anyone who can write the user's app
-folder), **tack.json imports** (from anywhere), then paste, the URL query and hash, drags onto the orb, pasted images,
-the share target's query (Tack Focus), launcher.json, attachments.json, snippets.json and browser storage.
+folder), **tack.json imports** (from anywhere), then the sync folder's other files (spares, the marker), paste,
+the URL query and hash (`?google=` included), drags onto the orb, pasted images, the share target's query
+(Tack Focus), launcher.json, attachments.json, snippets.json and browser storage. For the Worker: every request,
+its cookies and Google's answers.
 
 - Read it with the existing validators, never by hand: `parseDeviceFile` / `DeviceFile.Parse`, `readTaskRecord`,
   `readSheetRecord`, `readSpaceRecord` / `TackFile.ReadTaskRecord`…, `isFileDate` / `IsFileDate`, `isDeviceId`,
@@ -76,18 +97,20 @@ the share target's query (Tack Focus), launcher.json, attachments.json, snippets
   `h({ text })`, `textContent` or `setAttribute`. `svg()` takes static icon constants only. No `href` from data, and
   selectors built from ids use `CSS.escape`.
 - No third-party scripts, fonts or analytics. Rocket Loader, Web Analytics and Zaraz stay off for the zone.
-- The service worker handles same-origin GETs only, so tokens never pass through it.
+- The service worker handles same-origin GETs only, and never anything under `/api/`, so tokens never pass through it.
 
-## Calling Microsoft
+## Calling Microsoft and Google
+
+The same rules for both. Google: Drive v3 from the page, OAuth from the Worker (10 s timeouts there).
 
 - Every request has a timeout (30 s; the reachability probe 5 s; the hidden frame 10 s).
-- **429, 503 (and 509 from Graph) mean "throttled".** Honour `Retry-After` (30 s if missing, 6 h at most). Nothing
+- **429, 503 (and 509 from Graph; 403 `rateLimitExceeded` / `userRateLimitExceeded` from Drive) mean "throttled".** Honour `Retry-After` (30 s if missing, 6 h at most). Nothing
   syncs inside that window, whatever asked for it: an edit, a return to the app, hiding it, `online`, or Sync now.
   Every sync goes through `schedule()`, which respects `notBefore` (the last exchange on hiding checks it itself).
 - **Back off, never loop.** Failures back off from 5 s to 30 min. A folder listing stops at `MAX_PAGES`. The hidden
   renewal frame backs off after timeouts and hands over to the visit path. Only one tab syncs (Web Locks), and
   polling happens only while the app is visible.
-- A new Microsoft call gets a test with a fake that answers 429.
+- A new Microsoft or Google call gets a test with a fake that answers 429.
 
 ## CI/CD
 
@@ -104,6 +127,8 @@ the share target's query (Tack Focus), launcher.json, attachments.json, snippets
   a pinned SHA-256 before they run, and installed into the runner's temp folder. Checkouts use
   `persist-credentials: false` unless a step pushes with git.
 - Desktop releases come only from tags on commits already on main. `release.yml` checks this; don't remove the check.
+- The Google sign-in Worker isn't deployed by CI: the owner runs `wrangler deploy` in `web/worker/` (docs/GOOGLE-DRIVE.md),
+  so no workflow holds a token that can change Workers or their secrets. Deploying it needs the user's yes, like any deploy.
 
 ## Working on this machine
 

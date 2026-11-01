@@ -25,7 +25,8 @@
   },
   "include": [
     "src/**/*.ts",
-    "tests/unit/**/*.ts"
+    "tests/unit/**/*.ts",
+    "worker/**/*.ts"
   ],
   "exclude": [
     "src/sw.js"

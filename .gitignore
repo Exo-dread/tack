@@ -26,3 +26,9 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# The sign-in Worker's local secrets (wrangler dev): never committed
+.dev.vars
+
+# wrangler dev's local state
+.wrangler/

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Privacy · Tack</title>
-    <meta name="description" content="How Tack Focus and Tack for Windows handle your data: kept on your devices, and in your own OneDrive only if you turn on sync. What Tack asks Microsoft for, and how to delete everything." />
+    <meta name="description" content="How Tack Focus and Tack for Windows handle your data: kept on your devices, and in your own OneDrive or Google Drive only if you turn on sync. What Tack asks Microsoft and Google for, and how to delete everything." />
     <link rel="canonical" href="https://tackfocus.app/privacy/" />
     <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/privacy/privacy.css" />
@@ -14,7 +14,7 @@
     <main>
       <p class="back"><a href="/">← Tack Focus</a></p>
       <h1>Privacy</h1>
-      <p class="lead">Tack keeps your tasks and notes on your own devices. There are no Tack accounts, no ads, no tracking and no analytics, and Tack has no server that receives or stores your data.</p>
+      <p class="lead">Tack keeps your tasks and notes on your own devices. There are no Tack accounts, no ads, no tracking and no analytics, and Tack has no server that receives or stores your tasks or notes.</p>
       <p>This page covers Tack for Windows and Tack Focus, its companion app at tackfocus.app.</p>
 
       <h2 id="devices">On your devices</h2>
@@ -22,7 +22,7 @@
         <li><strong>Tack Focus</strong> keeps your tasks, notes, restore points and settings in your browser’s storage on that device.</li>
         <li><strong>Tack for Windows</strong> keeps them in one file, <code>%LOCALAPPDATA%\Tack\tack.json</code>, with a backup copy beside it (or in a <code>TackData</code> folder next to <code>Tack.exe</code> in portable mode). It never connects to the internet.</li>
         <li><strong>Nothing leaves your device</strong> unless you turn on sync, or export a file yourself.</li>
-        <li><strong>The website.</strong> tackfocus.app is a set of static files hosted by Cloudflare. Loading it is an ordinary web request, which Cloudflare handles as any web host does (see <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare’s privacy policy</a>). Tack sets no cookies and loads no analytics or third-party scripts. Once loaded, Tack Focus works offline.</li>
+        <li><strong>The website.</strong> tackfocus.app is a set of static files hosted by Cloudflare. Loading it is an ordinary web request, which Cloudflare handles as any web host does (see <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare’s privacy policy</a>). Tack loads no analytics or third-party scripts, and sets no cookies unless you connect Google Drive (below). Once loaded, Tack Focus works offline.</li>
       </ul>
 
       <h2 id="sync">Sync with OneDrive (optional)</h2>
@@ -44,6 +44,16 @@
       </ul>
       <p>Tack doesn’t ask for your mail, contacts, calendar, other files, or anything else in your Microsoft account.</p>
 
+      <h2 id="google">Sync with Google Drive (optional)</h2>
+      <p>Instead of OneDrive, a device can sync through your own Google Drive. It works the same way: each device saves its tasks and notes as a file in one folder, <em>My Drive › Tack Focus</em>, and reads the other devices’ files from there. On a PC, Tack for Windows reads and writes that folder through Google Drive for desktop, and still never connects to the internet itself.</p>
+      <ul>
+        <li><strong>One permission: only the files Tack makes</strong> (<code>drive.file</code>). Tack Focus creates that folder and its files itself, and Google lets it see and change only files it created. It can’t see, open or change anything else in your Google Drive. It also asks for your email address (<code>openid</code>, <code>email</code>), which Settings shows so you know which account is syncing.</li>
+        <li><strong>Your files go between your browser and Google directly.</strong> Tack Focus reads and writes them at <code>www.googleapis.com</code>; your tasks and notes never pass through anything of Tack’s.</li>
+        <li><strong>Staying signed in.</strong> Google gives a website a long-lived sign-in only through a server that holds a secret, so tackfocus.app runs one small sign-in service for this alone (on Cloudflare). It exchanges Google’s sign-in for a refresh token, keeps that token only in an encrypted cookie in your browser (which the page itself can’t read, and which is sent only to that service), and turns it into a one-hour access token when Tack Focus asks. It stores nothing: no database, no logs of tokens, emails or contents. The cookie lasts at most 180 days. Turning off sync on a device deletes that device’s cookie; removing Tack’s access in your Google account (below) ends it on every device.</li>
+        <li><strong>Who can read the files.</strong> They’re ordinary files in your Google Drive, stored by Google under <a href="https://policies.google.com/privacy">its privacy policy</a>. As with OneDrive, they aren’t end-to-end encrypted yet.</li>
+        <li><strong>Google’s rules.</strong> Tack Focus’s use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Data from Google is used only to sync your own tasks and notes between your own devices, is never sold, shared, used for ads or read by people, and goes nowhere but your devices and your Google Drive.</li>
+      </ul>
+
       <h2 id="delete">Deleting your data</h2>
       <p>Tack holds no copy of your data, so there’s nothing to ask Tack to delete. It’s all on your devices and, with sync, in your OneDrive, where you can delete it yourself:</p>
       <ul>
@@ -51,13 +61,15 @@
         <li><strong>Everything in Tack Focus on a device:</strong> clear the site data for tackfocus.app in your browser’s settings (in Chrome on Android: Settings › Site settings › All sites › tackfocus.app). Removing the installed app alone may leave the data in the browser. Export first if you want to keep a copy.</li>
         <li><strong>Everything in Tack for Windows:</strong> close Tack and delete the folder <code>%LOCALAPPDATA%\Tack</code> (or the <code>TackData</code> folder in portable mode). Deleting <code>Tack.exe</code> alone leaves your data in place.</li>
         <li><strong>Sync data in OneDrive:</strong> turn off sync on every device first (each keeps its own tasks and notes, and Tack Focus forgets the sign-in). Then delete the <em>Apps › Tack Focus</em> folder in OneDrive and empty OneDrive’s recycle bin, which removes the files and their earlier versions for good. A device that’s still syncing would write its file again.</li>
+        <li><strong>Sync data in Google Drive:</strong> the same: turn off sync on every device, then delete <em>My Drive › Tack Focus</em> and empty Google Drive’s trash.</li>
+        <li><strong>Tack’s access to your Google account:</strong> remove it at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>. That ends the sign-in on every device: the next time Tack Focus asks for access, Google refuses and the cookie is cleared.</li>
         <li><strong>Tack’s access to your Microsoft account:</strong> remove it at <a href="https://account.live.com/consent/Manage">account.live.com/consent/Manage</a> (personal accounts) or <a href="https://myapps.microsoft.com">myapps.microsoft.com</a> (work or school accounts).</li>
       </ul>
 
       <h2 id="questions">Changes and questions</h2>
       <p>Tack is free and open source under the MIT licence, so you can read exactly what it does in <a href="https://github.com/Exo-dread/tack">its source code</a>. When this page changes, the date below changes too, and every change is public in the source history. For questions or concerns, <a href="https://github.com/Exo-dread/tack/issues">open an issue on GitHub</a>.</p>
 
-      <p class="updated">Last updated 20 October 2026.</p>
+      <p class="updated">Last updated 1 November 2026.</p>
     </main>
   </body>
 </html>

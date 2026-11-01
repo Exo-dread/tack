@@ -8,7 +8,9 @@ import { Workspace } from '../../src/model/workspace';
 import { MAX_PASTE_LINES, MAX_SPACES_LISTED } from '../../src/model/limits';
 import { listed, MAIN } from '../../src/model/spaces';
 import { deadTask, DeviceFileError, fileName, makeDeviceFile, MAX_FILE_BYTES, MAX_NOTE_TEXT, MAX_RECORDS, MAX_SEEN, MAX_TAKEN, MAX_TASK_TEXT, MAX_TRICKLE, parseDeviceFile, serializeDeviceFile, trimSeen } from '../../src/sync/devicefile';
-import { emptyMeta, seenBy, takeIn } from '../../src/sync/engine';
+import { emptyMeta, seenBy, SyncEngine, takeIn } from '../../src/sync/engine';
+import { GoogleDriveFolder } from '../../src/sync/googledrive';
+import { FakeGoogleDrive } from '../fakes/google';
 import { Cloud, DAY, Device, records, settle, visible, type Clock } from './synchelpers';
 
 /**
@@ -848,5 +850,129 @@ describe('L2 (second audit): dates in imported desktop files', () => {
     importFile(w, JSON.stringify({ version: 1, tasks: [{ id: 'a1', text: 'x', created: '2026-10-20T09:00:00.1234567+01:00', completed: '2026-10-21T10:00:00+01:00' }], sheets: [] }));
     expect(w.tasks.get('a1')!.created).toBe('2026-10-20T09:00:00.1234567+01:00');
     expect(w.tasks.get('a1')!.completed).toBe('2026-10-21T10:00:00+01:00');
+  });
+});
+
+/*
+ * Google Drive's folder (docs/GOOGLE-DRIVE.md). With drive.file, Tack sees only files it made, but
+ * a PC renames them and writes into them, and anyone with the account (or a broken Tack) can fill
+ * `devices` or put anything in a spare. Names are matched against the device-id and spare
+ * patterns only, a spare's bytes are never read, and the spares Tack makes stay bounded.
+ */
+describe('Google Drive: what the devices folder holds', () => {
+  const SPARE = /^spare-[0-9a-f]{16}\.json$/;
+
+  /** A browser syncing through `drive`, as the controller runs it. */
+  function browser(drive: FakeGoogleDrive, node: string, http: typeof fetch = drive.fetch) {
+    const ws = new Workspace(new Hlc(node, () => NOW), () => new Date(NOW));
+    const folder = new GoogleDriveFolder(async () => 'token-1', http);
+    let meta: ReturnType<typeof emptyMeta> | null = null;
+    const engine = new SyncEngine(ws, folder, { label: () => ({ name: node, app: 'test' }), flush: async () => {}, saveMeta: async () => {} });
+    return {
+      ws,
+      sync: async () => {
+        const key = await folder.open();
+        meta ??= emptyMeta(key);
+        return engine.cycle(meta, NOW);
+      },
+    };
+  }
+
+  /** A device file for `device`, one task, as JSON text. */
+  const deviceText = (device: string) => JSON.stringify(craft(device, NOW));
+  const devicesOf = (drive: FakeGoogleDrive) => drive.devices()!.id;
+  const spares = (drive: FakeGoogleDrive) => drive.childrenOf(devicesOf(drive)).filter((f) => SPARE.test(f.name));
+  const downloads = (drive: FakeGoogleDrive, id: string) => drive.requests(new RegExp(`/files/${id}\\?alt=media`));
+
+  it('a devices folder crowded with files stops the listing at ten pages, and makes no spares', async () => {
+    const drive = new FakeGoogleDrive();
+    const phone = browser(drive, 'phone001');
+    await phone.sync();
+    drive.pageLimit = 3;
+    for (let i = 0; i < 40; i++) drive.appCreate(`junk-${String(i).padStart(3, '0')}.txt`, devicesOf(drive), { content: 'x' });
+    for (const s of spares(drive)) drive.remove(s.id);
+    const before = drive.log.length;
+    await expect(phone.sync()).rejects.toMatchObject({ kind: 'crowded' });
+    const asked = drive.log.slice(before);
+    expect(asked.filter((r) => r.url.includes(`%27${devicesOf(drive)}%27+in+parents`)).length).toBeLessThanOrEqual(10);
+    expect(asked.filter((r) => r.method !== 'GET')).toEqual([]);
+    expect(spares(drive)).toEqual([]);
+  });
+
+  it('a file the listing shows to be huge is never downloaded, and one that turns out huge is cut off', async () => {
+    const drive = new FakeGoogleDrive();
+    const phone = browser(drive, 'phone001');
+    await phone.sync();
+    const said = drive.appCreate('big00001.json', devicesOf(drive), { tack: 'device', content: deviceText('big00001') });
+    said.sizeSaid = MAX_FILE_BYTES + 1;
+    const grows = drive.appCreate('big00002.json', devicesOf(drive), { tack: 'device', content: deviceText('big00002') });
+    const chunk = new Uint8Array(1024 * 1024).fill(0x20);
+    let pulled = 0;
+    const http: typeof fetch = async (input, init) => {
+      if (!String(input).includes(`/files/${grows.id}?alt=media`)) return drive.fetch(input, init);
+      let left = 25;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(c) {
+            if (left-- === 0) return c.close();
+            pulled += chunk.length;
+            c.enqueue(chunk);
+          },
+        }),
+        { status: 200 },
+      );
+    };
+    const tablet = browser(drive, 'tablet01', http);
+    const result = await tablet.sync();
+    expect(result.problems.sort((a, b) => (a.device < b.device ? -1 : 1))).toEqual([
+      { device: 'big00001', reason: 'unreadable' },
+      { device: 'big00002', reason: 'unreadable' },
+    ]);
+    expect(downloads(drive, said.id)).toBe(0);
+    expect(pulled).toBeLessThan(MAX_FILE_BYTES + 3 * chunk.length);
+    expect(visible(tablet.ws).open).toEqual([]);
+    expect(result.merged).toEqual(['phone001']);
+  });
+
+  it('names that are neither a spare nor a device file are never read, and never count as spares', async () => {
+    const drive = new FakeGoogleDrive();
+    const phone = browser(drive, 'phone001');
+    await phone.sync();
+    for (const s of spares(drive)) drive.remove(s.id);
+    const odd = ['notes.txt', 'spare-0123.json', 'spare-0123456789ABCDEF.json', 'spare-0123456789abcdef.json.tmp', 'Spare-0123456789abcdef.json', 'abcd1234.json.bak', '.abcd1234.json', 'abcd 1234.json', 'retired-abcd1234.json'];
+    const made = odd.map((name) => drive.appCreate(name, devicesOf(drive), { tack: 'spare', content: deviceText('abcd1234') }));
+    const result = await phone.sync();
+    for (const f of made) expect(downloads(drive, f.id)).toBe(0);
+    expect(result.merged).toEqual([]);
+    expect(visible(phone.ws).open).toEqual([]);
+    // None of them was taken for a spare: three real ones were made beside them.
+    expect(spares(drive)).toHaveLength(3);
+  });
+
+  it('a spare with something in it is never read, and still counts as a spare', async () => {
+    const drive = new FakeGoogleDrive();
+    const phone = browser(drive, 'phone001');
+    await phone.sync();
+    const [filled] = spares(drive);
+    drive.pcWrite(filled!.id, deviceText('evil1234'));
+    const count = drive.files.size;
+    const result = await phone.sync();
+    expect(downloads(drive, filled!.id)).toBe(0);
+    expect(result.merged).toEqual([]);
+    expect(visible(phone.ws).open).toEqual([]);
+    expect(drive.files.size).toBe(count); // three spares already: none made
+  });
+
+  it('more than twenty names that look like spares: Tack makes no more, cycle after cycle', async () => {
+    const drive = new FakeGoogleDrive();
+    const phone = browser(drive, 'phone001');
+    await phone.sync();
+    for (const s of spares(drive)) drive.remove(s.id);
+    for (let i = 0; i < 21; i++) drive.appCreate(`spare-x${i}.json`, devicesOf(drive), { tack: 'spare' });
+    const made = drive.requests(/upload\/drive\/v3\/files\?uploadType=multipart/);
+    await phone.sync();
+    await phone.sync();
+    expect(spares(drive)).toEqual([]);
+    expect(drive.requests(/upload\/drive\/v3\/files\?uploadType=multipart/)).toBe(made);
   });
 });

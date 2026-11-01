@@ -87,7 +87,8 @@ export default defineConfig({
     cssCodeSplit: false,
     modulePreload: { polyfill: false },
   },
-  server: { port: 5173 },
+  // Dev only: /api/google/ goes to the sign-in Worker running locally (`wrangler dev` in web/worker).
+  server: { port: 5173, proxy: { '/api/google/': 'http://127.0.0.1:8787' } },
   preview: { port: 4173 },
   plugins: [tackPwa()],
 });
