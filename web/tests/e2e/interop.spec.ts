@@ -39,7 +39,7 @@ test('Tack Focus and Tack for Windows exchange tasks through the same folder', a
   await addTask(page, 'From the phone');
   const settings = page.locator('dialog.sheet');
   await page.getByRole('button', { name: /^Settings/ }).click();
-  await settings.getByRole('button', { name: 'Turn on sync' }).click();
+  await settings.getByRole('button', { name: 'Sync with OneDrive' }).click();
   await expect(page.locator('.toast-text')).toHaveText(/Sync is on/);
   await page.getByRole('button', { name: /^Settings/ }).click();
   const syncNow = async () => {

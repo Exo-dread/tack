@@ -8,4 +8,6 @@ interface ImportMetaEnv {
   readonly VITE_MS_CLIENT_ID?: string;
   /** Sign-in authority; defaults to https://login.microsoftonline.com/common. */
   readonly VITE_MS_AUTHORITY?: string;
+  /** "1" once the Google sign-in Worker is deployed for this site (docs/GOOGLE-DRIVE.md). Otherwise Google Drive isn't offered. */
+  readonly VITE_GOOGLE_SYNC?: string;
 }

@@ -1,5 +1,18 @@
 # Tack Focus changelog
 
+## 0.7.0 (1 November 2026)
+
+- **Sync with Google Drive.** Settings → Sync now offers Google Drive beside OneDrive (one per
+  device). Tack asks Google for the narrowest permission there is, the files it makes itself
+  (`drive.file`): it creates *My Drive › Tack Focus* and can't see anything else in your Drive. It
+  also keeps a few spare files there for Tack for Windows to take (Tack for Windows can't make files
+  Tack Focus could see). Sign in once: a small sign-in service at tackfocus.app/api/google/ keeps you
+  signed in with an encrypted cookie the page can't read, and gives the page a one-hour pass; your
+  tasks and notes go only between your browser and Google, never through it. Turning sync off signs
+  that browser out; removing Tack in your Google account signs out everywhere. OneDrive works
+  exactly as before. Privacy page updated.
+- Settings no longer says Tack Focus has no servers at all: it has none that keep your data.
+
 ## 0.6.0 (29 October 2026)
 
 - **Notes in Markdown.** A note shows formatted while you read it: headings, bold, italic, struck

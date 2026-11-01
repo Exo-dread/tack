@@ -77,6 +77,224 @@ internal static class HostileFileTests
         yield return ("attachments.json: too large, too deep or too many is bounded, and the backup takes over", AttachmentsBounds);
         yield return ("attachments.json: one that can't be read (nor its .bak) sweeps no saved email, is kept aside and never written over", UnreadableAttachments);
         yield return ("markdown, hostile notes: runs of 100,000 delimiters, brackets or backticks, deep quotes and indents, 1 MB and lone surrogates read in linear time, no error", HostileMarkdown);
+        // Google Drive (claim mode): the marker, spares and retired files are written by anyone who can write the folder.
+        yield return ("google drive, hostile marker: huge, not JSON, or \"spares\" that isn't true is no claim mode, never an error", HostileMarker);
+        yield return ("google drive, hostile spares: names with path tricks, other cases or lengths, or outside devices are never renamed", HostileSpareNames);
+        yield return ("google drive, hostile spares: a directory named like a spare is never taken", SpareDirectory);
+        yield return ("google drive, hostile spares: thousands of spares (and near-spares) keep claiming and listing quick", ThousandsOfSpares);
+        yield return ("google drive, hostile retired file: a retired-<id>.json is never read as a device file", RetiredNeverRead);
+        yield return ("google drive, hostile marker: \"spares\": true in a folder not on Google Drive (a OneDrive app folder) is ignored: plain folder, same id, written in place", SparesMarkerOffGoogleDrive);
+        yield return ("google drive, hostile marker: with no spare to claim, no migration starts and sync carries on in place", SparesMarkerNoSpare);
+        yield return ("google drive, hostile marker: a claim record that never claimed doesn't pin claim mode once the marker's gone", UnclaimedRecordDoesntPin);
+    }
+
+    /// <summary>Anyone who can write a OneDrive app folder can write <c>"spares": true</c> into its marker, and spares.</summary>
+    private static void SparesMarkerOffGoogleDrive()
+    {
+        using var box = new GoogleDriveTests.Box(onGoogleDrive: false);
+        Directory.CreateDirectory(box.Root);
+        box.Ws.AddTask("Before");
+        Check.Equal<string?>(null, box.Run(() => box.Sync.TurnOnAsync(box.Root)), "turned on");
+        string me = box.Ws.Clock.Node;
+        string own = Path.Combine(box.Devices, DeviceFile.FileName(me));
+        // Then the marker is rewritten, with spares beside it.
+        File.WriteAllText(Path.Combine(box.Root, LocalSyncFolder.Marker), "{\"format\":\"tack-sync\",\"version\":1,\"spares\":true}");
+        for (int i = 1; i <= 3; i++) File.WriteAllBytes(Path.Combine(box.Devices, GoogleDriveTests.Spare(i)), []);
+        for (int i = 0; i < 3; i++)
+        {
+            box.Ws.AddTask($"After {i}");
+            box.Run(() => box.Sync.RunOnceAsync());
+            Check.Equal(SyncPhase.Synced, box.Sync.Status.Phase, $"synced ({box.Sync.Status.Message})");
+        }
+        Check.True(!box.Sync.ClaimMode, "not claim mode");
+        Check.Equal("OneDrive", box.Sync.Provider, "says OneDrive");
+        Check.Equal(me, box.Ws.Clock.Node, "the same id: no migration");
+        Check.True(!File.Exists(box.ClaimPath) && !File.Exists(Path.Combine(box.Data, "tack.before-google.json")), "no claim record, no backup");
+        Check.Equal(3, Directory.EnumerateFiles(box.Devices, "spare-*").Count(), "no spare taken");
+        Check.True(DeviceFile.Parse(File.ReadAllBytes(own), me, GoogleDriveTests.Now()).Tasks.Any(t => t.Text == "After 2"), "written in place");
+
+        // Turned on afresh with that marker there: still a plain folder.
+        box.Sync.TurnOff();
+        Check.Equal<string?>(null, box.Run(() => box.Sync.TurnOnAsync(box.Root)), "turned on again");
+        Check.True(!box.Sync.ClaimMode && box.Ws.Clock.Node == me, "plain, same id");
+    }
+
+    /// <summary>On Google Drive, a marker saying spares with none there: no migration (it would wait forever under a new id).</summary>
+    private static void SparesMarkerNoSpare()
+    {
+        using var box = new GoogleDriveTests.Box();
+        Directory.CreateDirectory(box.Root);
+        box.Ws.AddTask("Before");
+        Check.Equal<string?>(null, box.Run(() => box.Sync.TurnOnAsync(box.Root)), "turned on as a plain folder");
+        string me = box.Ws.Clock.Node;
+        File.WriteAllText(Path.Combine(box.Root, LocalSyncFolder.Marker), "{\"spares\":true}");
+        for (int i = 0; i < 3; i++)
+        {
+            box.Ws.AddTask($"After {i}");
+            box.Run(() => box.Sync.RunOnceAsync());
+            Check.Equal(SyncPhase.Synced, box.Sync.Status.Phase, $"synced, not waiting ({box.Sync.Status.Message})");
+            Check.Equal<string?>(null, box.Sync.Status.Message, "nothing alarming said");
+        }
+        Check.Equal(me, box.Ws.Clock.Node, "the same id");
+        Check.True(!File.Exists(box.ClaimPath) && !File.Exists(Path.Combine(box.Data, "tack.before-google.json")), "no claim record, no backup");
+        Check.True(DeviceFile.Parse(File.ReadAllBytes(Path.Combine(box.Devices, DeviceFile.FileName(me))), me, GoogleDriveTests.Now()).Tasks.Any(t => t.Text == "After 2"), "written in place");
+    }
+
+    /// <summary>A record with no device (a migration that claimed nothing) for a folder whose marker no longer says spares.</summary>
+    private static void UnclaimedRecordDoesntPin()
+    {
+        using var box = new GoogleDriveTests.Box();
+        Directory.CreateDirectory(box.Root);
+        box.Ws.AddTask("Before");
+        Check.Equal<string?>(null, box.Run(() => box.Sync.TurnOnAsync(box.Root)), "turned on as a plain folder");
+        string me = box.Ws.Clock.Node;
+        string key = FolderSync.FolderKey(box.Root);
+        box.WriteClaim(new ClaimRecord(key, null, me));
+        box.Ws.AddTask("After");
+        box.Run(() => box.Sync.RunOnceAsync());
+        Check.Equal(SyncPhase.Synced, box.Sync.Status.Phase, $"synced ({box.Sync.Status.Message})");
+        Check.True(!box.Sync.ClaimMode, "plain mode resumed");
+        Check.True(!File.Exists(box.ClaimPath), "the record dropped");
+        Check.Equal(me, box.Ws.Clock.Node, "the same id");
+        Check.True(DeviceFile.Parse(File.ReadAllBytes(Path.Combine(box.Devices, DeviceFile.FileName(me))), me, GoogleDriveTests.Now()).Tasks.Any(t => t.Text == "After"), "written in place");
+        // A record naming a claimed device still pins it (a marker gone for a while never lets Tack make files).
+        box.WriteClaim(new ClaimRecord(key, me));
+        box.Run(() => box.Sync.RunOnceAsync());
+        Check.True(box.Sync.ClaimMode, "a claimed record pins claim mode");
+        Check.Equal(me, box.Ws.Clock.Node, "and writes in place, the same id");
+        Check.True(File.Exists(box.ClaimPath), "kept");
+    }
+
+    // ---------------------------------------------------------------- Google Drive (claim mode)
+
+    private static void HostileMarker()
+    {
+        using var temp = new GoogleDriveTests.TempDir();
+        string marker = Path.Combine(temp.Path, LocalSyncFolder.Marker);
+        bool Spares(string text)
+        {
+            File.WriteAllText(marker, text);
+            return LocalSyncFolder.HasSpares(temp.Path);
+        }
+        Check.True(Spares("{\"format\":\"tack-sync\",\"version\":1,\"spares\":true}"), "Tack Focus's marker: claim mode");
+        Check.True(!Spares("{\"spares\":true" + new string(' ', LocalSyncFolder.MaxMarkerBytes) + "}"), "over 4 KB, though it says spares: no");
+        Check.True(!Spares("spares: true"), "not JSON: no");
+        Check.True(!Spares("{\"spares\":\"yes\"}"), "\"yes\": no");
+        Check.True(!Spares("{\"spares\":1}"), "1: no");
+        Check.True(!Spares("[{\"spares\":true}]"), "not an object: no");
+        Check.True(!Spares("{\"nested\":{\"spares\":true}}"), "only at the top: no");
+        Check.True(!Spares(new string('[', 10_000)), "deeply nested: no, no error");
+        Check.True(!Spares(""), "empty: no");
+        File.Delete(marker);
+        Check.True(!LocalSyncFolder.HasSpares(temp.Path), "no marker: no");
+        // A marker that's there but can't be read now (held by another program): asked again later, never "no".
+        File.WriteAllText(marker, "{\"spares\":true}");
+        using (new FileStream(marker, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            Check.Throws<SyncException>(() => LocalSyncFolder.HasSpares(temp.Path), "a marker held open: try again, not plain mode");
+    }
+
+    private static void HostileSpareNames()
+    {
+        foreach (string name in new[]
+        {
+            "spare-../0123456789abcdef.json", "spare-..\\0123456789abcdef.json", "spare-0123456789abcdef.json/../x.json",
+            "spare-0123456789abcdef.json.lnk", "spare-0123456789abcdef.jsonx", "spare-0123456789abcdef.json\n",
+            "SPARE-0123456789ABCDEF.json", "spare-0123456789ABCDEF.json", "spare-0123456789abcdef.JSON",
+            "spare-0123456789abcde.json", "spare-0123456789abcdef0.json", "spare-0123456789abcdeg.json", "spare-.json",
+            " spare-0123456789abcdef.json", "spare-0123456789abcdef .json", "spare-０123456789abcdef.json",
+        })
+            Check.True(!LocalSyncFolder.IsSpareName(name), $"not a spare: {JsonSerializer.Serialize(name)}");
+        Check.True(LocalSyncFolder.IsSpareName("spare-0123456789abcdef.json"), "a spare");
+
+        using var temp = new GoogleDriveTests.TempDir();
+        GoogleDriveTests.MakeGoogleFolder(temp.Path, spares: 0);
+        string devices = Path.Combine(temp.Path, "devices");
+        var planted = new[]
+        {
+            "spare-0123456789abcdef.json.lnk", "SPARE-0123456789ABCDEF.JSON.txt", "spare-0123456789abcde.json",
+            "spare-0123456789abcdef0.json", "spare-0123456789abcdeg.json", "spare-0123456789abcdef.jsonx",
+        };
+        foreach (string n in planted) File.WriteAllText(Path.Combine(devices, n), "planted");
+        // A spare outside devices, and an uppercase one (the same file to Windows, not by name).
+        File.WriteAllBytes(Path.Combine(temp.Path, GoogleDriveTests.Spare(1)), []);
+        File.WriteAllBytes(Path.Combine(devices, "spare-00000000000000AB.json"), []);
+        var folder = new LocalSyncFolder(temp.Path, claim: true);
+        Check.Equal(0, folder.Spares().Count, "none of them is a spare");
+        var ex = CaughtSync(() => folder.WriteAsync("pcAAAAAA.json", "{}"u8.ToArray()));
+        Check.Equal(SyncErrorKind.NoSpare, ex, "nothing to claim: waits");
+        Check.True(!File.Exists(Path.Combine(devices, "pcAAAAAA.json")), "no file of its own made");
+        Check.Equal(planted.Length + 1, Directory.EnumerateFiles(devices).Count(), "every planted file left as it was");
+        Check.True(File.Exists(Path.Combine(temp.Path, GoogleDriveTests.Spare(1))), "the spare outside devices left alone");
+    }
+
+    private static void SpareDirectory()
+    {
+        using var temp = new GoogleDriveTests.TempDir();
+        GoogleDriveTests.MakeGoogleFolder(temp.Path, spares: 0);
+        string dir = Path.Combine(temp.Path, "devices", GoogleDriveTests.Spare(9));
+        Directory.CreateDirectory(Path.Combine(dir, "inside"));
+        var folder = new LocalSyncFolder(temp.Path, claim: true);
+        Check.Equal(0, folder.Spares().Count, "a directory isn't a spare");
+        Check.Equal(SyncErrorKind.NoSpare, CaughtSync(() => folder.WriteAsync("pcAAAAAA.json", "{}"u8.ToArray())), "waits");
+        Check.True(Directory.Exists(Path.Combine(dir, "inside")) && !File.Exists(Path.Combine(temp.Path, "devices", "pcAAAAAA.json")), "the directory left as it was, no own file");
+    }
+
+    private static void ThousandsOfSpares()
+    {
+        using var temp = new GoogleDriveTests.TempDir();
+        GoogleDriveTests.MakeGoogleFolder(temp.Path, spares: 0);
+        string devices = Path.Combine(temp.Path, "devices");
+        for (int i = 0; i < 5000; i++)
+        {
+            File.WriteAllBytes(Path.Combine(devices, GoogleDriveTests.Spare(i * 7919L)), []);
+            File.WriteAllBytes(Path.Combine(devices, $"spare-{i:x15}.json"), []); // near-spares, never taken
+        }
+        long wall = GoogleDriveTests.Now();
+        var pc = new GoogleDriveTests.ClaimPc("pcAAAAAA", temp.Path, () => wall);
+        pc.Ws.AddTask("Among the spares");
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        Check.Equal<SyncErrorKind?>(null, pc.Sync(), "claimed and written");
+        long first = clock.ElapsedMilliseconds;
+        Check.True(first < 5000, $"a cycle with 10,000 spare-like files took {first} ms");
+        clock.Restart();
+        Check.True(pc.Folder.Spares().Count <= 1000, "spares kept to a bounded list");
+        wall += 1000;
+        pc.Ws.AddTask("Again");
+        Check.Equal<SyncErrorKind?>(null, pc.Sync(), "written in place");
+        Check.True(clock.ElapsedMilliseconds < 5000, $"listing and the next cycle took {clock.ElapsedMilliseconds} ms");
+        Check.Equal(9999, Directory.EnumerateFiles(devices, "spare-*").Count(), "one spare taken, near-spares untouched");
+    }
+
+    private static void RetiredNeverRead()
+    {
+        using var temp = new GoogleDriveTests.TempDir();
+        GoogleDriveTests.MakeGoogleFolder(temp.Path, spares: 2);
+        long wall = GoogleDriveTests.Now();
+        var a = new GoogleDriveTests.ClaimPc("pcAAAAAA", temp.Path, () => wall);
+        a.Ws.AddTask("Only in the retired file");
+        a.Sync();
+        string devices = Path.Combine(temp.Path, "devices");
+        File.Move(Path.Combine(devices, "pcAAAAAA.json"), Path.Combine(devices, LocalSyncFolder.RetiredName("pcAAAAAA")));
+        // And one whose device field names the retired file itself.
+        string text = File.ReadAllText(Path.Combine(devices, LocalSyncFolder.RetiredName("pcAAAAAA")));
+        File.WriteAllText(Path.Combine(devices, LocalSyncFolder.RetiredName("pcCCCCCC")), text.Replace("\"pcAAAAAA\"", "\"retired-pcCCCCCC\""));
+        Check.Equal(null, DeviceFile.DeviceOfFile(LocalSyncFolder.RetiredName("pcAAAAAA")), "not a device file's name");
+        var b = new GoogleDriveTests.ClaimPc("pcBBBBBB", temp.Path, () => wall);
+        Check.Equal<SyncErrorKind?>(null, b.Sync(), "synced");
+        Check.True(b.Ws.Open.All(t => t.Text != "Only in the retired file"), "a retired file's records never arrive");
+    }
+
+    private static SyncErrorKind? CaughtSync(Func<Task> work)
+    {
+        try
+        {
+            work().GetAwaiter().GetResult();
+            return null;
+        }
+        catch (SyncException ex)
+        {
+            return ex.Kind;
+        }
     }
 
     /// <summary>

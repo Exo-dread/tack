@@ -75,10 +75,10 @@ async function closeSettings(page: Page): Promise<void> {
   await expect(settings(page)).toBeHidden();
 }
 
-/** Settings → Turn on sync → Microsoft → back in the app, syncing. */
+/** Settings → Sync with OneDrive → Microsoft → back in the app, syncing. */
 async function turnOn(page: Page): Promise<void> {
   await openSettings(page);
-  await settings(page).getByRole('button', { name: 'Turn on sync' }).click();
+  await settings(page).getByRole('button', { name: 'Sync with OneDrive' }).click();
   await expect(page.locator('html.ready')).toHaveCount(1);
   await expect(page.locator('.toast-text')).toHaveText(/Sync is on/);
   await expect.poll(() => page.evaluate(() => location.hash)).toBe('');
@@ -417,9 +417,9 @@ test.describe('sync with OneDrive', () => {
     // With the keyboard (Safari doesn't focus a clicked button): focus follows to the new state.
     await settings(page).getByRole('button', { name: 'Turn off' }).focus();
     await page.keyboard.press('Enter');
-    await expect(settings(page).getByRole('button', { name: 'Turn on sync' })).toBeVisible();
+    await expect(settings(page).getByRole('button', { name: 'Sync with OneDrive' })).toBeVisible();
     await expect(settings(page).locator('.sync')).toContainText('Sync is off');
-    await expect(settings(page).getByRole('button', { name: 'Turn on sync' })).toBeFocused();
+    await expect(settings(page).getByRole('button', { name: 'Sync with OneDrive' })).toBeFocused();
     await closeSettings(page);
     await expect(openTexts(page).filter({ hasText: 'Stays here' })).toHaveCount(1);
     const tokens = await page.evaluate(async () => {
@@ -743,7 +743,7 @@ test.describe('the daily renewal visit, on screen', () => {
     const shown = await watchNotices(page);
     ms.hold(TOKEN, { ms: 2000, method: 'POST' });
     await openSettings(page);
-    await settings(page).getByRole('button', { name: 'Turn on sync' }).click();
+    await settings(page).getByRole('button', { name: 'Sync with OneDrive' }).click();
     await expect(renewing(page)).toHaveText(FINISHING);
     await ready(page);
     await expect(renewing(page)).toHaveCount(0);

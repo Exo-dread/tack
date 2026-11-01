@@ -2,7 +2,8 @@
  * by vite.config.ts. Offline-first: the app shell and every asset come from the cache; the network
  * is only used to fetch updates (which arrive as a new version of this file). No data passes
  * through here: tasks and notes live in IndexedDB, and sync (if you turn it on) talks to
- * Microsoft's servers directly, which this worker leaves alone. */
+ * Microsoft's or Google's servers directly, which this worker leaves alone, as it does the
+ * sign-in Worker for Google Drive under /api/. */
 
 const VERSION = '__TACK_VERSION__';
 const PRECACHE = __TACK_PRECACHE__;
@@ -47,6 +48,8 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  // The sign-in Worker (/api/google/start, say) answers for itself, never the app shell or a cached copy.
+  if (url.pathname.startsWith('/api/')) return;
 
   if (request.mode === 'navigate') {
     // A few plain pages live beside the app (the sign-in landing page, privacy): those load as themselves, offline too.

@@ -6,6 +6,7 @@ import type { Store } from '../../src/store/persist';
 import { SyncController } from '../../src/sync/controller';
 import { emptyMeta, type SyncMeta } from '../../src/sync/engine';
 import { AuthError, emptyAuth, SCOPES, type AuthRecord } from '../../src/sync/msauth';
+import { FakeGoogleDrive } from '../fakes/google';
 import { AUTHORITY, CONSUMERS, FakeMicrosoft } from '../fakes/microsoft';
 
 /**
@@ -490,5 +491,222 @@ describe('taking in anyway a file set aside as full', () => {
     expect(stored.enabled).toBe(true);
     expect(stored.meta.take).toEqual({ 'abcd1234.json': 't7' });
     expect(stored.meta.files).toEqual(meta.files);
+  });
+});
+
+/**
+ * Google Drive instead of OneDrive (docs/GOOGLE-DRIVE.md): connected through the sign-in Worker,
+ * with no token kept on the device, syncing through a Drive that shows Tack only what it made. And
+ * OneDrive's sync is as it was: nothing about Google touches it.
+ */
+describe('syncing with Google Drive', () => {
+  // Offered only in builds where the sign-in Worker is deployed.
+  beforeEach(() => vi.stubEnv('VITE_GOOGLE_SYNC', '1'));
+  afterEach(() => vi.unstubAllEnvs());
+  const config = { clientId: '11111111-2222-3333-4444-555555555555', authority: AUTHORITY, redirectUri: 'https://tackfocus.app/', silentRedirectUri: 'https://tackfocus.app/auth/', scopes: SCOPES };
+  const HOUR = 3600_000;
+  const GRAPH = 'https://graph.microsoft.com/v1.0';
+  const connectedRecord = { enabled: true, meta: null, provider: 'google', google: { email: 'ada@gmail.com' } };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  /** The Worker (answering /api/google/token with `token()`), Google Drive, and Microsoft (which nothing here should ask). */
+  function services(token: () => Response = () => new Response(JSON.stringify({ access_token: 'token-1', expires_in: 3600, email: 'ada@gmail.com' }), { status: 200 })) {
+    const drive = new FakeGoogleDrive();
+    const worker: { path: string; at: number }[] = [];
+    const elsewhere: string[] = [];
+    const http: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.startsWith('/api/google/')) {
+        worker.push({ path: url, at: Date.now() });
+        return url === '/api/google/token' ? token() : new Response(null, { status: 204 });
+      }
+      if (url.startsWith('https://www.googleapis.com/')) return drive.fetch(input, init);
+      elsewhere.push(url);
+      return new Response('{}', { status: 404 });
+    };
+    return { drive, worker, elsewhere, http };
+  }
+
+  /** A page on screen with a workspace, sync's record as given, and the controller. */
+  async function page(http: typeof fetch, record: unknown, search = '', auth?: AuthRecord) {
+    const p = stubPage();
+    vi.stubGlobal('navigator', { onLine: true, userAgent: 'test' });
+    vi.stubGlobal('fetch', http);
+    location.search = search;
+    vi.stubGlobal('history', { replaceState: (_s: unknown, _t: string, url: string) => (location.search = new URL(url, 'https://tackfocus.app').search) });
+    const backend = new MemoryBackend();
+    if (record) await backend.putMeta('sync', record);
+    if (auth) await backend.putMeta('auth', auth);
+    const ws = new Workspace(new Hlc('dev12345'));
+    const store = { flushAll: async () => {}, flush: async () => {}, status: 'saved', allSaved: true } as unknown as Store;
+    const sync = await SyncController.create(ws, store, backend, config, http);
+    return { page: p, backend, ws, sync };
+  }
+
+  it('is not offered in a build without VITE_GOOGLE_SYNC=1 (no Worker to sign in with)', async () => {
+    vi.stubEnv('VITE_GOOGLE_SYNC', '');
+    const { sync } = await page(services().http, null);
+    expect(sync.status.providers.google).toBe(false);
+    expect(sync.status.providers.onedrive).toBe(true);
+  });
+
+  it('a ?google=connected the Worker holds no session for changes nothing (only a sign-in leaves one)', async () => {
+    const s = services(() => new Response(JSON.stringify({ error: 'signed_out' }), { status: 401 }));
+    const onedrive = { enabled: true, meta: null };
+    const { backend, sync } = await page(s.http, onedrive, '?google=connected');
+    localStorage.setItem('tack.google.connect', String(Date.now() - 5000));
+    expect(await sync.handleReturn()).toBe('failed');
+    expect(await backend.getMeta('sync')).toEqual(onedrive);
+    expect(location.search).toBe('');
+  });
+
+  it('comes back connected: on with Google Drive, syncing there, with no token kept anywhere', async () => {
+    const s = services();
+    const { backend, ws, sync } = await page(s.http, null, '?google=connected');
+    localStorage.setItem('tack.google.connect', String(Date.now() - 5000));
+    ws.addTask('hello from the phone');
+    expect(await sync.handleReturn()).toBe('signed-in');
+    expect(location.search).toBe('');
+    expect(await backend.getMeta('sync')).toEqual({ enabled: true, meta: null, provider: 'google', google: { email: 'ada@gmail.com' } });
+    sync.start();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(sync.status).toMatchObject({ enabled: true, provider: 'google', phase: 'synced', account: { username: 'ada@gmail.com' } });
+    const own = s.drive.childrenOf(s.drive.devices()!.id).find((f) => f.name === 'dev12345.json')!;
+    expect(own.content).toContain('hello from the phone');
+    const record = (await backend.getMeta<{ google: unknown; meta: SyncMeta }>('sync'))!;
+    expect(record.google).toEqual({ email: 'ada@gmail.com' });
+    expect(record.meta.folder).toBe(`google:${s.drive.tagged('folder')[0]!.id}`);
+    // The access token lives in memory only: not in IndexedDB, not in localStorage.
+    expect(JSON.stringify([await backend.getMeta('sync'), await backend.getMeta('auth')])).not.toContain('token-1');
+    expect(localStorage.getItem('tack.google.connect')).toBeNull();
+    // Nothing went to Microsoft, and none of Microsoft's renewal ran.
+    expect(s.elsewhere).toEqual([]);
+    expect(sync.renewalDueAtStart()).toBe(false);
+    // A minute later, once more: one token was enough.
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(s.worker.filter((w) => w.path === '/api/google/token')).toHaveLength(1);
+  });
+
+  it('back without Drive ticked on Google’s page: says to tick it, and stays off', async () => {
+    const s = services();
+    const { backend, sync } = await page(s.http, null, '?google=error&reason=scope');
+    localStorage.setItem('tack.google.connect', String(Date.now()));
+    expect(await sync.handleReturn()).toBe('failed');
+    expect(location.search).toBe('');
+    expect(sync.status.enabled).toBe(false);
+    expect(sync.status.message).toMatch(/tick the box for Google Drive/);
+    expect(await backend.getMeta('sync')).toBeUndefined();
+  });
+
+  it('a link to /?google=connected that this browser didn’t set off on changes nothing (OneDrive stays on)', async () => {
+    const s = services();
+    const tokens = { accessToken: 'a', accessExpires: Date.now() + HOUR, refreshToken: 'r', refreshExpires: Date.now() + 20 * HOUR };
+    const { backend, sync } = await page(s.http, { enabled: true, meta: null }, '?google=connected', { ...emptyAuth(), account: { username: 'ada@outlook.com', name: 'Ada', tenant: CONSUMERS, id: 'oid-ada' }, tokens });
+    expect(sync.status).toMatchObject({ enabled: true, provider: 'onedrive' });
+    expect(await sync.handleReturn()).toBeNull();
+    expect(location.search).toBe('');
+    expect(await backend.getMeta('sync')).toEqual({ enabled: true, meta: null });
+    expect((await backend.getMeta<AuthRecord>('auth'))!.tokens).toEqual(tokens);
+  });
+
+  it('turning it off signs out at the Worker, and keeps which drive the copies are in', async () => {
+    const s = services();
+    const { backend, sync } = await page(s.http, connectedRecord);
+    sync.start();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(sync.status.phase).toBe('synced');
+    await sync.turnOff();
+    expect(s.worker.map((w) => w.path)).toContain('/api/google/signout');
+    expect(await backend.getMeta('sync')).toMatchObject({ enabled: false, provider: 'google', google: null });
+    expect(sync.status).toMatchObject({ enabled: false, phase: 'off', provider: 'google', hasCopies: true });
+    const asked = s.drive.log.length;
+    await vi.advanceTimersByTimeAsync(HOUR);
+    expect(s.drive.log.length).toBe(asked);
+  });
+
+  it('signed out or revoked at Google: asks you to connect again, and asks Google and Drive nothing more', async () => {
+    const s = services(() => new Response(JSON.stringify({ error: 'revoked' }), { status: 401 }));
+    const { backend, ws, sync } = await page(s.http, connectedRecord);
+    sync.start();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(sync.status).toMatchObject({ enabled: true, phase: 'signin', account: null });
+    expect(await backend.getMeta('sync')).toMatchObject({ enabled: true, provider: 'google', google: null });
+    const asked = s.worker.length + s.drive.log.length;
+    ws.addTask('typed meanwhile');
+    sync.syncNow();
+    await vi.advanceTimersByTimeAsync(2 * HOUR);
+    expect(s.worker.length + s.drive.log.length).toBe(asked);
+  });
+
+  it('the Worker busy (503, Retry-After): nothing is asked again before then, edits and Sync now included', async () => {
+    let busy = true;
+    const s = services(() =>
+      busy ? new Response('{}', { status: 503, headers: { 'Retry-After': '600' } }) : new Response(JSON.stringify({ access_token: 'token-1', expires_in: 3600, email: 'ada@gmail.com' }), { status: 200 }),
+    );
+    const { ws, sync } = await page(s.http, connectedRecord);
+    sync.start();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(s.worker).toHaveLength(1);
+    const first = s.worker[0]!.at;
+    for (let i = 0; i < 9; i++) {
+      ws.addTask(`task ${i}`);
+      await vi.advanceTimersByTimeAsync(60_000);
+    }
+    sync.syncNow();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(s.worker.filter((w) => w.at > first && w.at < first + 600_000)).toEqual([]);
+    busy = false;
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    expect(sync.status.phase).toBe('synced');
+    expect(sync.status.message).toBeNull();
+  });
+
+  it('Drive busy says Google Drive, not OneDrive, once it keeps happening', async () => {
+    const s = services();
+    s.drive.fail(/./, { status: 429, retryAfter: 1, times: 100 });
+    const { sync } = await page(s.http, connectedRecord);
+    sync.start();
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    expect(sync.status).toMatchObject({ phase: 'error', message: 'Google Drive is busy right now. Tack will keep trying.' });
+  });
+
+  it('OneDrive is untouched: its record as before, and never a word to Google', async () => {
+    const s = services();
+    const files = new Map<string, string>();
+    const json = (v: unknown) => new Response(JSON.stringify(v), { status: 200, headers: { 'content-type': 'application/json' } });
+    const graph: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.startsWith('/api/') || url.startsWith('https://www.googleapis.com/')) return s.http(input, init);
+      if (url === `${GRAPH}/me/drive/special/approot`) return json({ id: 'root', name: 'Tack Focus', parentReference: { driveId: 'd' } });
+      if (url.startsWith(`${GRAPH}/me/drive/items/root/children`)) return json({ value: [{ id: 'dev', name: 'devices', folder: {} }, { id: 'm', name: 'tack-sync.json', file: {} }, { id: 'r', name: 'README.txt', file: {} }] });
+      if (url.startsWith(`${GRAPH}/me/drive/items/dev/children`)) return json({ value: [...files.keys()].map((name) => ({ id: name, name, file: {}, cTag: `c${files.get(name)!.length}`, size: files.get(name)!.length })) });
+      const m = /items\/dev:\/(.+):\/content$/.exec(url);
+      if (m && init?.method === 'PUT') {
+        files.set(decodeURIComponent(m[1]!), String(init.body));
+        return json({ id: m[1], name: decodeURIComponent(m[1]!), cTag: `c${String(init.body).length}` });
+      }
+      return new Response('{}', { status: 404 });
+    };
+    const tokens = { accessToken: 'a', accessExpires: Date.now() + 10 * HOUR, refreshToken: 'r', refreshExpires: Date.now() + 20 * HOUR };
+    const { backend, sync } = await page(graph, { enabled: true, meta: null }, '', { ...emptyAuth(), account: { username: 'ada@outlook.com', name: 'Ada', tenant: CONSUMERS, id: 'oid-ada' }, tokens });
+    expect(await sync.handleReturn()).toBeNull();
+    sync.start();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(sync.status).toMatchObject({ phase: 'synced', provider: 'onedrive', providers: { onedrive: true, google: true }, account: { username: 'ada@outlook.com' } });
+    expect([...files.keys()]).toEqual(['dev12345.json']);
+    expect(Object.keys((await backend.getMeta<object>('sync'))!).sort()).toEqual(['enabled', 'meta']);
+    expect(s.worker).toEqual([]);
+    expect(s.drive.log).toEqual([]);
   });
 });

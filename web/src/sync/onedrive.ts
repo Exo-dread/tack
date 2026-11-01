@@ -24,7 +24,7 @@ const README = 'README.txt';
  * device there; a folder with thousands was filled by something else, and listing it all on every
  * cycle would be hundreds of requests to Microsoft each time.
  */
-const MAX_PAGES = 10;
+export const MAX_PAGES = 10;
 
 const MARKER_TEXT = `${JSON.stringify({ format: 'tack-sync', version: 1 }, null, 2)}\n`;
 const README_TEXT = [
@@ -203,7 +203,7 @@ export class OneDriveFolder implements SyncFolder {
  * A download's text, refusing (unread) anything over `max` bytes: the listing's size may be out of
  * date, and every device refuses a file that big anyway. Decoded as response.text() does.
  */
-async function textAtMost(response: Response, max: number): Promise<string> {
+export async function textAtMost(response: Response, max: number): Promise<string> {
   const body = response.body;
   if (Number(response.headers.get('Content-Length')) > max) {
     await body?.cancel().catch(() => {});

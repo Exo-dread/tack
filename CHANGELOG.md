@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.10.0 (2026-11-01)
+
+- **Sync through Google Drive.** Besides OneDrive, Tack can now sync through your Google Drive. Connect
+  Google Drive once in Tack Focus (it makes *My Drive › Tack Focus*); when Google Drive for desktop has
+  brought that folder to this PC, Settings → Sync → Turn on finds it by itself. Tack still never goes
+  online: it reads and writes that folder, and Google Drive for desktop does the rest. Because Tack Focus
+  may only see files it made itself, this PC never makes a file there: it takes one of the spare files
+  Tack Focus keeps ready, renames it to its own and writes into it. If none is there yet, Settings says to
+  open Tack Focus once. A PC that already synced through that folder with an older Tack moves to a new
+  sync id once (nothing in your tasks or notes changes; `tack.before-google.json` keeps a copy, and the
+  old file is kept as `retired-…`). Google Drive's drive doesn't tell Windows when a file changes in the
+  cloud, so Tack also looks at that folder's list of files once a minute (never their contents).
+  OneDrive and folders you chose work exactly as before.
+
 ## 1.9.0 (2026-10-29)
 
 - **Notes in Markdown.** A note shows formatted while you read it: headings, bold and italic, lists,

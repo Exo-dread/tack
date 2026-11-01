@@ -2,7 +2,9 @@ import { newDeviceId } from '../model/ids';
 import type { Workspace } from '../model/workspace';
 import type { Backend } from '../store/db';
 import type { Store } from '../store/persist';
-import { DeviceCollision, emptyMeta, SyncEngine, SyncError, takeIn, type CycleResult, type PeerInfo, type SyncMeta } from './engine';
+import { DeviceCollision, emptyMeta, SyncEngine, SyncError, takeIn, type CycleResult, type PeerInfo, type SyncFolder, type SyncMeta } from './engine';
+import { GoogleAuth, takeGoogleReturn, type GoogleReturn } from './gauth';
+import { GoogleDriveFolder } from './googledrive';
 import { AuthError, emptyAuth, isSignInReturn, MicrosoftAuth, SCOPES, type Account, type AuthRecord, type Tokens } from './msauth';
 import { OneDriveFolder } from './onedrive';
 
@@ -16,7 +18,13 @@ import { OneDriveFolder } from './onedrive';
  * Staying signed in: see msauth.ts. The controller renews quietly before the 24-hour limit,
  * in a hidden frame where the browser allows it, or else with a quick visit to Microsoft at the
  * next quiet moment (opening the app, or coming back to it after a while).
+ *
+ * Or Google Drive instead (one provider per device, see gauth.ts and googledrive.ts): staying
+ * signed in is the sign-in Worker's job, so none of the above applies, and nothing of it is kept
+ * here but the account's address.
  */
+
+export type SyncProvider = 'onedrive' | 'google';
 
 export type SyncPhase =
   /** Not turned on (or not available in this build). */
@@ -29,14 +37,18 @@ export type SyncPhase =
   | 'offline'
   /** On, waiting to renew the sign-in with a quick visit to Microsoft (at a quiet moment, or Reconnect). */
   | 'renew'
-  /** On, but Microsoft wants you to sign in again. */
+  /** On, but Microsoft wants you to sign in again (or Google Drive needs connecting again). */
   | 'signin'
   /** On, but something's wrong that may need you (OneDrive full, permission removed...). */
   | 'error';
 
 export interface SyncStatus {
-  /** This build can sync (it has a Microsoft app id). */
+  /** This build can sync (with OneDrive, Google Drive or both). */
   available: boolean;
+  /** What this build can sync with: OneDrive needs a Microsoft app id. */
+  providers: Record<SyncProvider, boolean>;
+  /** The provider sync is on with, or was last on with. */
+  provider: SyncProvider;
   enabled: boolean;
   phase: SyncPhase;
   account: Account | null;
@@ -44,13 +56,17 @@ export interface SyncStatus {
   message: string | null;
   peers: PeerInfo[];
   problems: CycleResult['problems'];
-  /** Sync was on here once, so copies of this device's tasks and notes may still be in OneDrive. */
+  /** Sync was on here once, so copies of this device's tasks and notes may still be in OneDrive (or Google Drive). */
   hasCopies: boolean;
 }
 
 interface SyncRecord {
   enabled: boolean;
   meta: SyncMeta | null;
+  /** Absent: OneDrive (as in every record written before Google Drive). */
+  provider?: SyncProvider;
+  /** Google Drive: the account, once connected; null once the Worker says it's signed out. Never a token. */
+  google?: { email: string } | null;
 }
 
 const VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
@@ -102,7 +118,10 @@ export class SyncController {
   private record: SyncRecord = { enabled: false, meta: null };
   private auth: AuthRecord = emptyAuth();
   private readonly msal: MicrosoftAuth | null;
-  private folder: OneDriveFolder | null = null;
+  private readonly google: GoogleAuth | null;
+  private folder: (SyncFolder & { open(): Promise<string> }) | null = null;
+  /** Which provider `folder` is for (another tab may have switched since). */
+  private folderFor: SyncProvider | null = null;
   private folderKey: string | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private running: Promise<void> | null = null;
@@ -127,24 +146,55 @@ export class SyncController {
     private readonly store: Store,
     private readonly backend: Backend,
     config: MicrosoftAuth['config'] | null,
-    http?: typeof fetch,
+    private readonly http?: typeof fetch,
+    google?: GoogleAuth | null,
   ) {
     this.msal = config ? new MicrosoftAuth(config, http) : null;
-    this._status = { available: !!config, enabled: false, phase: 'off', account: null, lastSync: 0, message: null, peers: [], problems: [], hasCopies: false };
+    // Offered only where the sign-in Worker answers on /api/google/ (VITE_GOOGLE_SYNC=1).
+    this.google = google === undefined ? (import.meta.env.VITE_GOOGLE_SYNC?.trim() === '1' ? new GoogleAuth(http) : null) : google;
+    this._status = {
+      available: !!this.msal || !!this.google,
+      providers: { onedrive: !!this.msal, google: !!this.google },
+      provider: 'onedrive',
+      enabled: false,
+      phase: 'off',
+      account: null,
+      lastSync: 0,
+      message: null,
+      peers: [],
+      problems: [],
+      hasCopies: false,
+    };
     store.keepDeletions = () => this.record.enabled;
   }
 
-  static async create(ws: Workspace, store: Store, backend: Backend, config = authConfig(), http?: typeof fetch): Promise<SyncController> {
-    const c = new SyncController(ws, store, backend, config, http);
+  /** `google`: Google Drive's sign-in (null: not offered here). */
+  static async create(ws: Workspace, store: Store, backend: Backend, config = authConfig(), http?: typeof fetch, google?: GoogleAuth | null): Promise<SyncController> {
+    const c = new SyncController(ws, store, backend, config, http, google);
     try {
       c.record = (await backend.getMeta<SyncRecord>('sync')) ?? c.record;
       c.auth = { ...emptyAuth(), ...((await backend.getMeta<AuthRecord>('auth')) ?? {}) };
     } catch (error) {
       console.warn('Sync settings unreadable', error);
     }
-    if (!c.msal) c.record.enabled = false;
+    if (!c.offers(c.provider)) c.record.enabled = false;
     c.update({});
     return c;
+  }
+
+  /** The provider in the record: OneDrive unless it says Google Drive. */
+  private get provider(): SyncProvider {
+    return this.record.provider === 'google' ? 'google' : 'onedrive';
+  }
+
+  /** Can this build sync with `provider`? */
+  private offers(provider: SyncProvider): boolean {
+    return provider === 'google' ? !!this.google : !!this.msal;
+  }
+
+  /** Signed in (OneDrive) or connected (Google Drive): there's something to sync with. */
+  private connected(): boolean {
+    return this.provider === 'google' ? !!this.record.google : !!this.auth.tokens;
   }
 
   get status(): SyncStatus {
@@ -159,10 +209,13 @@ export class SyncController {
   // ------------------------------------------------------------------ boot
 
   /**
-   * Finishes a sign-in (or renewal) if this page load is the return from Microsoft. Call before
-   * the app shows anything: it takes the code out of the address bar first.
+   * Finishes a sign-in (or renewal) if this page load is the return from Microsoft, or from
+   * connecting Google Drive. Call before the app shows anything: it takes the code (or ?google=)
+   * out of the address bar first.
    */
   async handleReturn(): Promise<'signed-in' | 'signed-in-again' | 'renewed' | 'failed' | null> {
+    const google = takeGoogleReturn();
+    if (google && this.google) return this.googleReturned(google);
     if (!this.msal) return null;
     const result = await this.msal.completeRedirect();
     if (!result) return null;
@@ -183,8 +236,8 @@ export class SyncController {
     }
     if (result.kind === 'renew') {
       const known = this.auth.account;
-      // A renewal must come back as the same account, and only while sync is on.
-      if (!this.record.enabled) return null;
+      // A renewal must come back as the same account, and only while sync is on (with OneDrive).
+      if (!this.record.enabled || this.provider !== 'onedrive') return null;
       if (!known || known.id !== result.account.id || known.tenant !== result.account.tenant) {
         await this.saveAuth({ needsSignIn: true, visitReturned: true });
         return 'failed';
@@ -193,15 +246,58 @@ export class SyncController {
       await this.saveAuth({ tokens: result.tokens, needsSignIn: false, frameWorks: this.auth.frameRefused ? false : this.auth.frameWorks, frameRefused: 0, frameTimeouts: 0, visitReturned: true });
       return 'renewed';
     }
-    const again = this.record.enabled;
+    const fromGoogle = this.provider === 'google';
+    const googleOn = fromGoogle && this.record.enabled;
+    const again = this.record.enabled && !fromGoogle;
     const switched = this.auth.account && (this.auth.account.id !== result.account.id || this.auth.account.tenant !== result.account.tenant);
     // A fresh sign-in: learn again whether frames work here.
     await this.saveAuth({ account: result.account, tokens: result.tokens, needsSignIn: false, frameWorks: null, frameRefused: 0, frameTimeouts: 0 });
-    if (switched) this.folderKey = null;
-    if (!this.record.enabled) {
+    if (switched || fromGoogle) this.folderKey = null;
+    if (fromGoogle) {
+      // OneDrive in place of Google Drive: the record as OneDrive has always written it.
+      const { provider: _, google: __, ...rest } = this.record;
+      this.record = { ...rest, enabled: true };
+      await this.saveRecord();
+      if (googleOn) await this.google?.signOut();
+    } else if (!this.record.enabled) {
       this.record = { ...this.record, enabled: true };
       await this.saveRecord();
     }
+    return again ? 'signed-in-again' : 'signed-in';
+  }
+
+  /** Back from connecting Google Drive (through the Worker): on with Google Drive, or why not. */
+  private async googleReturned(back: GoogleReturn): Promise<'signed-in' | 'signed-in-again' | 'failed' | null> {
+    if (!back.connected) {
+      if (back.reason === 'denied') return null; // you said no on Google's page
+      console.error('Connecting Google Drive failed', back.reason);
+      this.update({
+        message:
+          back.reason === 'scope'
+            ? 'Google Drive wasn’t connected: Tack needs to see the files it makes there. Connect again, and tick the box for Google Drive on Google’s page.'
+            : 'Couldn’t connect Google Drive. Please try again.',
+      });
+      return 'failed';
+    }
+    // The Worker must hold a session before anything changes here: a link can say ?google=connected,
+    // only a sign-in leaves a session. (Unreachable or busy: let sync find out, as for any later visit.)
+    try {
+      await this.google!.token(true);
+    } catch (error) {
+      if (error instanceof SyncError && error.kind === 'auth') {
+        this.update({ message: 'Couldn’t connect Google Drive. Please try again.' });
+        return 'failed';
+      }
+    }
+    const again = this.record.enabled && this.provider === 'google';
+    if (!again) {
+      // Google Drive in place of OneDrive (if that was on): Microsoft's sign-in is forgotten, as turning sync off does.
+      if (this.auth.tokens || this.auth.account) await this.saveAuth(emptyAuth(), true);
+      this.folderKey = null;
+    }
+    this.record = { ...this.record, enabled: true, provider: 'google', google: { email: this.google!.email || (again && this.record.google?.email) || '' } };
+    await this.saveRecord();
+    this.update({ message: null });
     return again ? 'signed-in-again' : 'signed-in';
   }
 
@@ -221,7 +317,7 @@ export class SyncController {
   }
 
   start(): void {
-    if (!this.msal) return;
+    if (!this.msal && !this.google) return;
     this.ws.subscribe((c) => {
       if (c.origin !== 'remote') this.schedule(AFTER_EDIT);
     });
@@ -235,20 +331,27 @@ export class SyncController {
 
   // ------------------------------------------------------------------ turning it on and off
 
-  /** Goes to Microsoft to sign in; sync starts when you come back. */
-  async turnOn(): Promise<void> {
+  /** Goes to Microsoft (or to Google, through the sign-in Worker) to sign in; sync starts when you come back. */
+  async turnOn(provider: SyncProvider = 'onedrive'): Promise<void> {
+    if (provider === 'google') {
+      if (!this.google) return;
+      await this.store.flushAll();
+      await this.google.connect();
+      return;
+    }
     if (!this.msal) return;
     await this.store.flushAll();
     await this.msal.signIn({ loginHint: this.auth.account?.username });
   }
 
-  /** After Microsoft asked for a sign-in: the same, keeping the account suggested. */
+  /** After Microsoft asked for a sign-in: the same, keeping the account suggested (Google Drive: connect again). */
   signInAgain(): Promise<void> {
-    return this.turnOn();
+    return this.turnOn(this.provider);
   }
 
   /** Renews the sign-in now with a quick visit to Microsoft (it comes straight back). */
   async reconnect(): Promise<void> {
+    if (this.provider === 'google') return this.turnOn('google');
     if (!this.msal || !this.auth.account) return this.turnOn();
     await this.store.flushAll();
     await this.visit(true);
@@ -256,16 +359,19 @@ export class SyncController {
 
   /**
    * Stops syncing on this device and forgets the sign-in. Nothing is deleted: the tasks stay
-   * here, and the files in OneDrive stay for your other devices.
+   * here, and the files in OneDrive (or Google Drive) stay for your other devices. With Google
+   * Drive, it also signs out at the Worker, which revokes Tack's access at Google.
    */
   async turnOff(): Promise<void> {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    let google = false;
     const off = async () => {
       await this.running;
       await this.renewing?.catch(() => {});
       const stored = (await this.backend.getMeta<SyncRecord>('sync')) ?? this.record;
-      this.record = { ...stored, enabled: false };
+      google = stored.provider === 'google';
+      this.record = google ? { ...stored, enabled: false, google: null } : { ...stored, enabled: false };
       await this.saveRecord();
       await this.saveAuth(emptyAuth(), true);
     };
@@ -273,6 +379,7 @@ export class SyncController {
     const locks = (navigator as Navigator & { locks?: LockManager }).locks;
     if (locks) await locks.request('tack-sync', off);
     else await off();
+    if (google) await this.google?.signOut();
     this.folder = null;
     this.folderKey = null;
     this.update({ phase: 'off', message: null, peers: [], problems: [] });
@@ -311,7 +418,7 @@ export class SyncController {
 
   /** Syncs after `delay`, or once the wait after a failure is over if that's later. */
   private schedule(delay: number): void {
-    if (!this.record.enabled || !this.auth.tokens) return;
+    if (!this.record.enabled || !this.connected()) return;
     if (this.timer) clearTimeout(this.timer);
     const wait = Math.min(MAX_WAIT, Math.max(delay, this.notBefore - Date.now()));
     this.timer = setTimeout(() => {
@@ -374,6 +481,7 @@ export class SyncController {
     return (
       !!this.msal &&
       this.record.enabled &&
+      this.provider === 'onedrive' &&
       !!a.account &&
       !!a.tokens &&
       !a.needsSignIn &&
@@ -426,7 +534,7 @@ export class SyncController {
       this.again = true;
       return this.running;
     }
-    if (!this.record.enabled || !this.auth.tokens) return;
+    if (!this.record.enabled || !this.connected()) return;
     this.running = (async () => {
       try {
         const locks = (navigator as Navigator & { locks?: LockManager }).locks;
@@ -458,14 +566,14 @@ export class SyncController {
     // Another tab may have renewed the sign-in, or turned sync off, since this one last looked.
     this.record = (await this.backend.getMeta<SyncRecord>('sync')) ?? this.record;
     this.auth = { ...emptyAuth(), ...((await this.backend.getMeta<AuthRecord>('auth')) ?? this.auth) };
-    if (!this.record.enabled || !this.auth.tokens) {
+    if (!this.record.enabled || !this.connected()) {
       this.update({});
       return;
     }
     this.update({ phase: 'syncing' });
     let next = POLL;
     try {
-      void this.renewSoon();
+      if (this.provider === 'onedrive') void this.renewSoon();
       await this.cycle();
       this.failures = 0;
       this.notBefore = this.throttledUntil = 0;
@@ -482,7 +590,13 @@ export class SyncController {
   }
 
   private async cycle(collisionRetried = false): Promise<void> {
-    this.folder ??= new OneDriveFolder((force) => this.accessToken(force));
+    if (this.folderFor !== this.provider) {
+      this.folder = null;
+      this.folderKey = null;
+      this.folderFor = this.provider;
+    }
+    this.folder ??=
+      this.provider === 'google' ? new GoogleDriveFolder((force) => this.googleToken(force), this.http) : new OneDriveFolder((force) => this.accessToken(force));
     this.folderKey ??= await this.folder.open();
     const record = (await this.backend.getMeta<SyncRecord>('sync')) ?? this.record;
     let meta = record.meta && record.meta.folder === this.folderKey ? record.meta : emptyMeta(this.folderKey);
@@ -527,8 +641,17 @@ export class SyncController {
     const quiet = this.failures < QUIET_FAILURES;
     const keepTrying = (message: string) =>
       this.update(quiet ? { phase: 'synced' } : { phase: 'error', message });
+    const google = this.provider === 'google';
+    const drive = google ? 'Google Drive' : 'OneDrive';
     if (error instanceof TurnedOff) {
       this.update({});
+      return 30 * MINUTE;
+    }
+    if (google && error instanceof SyncError && error.kind === 'auth') {
+      // Signed out at the Worker, or the access revoked at Google: connecting again is up to you.
+      this.record = { ...this.record, google: null };
+      void this.googleSignedOut();
+      this.update({ phase: 'signin', message: null });
       return 30 * MINUTE;
     }
     if (error instanceof AuthError || (error instanceof SyncError && error.kind === 'auth')) {
@@ -546,27 +669,32 @@ export class SyncController {
           this.update({ phase: 'offline' });
           return Math.min(backoff, 5 * MINUTE);
         case 'throttled':
-          keepTrying('OneDrive is busy right now. Tack will keep trying.');
+          keepTrying(`${drive} is busy right now. Tack will keep trying.`);
           // As long as Microsoft asks, and longer each time it asks again.
           return Math.max(error.retryAfter ?? 30_000, backoff);
         case 'crowded':
-          this.update({ phase: 'error', message: 'Tack’s folder in OneDrive is full of files Tack didn’t put there, so sync is paused. Remove them from Apps › Tack Focus › devices.' });
+          this.update({
+            phase: 'error',
+            message: google
+              ? 'Tack’s folder in Google Drive holds far more files than Tack keeps there, so sync is paused. Remove the extra ones from My Drive › Tack Focus › devices.'
+              : 'Tack’s folder in OneDrive is full of files Tack didn’t put there, so sync is paused. Remove them from Apps › Tack Focus › devices.',
+          });
           return 30 * MINUTE;
         case 'full':
-          this.update({ phase: 'error', message: 'Your OneDrive is full, so Tack can’t save its sync file there.' });
+          this.update({ phase: 'error', message: `Your ${drive} is full, so Tack can’t save its sync file there.` });
           return 30 * MINUTE;
         case 'denied':
-          this.update({ phase: 'error', message: 'OneDrive refused Tack’s request. Turning sync off and on again may help.' });
+          this.update({ phase: 'error', message: `${drive} refused Tack’s request. Turning sync off and on again may help.` });
           return 30 * MINUTE;
         case 'toolarge':
           this.update({ phase: 'error', message: 'There’s more here than sync can carry, so this device’s changes aren’t being shared.' });
           return 30 * MINUTE;
         case 'gone':
           this.folderKey = null; // the folder was removed: find or make it again
-          keepTrying('Tack can’t reach its folder in OneDrive right now. It will keep trying.');
+          keepTrying(`Tack can’t reach its folder in ${drive} right now. It will keep trying.`);
           return backoff;
         default:
-          keepTrying('OneDrive isn’t answering right now. Tack will keep trying.');
+          keepTrying(`${drive} isn’t answering right now. Tack will keep trying.`);
           return Math.max(error.retryAfter ?? 0, backoff);
       }
     }
@@ -576,6 +704,34 @@ export class SyncController {
   }
 
   // ------------------------------------------------------------------ tokens
+
+  /** An access token for Google Drive, from the Worker (kept in memory only, see gauth.ts). */
+  private async googleToken(force = false): Promise<string> {
+    if (!this.google || !this.record.google) throw new SyncError('auth', 'Google Drive isn’t connected');
+    const token = await this.google.token(force);
+    // The account's address, for Settings, as the Worker says it.
+    const email = this.google.email;
+    if (email && this.record.google.email !== email) {
+      await this.mustBeOn();
+      this.record = { ...this.record, google: { email } };
+      await this.saveRecord();
+      this.update({});
+    }
+    return token;
+  }
+
+  /** The Worker says Google Drive is signed out (or revoked): noted, so nothing syncs until you connect again. */
+  private async googleSignedOut(): Promise<void> {
+    try {
+      const stored = (await this.backend.getMeta<SyncRecord>('sync')) ?? this.record;
+      if (!stored.enabled || stored.provider !== 'google') return;
+      this.record = { ...stored, google: null };
+      await this.saveRecord();
+      this.update({ phase: 'signin', message: null });
+    } catch (error) {
+      console.warn('Couldn’t note that Google Drive is signed out', error);
+    }
+  }
 
   /** An access token for Graph, renewed with the refresh token when needed. */
   private async accessToken(force = false): Promise<string> {
@@ -653,16 +809,19 @@ export class SyncController {
   }
 
   private update(patch: Partial<SyncStatus>): void {
-    const enabled = this.record.enabled && !!this.msal;
+    const provider = this.provider;
+    const google = provider === 'google';
+    const enabled = this.record.enabled && this.offers(provider);
     const next: SyncStatus = {
       ...this._status,
       ...patch,
-      available: !!this.msal,
+      available: !!this.msal || !!this.google,
+      provider,
       enabled,
-      account: this.auth.account,
+      account: google ? (this.record.google ? { username: this.record.google.email, name: '', tenant: '', id: '' } : null) : this.auth.account,
     };
     if (!enabled) next.phase = 'off';
-    else if (this.auth.needsSignIn) next.phase = 'signin';
+    else if (google ? !this.record.google : this.auth.needsSignIn) next.phase = 'signin';
     else if (next.phase === 'off') next.phase = 'synced';
     if (!next.lastSync && this.record.meta) next.lastSync = this.record.meta.lastSync;
     next.hasCopies = !!this.record.meta?.own.written;

@@ -38,7 +38,7 @@ internal static class Program
         // The shared vectors are computed in UTC; dates without their own offset are read in this zone.
         IsoTime.ZoneOverride = TimeZoneInfo.Utc;
 
-        var tests = VectorTests.All().Concat(OrderTests.All()).Concat(StateFileTests.All()).Concat(SyncTests.All()).Concat(HostileFileTests.All())
+        var tests = VectorTests.All().Concat(OrderTests.All()).Concat(StateFileTests.All()).Concat(SyncTests.All()).Concat(GoogleDriveTests.All()).Concat(HostileFileTests.All())
             .Concat(SpacesTests.All()).Concat(SpaceViewTests.All()).Concat(SpaceStripTests.All()).Concat(ScreenTests.All()).Concat(LauncherTests.All()).Concat(LauncherScreenTests.All()).Concat(LauncherRecentsTests.All()).Concat(LauncherRecentsScreenTests.All())
             .Concat(GlideTests.All()).Concat(SearchTests.All()).Concat(MarkdownTests.All()).Concat(NotesMarkdownScreenTests.All()).Concat(SearchScreenTests.All()).Concat(LookTests.All()).Concat(SnippetTests.All()).Concat(DropTests.All()).Concat(DropScreenTests.All()).Concat(UnfoldTests.All()).Concat(StartupTests.All()).ToList();
         string? only = args.FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal));

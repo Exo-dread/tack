@@ -333,8 +333,12 @@ internal interface ISyncFolder
 /// <param name="Size">Its size in bytes, if the listing says (a file too big to be Tack's is never read).</param>
 internal record FolderEntry(string Name, string Tag, long? Size = null);
 
-/// <summary>Why a sync failed. <c>TooLarge</c>: this device's own file would be over the size every device accepts.</summary>
-internal enum SyncErrorKind { Offline, Throttled, Full, Gone, Denied, Server, TooLarge }
+/// <summary>
+/// Why a sync failed. <c>TooLarge</c>: this device's own file would be over the size every device accepts.
+/// <c>NoSpare</c>: a folder in claim mode (Google Drive) has no <c>devices</c> folder or no spare file
+/// to take for this device's own yet: Tack Focus makes them, so this waits for it (not an error).
+/// </summary>
+internal enum SyncErrorKind { Offline, Throttled, Full, Gone, Denied, Server, TooLarge, NoSpare }
 
 internal sealed class SyncException(SyncErrorKind kind, string message) : Exception(message)
 {

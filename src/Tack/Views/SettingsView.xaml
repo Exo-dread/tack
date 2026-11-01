@@ -252,7 +252,7 @@
                 <Border Style="{StaticResource Card}" Padding="14,10">
                     <StackPanel>
                         <TextBlock x:Name="SyncIntro" TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}"
-                                   Text="Keep this PC in step with Tack Focus on your phone, through your own OneDrive. Tack itself never goes online: the OneDrive app carries your tasks and notes." />
+                                   Text="Keep this PC in step with Tack Focus on your phone, through your own OneDrive or Google Drive. Tack itself never goes online: the OneDrive or Google Drive app carries your tasks and notes." />
                         <TextBlock x:Name="SyncStatusText" Margin="0,6,0,0" TextWrapping="Wrap" FontSize="12.5" Visibility="Collapsed"
                                    AutomationProperties.LiveSetting="Polite" />
                         <!-- "Take it in anyway", for each device whose file was set aside as too much at once -->
@@ -260,7 +260,7 @@
                         <TextBlock x:Name="SyncFolderText" Style="{StaticResource Caption}" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="Collapsed" />
                         <WrapPanel Margin="-8,6,0,0">
                             <Button x:Name="SyncOnButton" Style="{StaticResource TextButton}" Content="Turn on sync" Click="SyncOn_Click"
-                                    ToolTip="Finds Tack Focus's folder in OneDrive on this PC" />
+                                    ToolTip="Finds Tack Focus's folder in OneDrive or Google Drive on this PC" />
                             <Button x:Name="SyncChooseButton" Style="{StaticResource TextButton}" Content="Choose folder…" Click="SyncChoose_Click"
                                     ToolTip="Sync through another folder, e.g. one shared with your other PCs" />
                             <Button x:Name="SyncNowButton" Style="{StaticResource TextButton}" Content="Sync now" Click="SyncNow_Click" />

@@ -7,7 +7,7 @@ import type { SpaceTab, Workspace } from '../model/workspace';
 import type { Snapshot } from '../store/db';
 import { isPersisted, persistenceNeedsPrompt, requestPersistence, type Store } from '../store/persist';
 import { prefs, setPrefs, type ThemePref } from '../store/prefs';
-import type { SyncController, SyncStatus } from '../sync/controller';
+import type { SyncController, SyncProvider, SyncStatus } from '../sync/controller';
 import { h, svg } from './dom';
 import { hapticsSupported, setHaptics } from './haptics';
 import { icons } from './icons';
@@ -343,16 +343,16 @@ export class Settings {
   private syncSection(): HTMLElement | null {
     if (!this.sync.status.available) return null;
     const body = h('div.sync');
-    let mode: 'on' | 'off' | null = null;
+    let mode: string | null = null;
     let view: { update(st: SyncStatus): void; main: HTMLElement } | null = null;
     const ui = { userAsked: false, turnedOff: false };
     const render = () => {
       const st = this.sync.status;
-      const next = st.enabled ? 'on' : 'off';
+      const next = st.enabled ? `on:${st.provider}` : 'off';
       if (next !== mode) {
         const hadFocus = body.contains(document.activeElement);
         mode = next;
-        view = next === 'on' ? this.syncOn(body, ui) : this.syncOff(body, ui);
+        view = st.enabled ? this.syncOn(body, ui, st.provider) : this.syncOff(body, ui);
         if (hadFocus) view.main.focus();
       }
       view!.update(st);
@@ -365,34 +365,53 @@ export class Settings {
     return group('Sync', body);
   }
 
+  /** Sync is off: OneDrive or Google Drive, as this build offers them (one per device). */
   private syncOff(body: HTMLElement, ui: { turnedOff: boolean }) {
-    const turnOn = h('button.button.primary', { type: 'button', onclick: () => void this.sync.turnOn() }, svg(icons.cloud), 'Turn on sync');
+    const offered = this.sync.status.providers;
+    const both = offered.onedrive && offered.google;
+    const button = (provider: SyncProvider, primary: boolean) =>
+      h(primary ? 'button.button.primary' : 'button.button', { type: 'button', onclick: () => void this.sync.turnOn(provider) }, svg(icons.cloud), `Sync with ${driveName(provider)}`);
+    const buttons = [offered.onedrive ? button('onedrive', true) : null, offered.google ? button('google', !offered.onedrive) : null].filter((b) => b !== null);
     const message = h('p.note.small', { role: 'status' });
-    const copies = h('p.note.small', { hidden: true, text: 'Copies from when sync was on stay in your OneDrive until you delete its Apps \u203a Tack Focus folder.' });
+    const copies = h('p.note.small', { hidden: true });
+    const where = both ? 'OneDrive or Google Drive' : offered.google ? 'Google Drive' : 'OneDrive';
     body.replaceChildren(
-      h('p.note', { text: 'Keep Tack Focus and Tack for Windows in step through your own OneDrive. There\u2019s no Tack server in between: your tasks and notes go straight between your devices and your OneDrive.' }),
-      h('div.button-row', {}, turnOn),
+      h('p.note', { text: `Keep Tack Focus and Tack for Windows in step through your own ${where}. There\u2019s no Tack server in between: your tasks and notes go straight between your devices and your ${both ? 'drive' : where}.` }),
+      h('div.button-row', {}, ...buttons),
       message,
       h(
         'p.note.small',
         {},
-        'You\u2019ll sign in with Microsoft. Tack can open only its own folder in your OneDrive (Apps \u203a Tack Focus), nothing else. Your tasks and notes are saved there as ordinary files, not end-to-end encrypted. What\u2019s on this device and what\u2019s already there are combined. ',
+        ...(offered.onedrive
+          ? [`${both ? 'With OneDrive, you\u2019ll' : 'You\u2019ll'} sign in with Microsoft. Tack can open only its own folder in your OneDrive (Apps \u203a Tack Focus), nothing else. `]
+          : []),
+        ...(offered.google
+          ? [`${both ? 'With Google Drive, you\u2019ll' : 'You\u2019ll'} sign in with Google. Tack can open only the files it makes in your Google Drive (My Drive \u203a Tack Focus), nothing else. `]
+          : []),
+        'Your tasks and notes are saved there as ordinary files, not end-to-end encrypted. What\u2019s on this device and what\u2019s already there are combined. ',
         privacyLink(),
       ),
       copies,
     );
     return {
-      main: turnOn,
+      main: buttons[0]!,
       update: (st: SyncStatus) => {
-        const text = st.message ?? (ui.turnedOff ? 'Sync is off. Your tasks and notes stay on this device, and in OneDrive for your other devices.' : '');
+        const drive = driveName(st.provider);
+        const text = st.message ?? (ui.turnedOff ? `Sync is off. Your tasks and notes stay on this device, and in ${drive} for your other devices.` : '');
         if (message.textContent !== text) message.textContent = text;
         message.classList.toggle('warn', !!st.message);
+        const copiesText =
+          st.provider === 'google'
+            ? 'Copies from when sync was on stay in your Google Drive until you delete its Tack Focus folder.'
+            : 'Copies from when sync was on stay in your OneDrive until you delete its Apps \u203a Tack Focus folder.';
+        if (copies.textContent !== copiesText) copies.textContent = copiesText;
         copies.hidden = !st.hasCopies;
       },
     };
   }
 
-  private syncOn(body: HTMLElement, ui: { userAsked: boolean; turnedOff: boolean }) {
+  private syncOn(body: HTMLElement, ui: { userAsked: boolean; turnedOff: boolean }, provider: SyncProvider) {
+    const google = provider === 'google';
     const account = h('small');
     // The live part says what changed; the time beside it ticks quietly.
     const phase = h('span', { role: 'status' });
@@ -419,7 +438,7 @@ export class Settings {
       },
     });
     body.replaceChildren(
-      h('div.setting', {}, h('div.setting-label', {}, h('span', { text: 'OneDrive' }), account), svg(icons.cloud)),
+      h('div.setting', {}, h('div.setting-label', {}, h('span', { text: driveName(provider) }), account), svg(icons.cloud)),
       status,
       peers,
       problems,
@@ -427,7 +446,9 @@ export class Settings {
       h(
         'p.note.small',
         {},
-        'Your tasks and notes are saved in your OneDrive as ordinary files. You can open them; Microsoft can read them as your storage provider, and so can any app you\u2019ve given your whole OneDrive to. They aren\u2019t end-to-end encrypted yet. ',
+        google
+          ? 'Your tasks and notes are saved in your Google Drive as ordinary files. You can open them; Google can read them as your storage provider, and so can any app you\u2019ve given your whole Google Drive to. They aren\u2019t end-to-end encrypted yet. '
+          : 'Your tasks and notes are saved in your OneDrive as ordinary files. You can open them; Microsoft can read them as your storage provider, and so can any app you\u2019ve given your whole OneDrive to. They aren\u2019t end-to-end encrypted yet. ',
         privacyLink(),
       ),
     );
@@ -438,17 +459,17 @@ export class Settings {
       synced: 'Up to date',
       offline: 'Offline. Changes are kept here and sync when you\u2019re back online.',
       renew: 'Paused until Tack checks in with Microsoft. It will try again by itself.',
-      signin: 'Microsoft asked you to sign in again.',
+      signin: google ? 'Google Drive needs connecting again: the sign-in ran out, or its access was removed.' : 'Microsoft asked you to sign in again.',
     };
     const actions: Record<string, [string, () => void]> = {
       renew: ['Reconnect now', () => void this.sync.reconnect()],
-      signin: ['Sign in', () => void this.sync.signInAgain()],
+      signin: [google ? 'Connect Google Drive again' : 'Sign in', () => void this.sync.signInAgain()],
       error: ['Try again', () => this.sync.syncNow()],
     };
     return {
       main: syncNow,
       update: (st: SyncStatus) => {
-        account.textContent = st.account?.username || st.account?.name || 'Signed in';
+        account.textContent = st.account?.username || st.account?.name || (google && !st.account ? 'Not connected' : 'Signed in');
         status.dataset.synced = String(st.lastSync);
         // Background syncs every minute aren't news: "Syncing" shows only when you asked, the first
         // time, or when catching up (back online, or after a problem): it isn't up to date yet.
@@ -725,11 +746,16 @@ function privacyLink(): HTMLElement {
   return h('a', { href: PRIVACY_URL, target: '_blank', rel: 'noopener', text: 'Privacy' });
 }
 
+/** "OneDrive" or "Google Drive". */
+function driveName(provider: SyncProvider): string {
+  return provider === 'google' ? 'Google Drive' : 'OneDrive';
+}
+
 /** What Settings → Your data says about where your data is. */
 function dataIntroText(st: SyncStatus): string {
-  if (st.enabled) return 'Your tasks and notes are kept on this device, and in your OneDrive while sync is on. Tack Focus has no servers of its own.';
-  if (st.hasCopies) return 'Your tasks and notes are kept on this device. Copies from when sync was on stay in your OneDrive until you delete them. Tack Focus has no servers.';
-  return 'Your tasks and notes are kept on this device only. Tack Focus has no servers and sends nothing anywhere.';
+  if (st.enabled) return `Your tasks and notes are kept on this device, and in your ${driveName(st.provider)} while sync is on. Tack Focus has no servers that keep your data.`;
+  if (st.hasCopies) return `Your tasks and notes are kept on this device. Copies from when sync was on stay in your ${driveName(st.provider)} until you delete them. Tack Focus has no servers that keep your data.`;
+  return 'Your tasks and notes are kept on this device only. Tack Focus sends nothing anywhere.';
 }
 
 /** "just now", "5 min. ago", "yesterday"... */
