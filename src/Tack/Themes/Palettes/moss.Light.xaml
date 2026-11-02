@@ -1,0 +1,8 @@
+<!-- Moss, light: a pale sage. Laid over Light.xaml by ThemeManager: surfaces only, so text keeps the base palette's contrast. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <SolidColorBrush x:Key="GlassTintBrush" Color="#80E8F3EC" />
+    <SolidColorBrush x:Key="SolidSurfaceBrush" Color="#FFEAF4ED" />
+    <SolidColorBrush x:Key="FlyoutBrush" Color="#FCF6FAF7" />
+</ResourceDictionary>

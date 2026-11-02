@@ -553,7 +553,7 @@ internal sealed class AppShell : IDisposable
         {
             case nameof(Settings.Glass): _panel.ApplyGlass(s.Glass); break;
             case nameof(Settings.PanelBackgroundGlass) or nameof(Settings.PanelBackgroundSolid): _panel.BackgroundChanged(); break;
-            case nameof(Settings.Theme): ApplyTheme(); break;
+            case nameof(Settings.Theme) or nameof(Settings.Palette): ApplyTheme(); break;
             case nameof(Settings.Accent): ApplyAccent(); break;
             case nameof(Settings.LaunchAtStartup): StartupRegistration.Set(s.LaunchAtStartup); break;
             case nameof(Settings.HideInFullscreen): EvaluateFullscreen(); break;
@@ -566,10 +566,10 @@ internal sealed class AppShell : IDisposable
         }
     }
 
-    /// <summary>Light or dark palette, then the matching accent shade and window frame.</summary>
+    /// <summary>Light or dark palette in its colour theme, then the matching accent shade and window frame.</summary>
     private void ApplyTheme()
     {
-        bool changed = ThemeManager.Apply(_ws.Settings.Theme);
+        bool changed = ThemeManager.Apply(_ws.Settings.Theme, _ws.Settings.Palette);
         ApplyAccent();
         if (!changed) return;
         _panel.ApplyGlass(_ws.Settings.Glass);

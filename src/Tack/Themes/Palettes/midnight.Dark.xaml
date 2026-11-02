@@ -1,0 +1,8 @@
+<!-- Midnight, dark: deep navy. Laid over Dark.xaml by ThemeManager: surfaces only, so text keeps the base palette's contrast. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <SolidColorBrush x:Key="GlassTintBrush" Color="#85101828" />
+    <SolidColorBrush x:Key="SolidSurfaceBrush" Color="#FF161D2C" />
+    <SolidColorBrush x:Key="FlyoutBrush" Color="#FA212A3C" />
+</ResourceDictionary>

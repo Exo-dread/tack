@@ -24,6 +24,7 @@ internal static class LookTests
     {
         yield return ("look: the new settings stay out of tack.json until used, keep to their bounds and read back", SettingsInFile);
         yield return ("look: at the least solid a background may be without glass, text keeps 4.5:1 (secondary 3:1) over white or black, in either theme", Contrast);
+        yield return ("themes: each lays its own surfaces (and only those) over light and dark, and swaps live and back", Palettes);
         yield return ("look on screen: by default the panel's background is the theme's own brush and chrome, exactly as before", DefaultLook);
         yield return ("look on screen: the slider sets only the background, live; near the default is the default; glass and solid keep their own", Slider);
         yield return ("look on screen: see-through without glass clears what's behind the panel, and solid again puts it back as it was", ClearWithoutGlass);
@@ -48,18 +49,20 @@ internal static class LookTests
         }
 
         var plain = Saved(new Settings());
-        foreach (string key in new[] { "panelBackgroundGlass", "panelBackgroundSolid", "fadeWhenIdle" })
+        foreach (string key in new[] { "panelBackgroundGlass", "panelBackgroundSolid", "fadeWhenIdle", "palette" })
             Check.True(!plain.TryGetProperty(key, out _), $"{key} isn't written until it's used (tack.json, and the shared vectors, as before)");
 
-        var s = new Settings { PanelBackgroundGlass = 0.4, PanelBackgroundSolid = 0.9, FadeWhenIdle = true };
+        var s = new Settings { PanelBackgroundGlass = 0.4, PanelBackgroundSolid = 0.9, FadeWhenIdle = true, Palette = "moss" };
         var saved = Saved(s);
         Check.Equal(0.4, saved.GetProperty("panelBackgroundGlass").GetDouble(), "glass written");
         Check.Equal(0.9, saved.GetProperty("panelBackgroundSolid").GetDouble(), "solid written");
         Check.True(saved.GetProperty("fadeWhenIdle").GetBoolean(), "fade written");
+        Check.Equal("moss", saved.GetProperty("palette").GetString(), "theme written");
         var back = JsonSerializer.Deserialize("{\"settings\":" + saved.GetRawText() + "}", StateJsonContext.Default.StateDocument)!.Settings;
         Check.Equal(0.4, back.PanelBackgroundGlass, "glass read back");
         Check.Equal(0.9, back.PanelBackgroundSolid, "solid read back");
         Check.True(back.FadeWhenIdle, "fade read back");
+        Check.Equal("moss", back.Palette, "theme read back");
 
         // Hand edits: kept to the bounds, whole percent; nonsense is the default.
         s.PanelBackgroundSolid = 0.1;
@@ -75,13 +78,20 @@ internal static class LookTests
         var hand = JsonSerializer.Deserialize("{\"settings\":{\"panelBackgroundSolid\":0.2,\"panelBackgroundGlass\":-3}}", StateJsonContext.Default.StateDocument)!.Settings;
         Check.Equal(Settings.MinSolidBackground, hand.PanelBackgroundSolid, "a hand-edited 0.2 reads as the minimum");
         Check.Equal(Settings.MinGlassBackground, hand.PanelBackgroundGlass, "a hand-edited -3 reads as the minimum");
+        foreach (string? odd in new[] { "classic", "Midnight", "neon", "", null })
+        {
+            s.Palette = odd;
+            Check.Equal(null, s.Palette, $"theme {odd ?? "null"}: Classic, kept out of tack.json");
+        }
     }
 
     private static void Contrast() => Ui.Run(_ =>
     {
-        foreach (string theme in new[] { "Dark", "Light" })
+        foreach (var (id, _) in ThemeManager.Palettes)
+        foreach (bool light in new[] { false, true })
         {
-            var palette = new ResourceDictionary { Source = new Uri($"pack://application:,,,/Tack;component/Themes/{theme}.xaml") };
+            string theme = $"{id} {(light ? "light" : "dark")}";
+            var palette = ThemeManager.Load(id, light);
             Color Of(string key) => ((SolidColorBrush)palette[key]).Color;
             var surface = Of("SolidSurfaceBrush");
             surface.A = (byte)Math.Round(Settings.MinSolidBackground * 255);
@@ -94,6 +104,52 @@ internal static class LookTests
                 Check.True(primary >= 4.5, $"{theme} over {behind}: primary text {primary:F2}:1");
                 Check.True(secondary >= 3, $"{theme} over {behind}: secondary text {secondary:F2}:1");
             }
+        }
+    });
+
+    private static void Palettes() => Ui.Run(_ =>
+    {
+        static Color Of(ResourceDictionary d, string key) => ((SolidColorBrush)d[key]).Color;
+        string[] surfaces = ["GlassTintBrush", "SolidSurfaceBrush", "FlyoutBrush"];
+        foreach (bool light in new[] { false, true })
+        {
+            var classic = ThemeManager.Load("classic", light);
+            var seen = new HashSet<Color>();
+            foreach (var (id, _) in ThemeManager.Palettes.Skip(1))
+            {
+                var all = ThemeManager.Load(id, light);
+                var own = all.MergedDictionaries[1];
+                Check.Equal(surfaces.Length, own.Count, $"{id}: its surfaces and nothing else (text keeps the base contrast)");
+                foreach (string key in surfaces)
+                {
+                    Check.True(own.Contains(key), $"{id}: has {key}");
+                    // Glass tint at the same strength, so the slider's default and range mean the same in every theme.
+                    if (key == "GlassTintBrush") Check.Equal(Of(classic, key).A, Of(all, key).A, $"{id}: tint as strong as Classic's");
+                }
+                Check.True(seen.Add(Of(all, "SolidSurfaceBrush")) && Of(all, "SolidSurfaceBrush") != Of(classic, "SolidSurfaceBrush"), $"{id}: a surface of its own");
+                Check.Equal(Of(classic, "TextPrimaryBrush"), Of(all, "TextPrimaryBrush"), $"{id}: the base text");
+            }
+        }
+
+        using var shell = new Shell();
+        Color Live(string key) => ((SolidColorBrush)shell.Panel.FindResource(key)).Color;
+        try
+        {
+            shell.Ws.Settings.Theme = "dark";
+            var before = Live("SolidSurfaceBrush");
+            shell.Ws.Settings.Palette = "plum";
+            Check.Equal(Of(ThemeManager.Load("plum", false), "SolidSurfaceBrush"), Live("SolidSurfaceBrush"), "picked: the panel's surface is the theme's at once");
+            Check.True(!ThemeManager.IsLight, "a theme keeps the mode");
+            shell.Ws.Settings.Theme = "light";
+            Check.Equal(Of(ThemeManager.Load("plum", true), "SolidSurfaceBrush"), Live("SolidSurfaceBrush"), "light: the theme's light surface");
+            shell.Ws.Settings.Theme = "dark";
+            shell.Ws.Settings.Palette = null;
+            Check.Equal(before, Live("SolidSurfaceBrush"), "Classic again: as it was");
+        }
+        finally
+        {
+            shell.Ws.Settings.Palette = null;
+            ThemeManager.Apply("light");
         }
     });
 

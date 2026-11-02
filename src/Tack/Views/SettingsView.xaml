@@ -164,8 +164,14 @@
                 <TextBlock Text="Look" Style="{StaticResource SectionLabel}" />
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
-                        <Grid Margin="0,8">
+                        <Grid Margin="0,8,0,4">
                             <TextBlock Text="Theme" VerticalAlignment="Center" FontSize="13" />
+                        </Grid>
+                        <!-- Colour themes, each in light and dark: Mode below picks which. -->
+                        <UniformGrid x:Name="PaletteChoices" Rows="1" Margin="-2,0,-2,8" />
+                        <Border Height="1" Background="{DynamicResource DividerBrush}" />
+                        <Grid Margin="0,8">
+                            <TextBlock Text="Mode" VerticalAlignment="Center" FontSize="13" />
                             <Border HorizontalAlignment="Right" CornerRadius="7" Padding="2" BorderThickness="1"
                                     Background="{DynamicResource SubtleFillBrush}" BorderBrush="{DynamicResource StrokeBrush}">
                                 <StackPanel x:Name="ThemeChoices" Orientation="Horizontal">

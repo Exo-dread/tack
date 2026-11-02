@@ -107,7 +107,7 @@ home screen. What's new: [CHANGELOG.md](CHANGELOG.md) (Tack), [web/CHANGELOG.md]
 | **Open / fold** | Click the orb, or press **Ctrl+Alt+Space** anywhere. **Esc** folds it back. |
 | **Move** | Drag the orb, or drag the panel by its header. The orb follows the panel's nearest corner. |
 | **Resize** | Drag the panel's edges. Each tab remembers its own size; until you resize Tasks, it fits its list. Double-click the header to go back to automatic sizing. |
-| **Theme** | **Settings → Look**: System (follows Windows), Light or Dark. |
+| **Theme** | **Settings → Look**: Classic, Midnight, Plum or Moss, each in light and dark; **Mode** is System (follows Windows), Light or Dark. |
 | **Background** | **Settings → Look → Panel background**: from solid to see-through (only the background; text stays crisp). The tick is the default. |
 | **Fade when idle** | **Settings → Look** (off by default): the orb and a pinned panel fade to half when the pointer's been away a few seconds, and come back when you point at them. |
 | **Sync** | **Settings → Sync → Turn on sync** keeps Tack in step with [Tack Focus](web/README.md) through your OneDrive (see below). |
