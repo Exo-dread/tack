@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.0 (2026-11-02)
+
+- **Colour themes.** Settings → Look → Theme has four: Classic (the look Tack has always had), Midnight,
+  Plum and Moss. Each comes in light and dark, so Mode (System, Light, Dark) still picks which, and your
+  accent, frosted glass and panel background work in every one. A theme only changes the panel's colours:
+  text keeps its contrast, and switching costs no more than switching between light and dark.
+
 ## 1.10.0 (2026-11-01)
 
 - **Sync through Google Drive.** Besides OneDrive, Tack can now sync through your Google Drive. Connect

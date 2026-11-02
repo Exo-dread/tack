@@ -609,4 +609,35 @@
         </Setter>
     </Style>
 
+    <!-- Settings → Look → Theme: a small preview of a colour theme, its name under it. -->
+    <Style x:Key="PaletteTile" TargetType="RadioButton">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <StackPanel Background="Transparent">
+                        <Border x:Name="Ring" CornerRadius="9" Padding="2" BorderThickness="1.5" BorderBrush="Transparent">
+                            <Border Height="34" CornerRadius="7" Background="{TemplateBinding Background}"
+                                    BorderBrush="{DynamicResource StrokeStrongBrush}" BorderThickness="1">
+                                <ContentPresenter Margin="7,0" VerticalAlignment="Center" />
+                            </Border>
+                        </Border>
+                        <TextBlock x:Name="Label" Text="{Binding (AutomationProperties.Name), RelativeSource={RelativeSource TemplatedParent}}" Margin="0,3,0,0" HorizontalAlignment="Center" FontSize="12" />
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource StrokeStrongBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Label" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

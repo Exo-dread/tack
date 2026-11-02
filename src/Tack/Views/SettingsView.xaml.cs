@@ -4,6 +4,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using Tack.Interop;
 using Tack.Model;
@@ -62,6 +63,7 @@ public partial class SettingsView : UserControl
         // Swatches show the shade the current theme really uses, so rebuild them when it changes.
         ThemeManager.Changed += () =>
         {
+            BuildPalettes();
             BuildSwatches();
             Refresh();
         };
@@ -71,6 +73,7 @@ public partial class SettingsView : UserControl
 
         LauncherHost.Content = new Tack.Launcher.LauncherSettingsView(shell.Launcher, shell, panel);
 
+        BuildPalettes();
         BuildSwatches();
         Refresh();
     }
@@ -82,6 +85,8 @@ public partial class SettingsView : UserControl
         ShowSync();
         foreach (RadioButton choice in ThemeChoices.Children)
             choice.IsChecked = (string)choice.Tag == _ws.Settings.Theme;
+        foreach (RadioButton tile in PaletteChoices.Children)
+            tile.IsChecked = (string)tile.Tag == (_ws.Settings.Palette ?? "classic");
         foreach (RadioButton swatch in Swatches.Children)
             swatch.IsChecked = string.Equals((string)swatch.Tag, _ws.Settings.Accent, StringComparison.OrdinalIgnoreCase);
         ShowBackground();
@@ -374,6 +379,47 @@ public partial class SettingsView : UserControl
         NewSpaceBox.Clear();
         NewSpaceButton.Visibility = Visibility.Visible;
         NewSpaceButton.Focus();
+    }
+
+    // ---- Colour themes ----
+
+    private bool? _palettesLight;
+
+    /// <summary>
+    /// A tile for each colour theme, in the current mode: its panel surface with two lines of its text
+    /// on it. Rebuilt when the mode changes, so the tiles always show what you'd get (not when the theme
+    /// does: the tile you just picked keeps its focus).
+    /// </summary>
+    private void BuildPalettes()
+    {
+        if (_palettesLight == ThemeManager.IsLight) return;
+        _palettesLight = ThemeManager.IsLight;
+        PaletteChoices.Children.Clear();
+        foreach (var (id, name) in ThemeManager.Palettes)
+        {
+            var palette = ThemeManager.Load(id, ThemeManager.IsLight);
+            Color Of(string key) => ((SolidColorBrush)palette[key]).Color;
+            var surface = Of("SolidSurfaceBrush");
+            var preview = new LinearGradientBrush(surface, Of("FlyoutBrush") with { A = 255 }, 90);
+            preview.Freeze();
+            Rectangle Line(string key, double width) => new()
+            {
+                Width = width, Height = 3, RadiusX = 1.5, RadiusY = 1.5, Margin = new Thickness(0, 2, 0, 2),
+                HorizontalAlignment = HorizontalAlignment.Left, Fill = new SolidColorBrush(Of(key)),
+            };
+            var tile = new RadioButton
+            {
+                Style = (Style)FindResource("PaletteTile"),
+                Background = preview,
+                Tag = id,
+                GroupName = "Palette",
+                Margin = new Thickness(2, 0, 2, 0),
+                Content = new StackPanel { IsHitTestVisible = false, Children = { Line("TextPrimaryBrush", 26), Line("TextTertiaryBrush", 18) } },
+            };
+            AutomationProperties.SetName(tile, name);
+            tile.Checked += (_, _) => _ws.Settings.Palette = id;
+            PaletteChoices.Children.Add(tile);
+        }
     }
 
     // ---- Accent swatches ----

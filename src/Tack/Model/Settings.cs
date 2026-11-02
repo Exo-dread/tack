@@ -14,6 +14,7 @@ public sealed class Settings : Observable
     private bool _hideInFullscreen = true;
     private bool _glass = true;
     private string _theme = "system";
+    private string? _palette;
     private string _hotkey = "Ctrl+Alt+Space";
     private string _accent = "system";
     private bool _pinned;
@@ -44,6 +45,13 @@ public sealed class Settings : Observable
 
     /// <summary>"system" follows the Windows app mode; otherwise "light" or "dark".</summary>
     public string Theme { get => _theme; set => Set(ref _theme, value is "light" or "dark" ? value : "system"); }
+
+    /// <summary>
+    /// The colour theme, in light and dark alike (see <see cref="Tack.Services.ThemeManager.Palettes"/>); null
+    /// (the default, and never written to tack.json) is Classic, the look Tack has always had.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Palette { get => _palette; set => Set(ref _palette, value != "classic" && Tack.Services.ThemeManager.IsPalette(value) ? value : null); }
 
     public string Hotkey { get => _hotkey; set => Set(ref _hotkey, value ?? ""); }
 

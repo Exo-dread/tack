@@ -1,0 +1,8 @@
+<!-- Plum, light: a pale lilac. Laid over Light.xaml by ThemeManager: surfaces only, so text keeps the base palette's contrast. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <SolidColorBrush x:Key="GlassTintBrush" Color="#80F3EAF8" />
+    <SolidColorBrush x:Key="SolidSurfaceBrush" Color="#FFF4ECF8" />
+    <SolidColorBrush x:Key="FlyoutBrush" Color="#FCFAF6FC" />
+</ResourceDictionary>
